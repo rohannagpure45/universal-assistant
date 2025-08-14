@@ -1,12 +1,10 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIModel, AIResponse } from '@/types';
 
 export class AIService {
   private openai: OpenAI | null = null;
   private anthropic: Anthropic | null = null;
-  private gemini: GoogleGenerativeAI | null = null;
 
   constructor() {
     if (process.env.OPENAI_API_KEY) {
@@ -19,10 +17,6 @@ export class AIService {
       this.anthropic = new Anthropic({
         apiKey: process.env.ANTHROPIC_API_KEY,
       });
-    }
-    
-    if (process.env.GOOGLE_AI_API_KEY) {
-      this.gemini = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
     }
   }
 

@@ -1,4 +1,5 @@
 import { FragmentProcessor, ProcessResult } from './FragmentProcessor';
+import { improvedFragmentAggregator } from '@/services/fragments/ImprovedFragmentAggregator';
 import { ContextTracker } from './ContextTracker';
 import { VocalInterruptService } from './VocalInterruptService';
 
@@ -94,11 +95,24 @@ export class ConversationProcessor {
           speakerId,
           timestamp,
           {
-            speakerChanged: previousSpeaker && previousSpeaker !== speakerId,
+            speakerChanged: !!(previousSpeaker && previousSpeaker !== speakerId),
             silenceDuration,
             previousUtterances: this.getRecentUtterances(speakerId),
           }
         );
+
+        // Additionally feed fragment to improved aggregator to handle edge cases
+        const aggResult = improvedFragmentAggregator.aggregate(text, speakerId, timestamp);
+        if (aggResult.type === 'complete') {
+          // Override with improved aggregation when it resolves a completion
+          processResult = {
+            type: 'COMPLETE',
+            text: aggResult.text,
+            shouldRespond: aggResult.shouldRespond,
+            confidence: 0.8,
+            fragmentAnalysis: { isComplete: true, confidence: 0.8, type: 'statement', suggestedAction: 'respond' },
+          } as unknown as ProcessResult;
+        }
 
         // Update conversation history
         this.updateConversationHistory(speakerId, text);
@@ -152,6 +166,10 @@ export class ConversationProcessor {
     
     if (buffer && buffer.fragments.length > 0) {
       // Force process fragments due to extended silence
+      const aggregated = improvedFragmentAggregator.flush(speakerId);
+      if (aggregated) {
+        return { type: 'COMPLETE', text: aggregated, shouldRespond: /\?|\b(what|why|how|when|where|who|can|could|would|should)\b/i.test(aggregated), confidence: 0.8 } as unknown as ProcessResult;
+      }
       return this.fragmentProcessor.processInput(
         '', // Empty text to trigger processing
         speakerId,
@@ -168,6 +186,10 @@ export class ConversationProcessor {
     const buffer = this.fragmentProcessor.getBufferStatus(previousSpeaker);
     
     if (buffer && !Array.isArray(buffer) && buffer.fragments.length > 0) {
+      const aggregated = improvedFragmentAggregator.flush(previousSpeaker);
+      if (aggregated) {
+        return { type: 'COMPLETE', text: aggregated, shouldRespond: /\?|\b(what|why|how|when|where|who|can|could|would|should)\b/i.test(aggregated), confidence: 0.8 } as unknown as ProcessResult;
+      }
       return this.fragmentProcessor.processInput(
         '', // Empty text to trigger processing
         previousSpeaker,
@@ -316,7 +338,7 @@ export class ConversationProcessor {
       : 0;
 
     return {
-      activeSpeakers: this.activeSpeeakers.size,
+      activeSpeakers: this.activeSpeekers.size,
       bufferedFragments,
       conversationTopics: this.config.enableContextTracking 
         ? this.contextTracker.getTopKeywords(10)

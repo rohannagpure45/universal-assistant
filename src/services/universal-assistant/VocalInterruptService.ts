@@ -80,6 +80,10 @@ export interface InterruptConfig {
     reset(): void {
       this.lastInterruptTime = 0;
     }
+
+    getLastInterruptTime(): number {
+      return this.lastInterruptTime;
+    }
   }
   
   export const vocalInterruptService = new VocalInterruptService();

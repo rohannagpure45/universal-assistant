@@ -42,7 +42,7 @@ export class DeepgramService {
       utterances: true,
       interim_results: true,
       endpointing: 300,
-      diarize_version: '2024-01-26',
+      diarize_version: '2025-08-14',
     };
   }
 

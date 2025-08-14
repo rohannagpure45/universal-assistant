@@ -16,58 +16,137 @@ export class ImprovedFragmentAggregator {
   private readonly MAX_FRAGMENT_AGE = 5000; // 5 seconds
 
   aggregate(fragment: string, speakerId: string, timestamp: number): AggregationResult {
-    // Clean old fragments
-    this.cleanOldFragments(timestamp);
+    try {
+      // Input validation
+      if (!fragment || typeof fragment !== 'string') {
+        console.warn('ImprovedFragmentAggregator: Invalid fragment input');
+        return { type: 'fragment', shouldWait: true };
+      }
 
-    // Get speaker's fragments
-    const speakerFragments = this.fragments.get(speakerId) || [];
+      if (!speakerId || typeof speakerId !== 'string') {
+        console.warn('ImprovedFragmentAggregator: Invalid speakerId input');
+        speakerId = 'unknown_speaker';
+      }
 
-    // Add new fragment
-    speakerFragments.push({
-      text: fragment,
-      timestamp,
-      isComplete: this.isComplete(fragment),
-    });
+      if (!timestamp || typeof timestamp !== 'number' || timestamp <= 0) {
+        console.warn('ImprovedFragmentAggregator: Invalid timestamp, using current time');
+        timestamp = Date.now();
+      }
 
-    // Check for aggregation triggers
-    if (this.shouldAggregate(speakerFragments)) {
-      const aggregated = this.performAggregation(speakerFragments);
-      this.fragments.delete(speakerId);
+      // Clean old fragments
+      this.cleanOldFragments(timestamp);
+
+      // Get speaker's fragments
+      const speakerFragments = this.fragments.get(speakerId) || [];
+
+      // Prevent memory overflow
+      if (speakerFragments.length > 100) {
+        console.warn(`ImprovedFragmentAggregator: Too many fragments for speaker ${speakerId}, clearing oldest`);
+        speakerFragments.splice(0, 50); // Keep only the latest 50
+      }
+
+      // Add new fragment
+      speakerFragments.push({
+        text: fragment,
+        timestamp,
+        isComplete: this.isComplete(fragment),
+      });
+
+      // Check for aggregation triggers
+      if (this.shouldAggregate(speakerFragments)) {
+        const aggregated = this.performAggregation(speakerFragments);
+        this.fragments.delete(speakerId);
+
+        return {
+          type: 'complete',
+          text: aggregated,
+          shouldRespond: this.containsQuestion(aggregated),
+        };
+      }
+
+      // Update fragments
+      this.fragments.set(speakerId, speakerFragments);
 
       return {
-        type: 'complete',
-        text: aggregated,
-        shouldRespond: this.containsQuestion(aggregated),
+        type: 'fragment',
+        shouldWait: true,
       };
+    } catch (error) {
+      console.error('ImprovedFragmentAggregator: Error in aggregate method:', error);
+      return { type: 'fragment', shouldWait: true };
     }
-
-    // Update fragments
-    this.fragments.set(speakerId, speakerFragments);
-
-    return {
-      type: 'fragment',
-      shouldWait: true,
-    };
   }
 
   // Force aggregation of buffered fragments for a speaker
   flush(speakerId: string): string | null {
-    const frags = this.fragments.get(speakerId);
-    if (!frags || frags.length === 0) return null;
-    const aggregated = this.performAggregation(frags);
-    this.fragments.delete(speakerId);
-    return aggregated;
+    try {
+      if (!speakerId || typeof speakerId !== 'string') {
+        console.warn('ImprovedFragmentAggregator: Invalid speakerId in flush');
+        return null;
+      }
+
+      const frags = this.fragments.get(speakerId);
+      if (!frags || frags.length === 0) {
+        return null;
+      }
+
+      const aggregated = this.performAggregation(frags);
+      this.fragments.delete(speakerId);
+      return aggregated;
+    } catch (error) {
+      console.error('ImprovedFragmentAggregator: Error in flush method:', error);
+      // Clean up potentially corrupted speaker data
+      this.fragments.delete(speakerId);
+      return null;
+    }
   }
 
   private cleanOldFragments(now: number): void {
-    for (const [speakerId, frags] of this.fragments.entries()) {
-      const fresh = frags.filter(f => now - f.timestamp <= this.MAX_FRAGMENT_AGE);
-      if (fresh.length > 0) this.fragments.set(speakerId, fresh);
-      else this.fragments.delete(speakerId);
+    try {
+      if (!now || typeof now !== 'number') {
+        console.warn('ImprovedFragmentAggregator: Invalid timestamp for cleanup');
+        return;
+      }
+
+      const speakersToDelete: string[] = [];
+      
+      for (const [speakerId, frags] of this.fragments.entries()) {
+        try {
+          if (!Array.isArray(frags)) {
+            speakersToDelete.push(speakerId);
+            continue;
+          }
+
+          const fresh = frags.filter(f => 
+            f && 
+            typeof f.timestamp === 'number' && 
+            now - f.timestamp <= this.MAX_FRAGMENT_AGE
+          );
+          
+          if (fresh.length > 0) {
+            this.fragments.set(speakerId, fresh);
+          } else {
+            speakersToDelete.push(speakerId);
+          }
+        } catch (error) {
+          console.error(`ImprovedFragmentAggregator: Error cleaning fragments for speaker ${speakerId}:`, error);
+          speakersToDelete.push(speakerId);
+        }
+      }
+
+      // Clean up corrupted speaker data
+      speakersToDelete.forEach(speakerId => this.fragments.delete(speakerId));
+    } catch (error) {
+      console.error('ImprovedFragmentAggregator: Error in cleanOldFragments:', error);
     }
   }
 
   private performAggregation(fragments: Fragment[]): string {
+    try {
+      if (!Array.isArray(fragments) || fragments.length === 0) {
+        console.warn('ImprovedFragmentAggregator: Invalid fragments for aggregation');
+        return '';
+      }
     // Combine fragments with spacing and minimal punctuation adjustments
     const parts: string[] = [];
     for (let i = 0; i < fragments.length; i++) {
@@ -89,6 +168,11 @@ export class ImprovedFragmentAggregator {
     // Ensure terminal punctuation for readability
     if (!/[.!?]$/.test(aggregated)) aggregated += '.';
     return aggregated;
+    } catch (error) {
+      console.error('ImprovedFragmentAggregator: Error in performAggregation:', error);
+      // Return best effort aggregation
+      return fragments.map(f => f?.text || '').filter(Boolean).join(' ') + '.';
+    }
   }
 
   private isComplete(text: string): boolean {
@@ -122,6 +206,80 @@ export class ImprovedFragmentAggregator {
     if (now - lastFragment.timestamp > 3000) return true;
 
     return false;
+  }
+
+  // Debug and monitoring methods
+  public getStats(): {
+    activeSpeakers: number;
+    totalFragments: number;
+    speakerFragmentCounts: Record<string, number>;
+    oldestFragmentAge?: number;
+  } {
+    try {
+      const now = Date.now();
+      let totalFragments = 0;
+      let oldestTimestamp = now;
+      const speakerFragmentCounts: Record<string, number> = {};
+
+      for (const [speakerId, frags] of this.fragments.entries()) {
+        const fragCount = frags?.length || 0;
+        speakerFragmentCounts[speakerId] = fragCount;
+        totalFragments += fragCount;
+
+        if (frags && frags.length > 0) {
+          const oldestFrag = frags[0];
+          if (oldestFrag?.timestamp && oldestFrag.timestamp < oldestTimestamp) {
+            oldestTimestamp = oldestFrag.timestamp;
+          }
+        }
+      }
+
+      return {
+        activeSpeakers: this.fragments.size,
+        totalFragments,
+        speakerFragmentCounts,
+        oldestFragmentAge: oldestTimestamp < now ? now - oldestTimestamp : undefined,
+      };
+    } catch (error) {
+      console.error('ImprovedFragmentAggregator: Error getting stats:', error);
+      return {
+        activeSpeakers: 0,
+        totalFragments: 0,
+        speakerFragmentCounts: {},
+      };
+    }
+  }
+
+  public clearAllFragments(): void {
+    try {
+      this.fragments.clear();
+      console.log('ImprovedFragmentAggregator: All fragments cleared');
+    } catch (error) {
+      console.error('ImprovedFragmentAggregator: Error clearing fragments:', error);
+    }
+  }
+
+  public clearSpeakerFragments(speakerId: string): void {
+    try {
+      if (!speakerId) {
+        console.warn('ImprovedFragmentAggregator: Invalid speakerId for clear');
+        return;
+      }
+      
+      this.fragments.delete(speakerId);
+      console.log(`ImprovedFragmentAggregator: Fragments cleared for speaker ${speakerId}`);
+    } catch (error) {
+      console.error('ImprovedFragmentAggregator: Error clearing speaker fragments:', error);
+    }
+  }
+
+  public getSpeakerFragments(speakerId: string): Fragment[] {
+    try {
+      return [...(this.fragments.get(speakerId) || [])];
+    } catch (error) {
+      console.error('ImprovedFragmentAggregator: Error getting speaker fragments:', error);
+      return [];
+    }
   }
 }
 

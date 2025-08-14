@@ -1,0 +1,35 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Audio clips storage
+    match /audio-clips/{userId}/{meetingId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && 
+        request.resource.size < 10 * 1024 * 1024 && // 10MB limit
+        request.resource.contentType.matches('audio/.*');
+    }
+    
+    // User profile images
+    match /profile-images/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) && 
+        request.resource.size < 5 * 1024 * 1024 && // 5MB limit
+        request.resource.contentType.matches('image/.*');
+    }
+    
+    // Shared resources
+    match /shared/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Admin only through server
+    }
+  }
+}

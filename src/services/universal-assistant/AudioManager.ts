@@ -3,6 +3,8 @@ export class AudioManager {
     private mediaRecorder: MediaRecorder | null = null;
     private audioStream: MediaStream | null = null;
     private audioChunks: Blob[] = [];
+    private activeAudio: HTMLAudioElement | null = null;
+    private audioQueue: HTMLAudioElement[] = [];
     private activeAudioElements: Set<HTMLAudioElement> = new Set();
     private recordingCallbacks: ((chunk: Blob) => void)[] = [];
   
@@ -60,6 +62,30 @@ export class AudioManager {
       }
     }
   
+    // Playback: play a single URL and track audio element lifecycle
+    async play(url: string): Promise<void> {
+      this.stopAllAudio();
+
+      this.activeAudio = new Audio(url);
+      this.audioQueue.push(this.activeAudio);
+      this.activeAudioElements.add(this.activeAudio);
+
+      this.activeAudio.addEventListener('ended', () => {
+        if (this.activeAudio) {
+          this.cleanupAudio(this.activeAudio);
+        }
+      });
+
+      try {
+        await this.activeAudio.play();
+      } catch (error) {
+        console.error('Failed to play audio:', error);
+        if (this.activeAudio) {
+          this.cleanupAudio(this.activeAudio);
+        }
+      }
+    }
+
     stopRecording(): Blob | null {
       if (!this.mediaRecorder) {
         console.warn('No active recording to stop');
@@ -107,12 +133,33 @@ export class AudioManager {
     }
 
     stopAllAudio(): void {
-      // Stop all active audio elements
+      // Stop tracked single active element
+      if (this.activeAudio) {
+        try {
+          this.activeAudio.pause();
+          this.activeAudio.currentTime = 0;
+          this.activeAudio.src = '';
+        } catch {}
+      }
+
+      // Stop all active audio elements set
       this.activeAudioElements.forEach(audio => {
         audio.pause();
         audio.currentTime = 0;
+        try { audio.src = ''; } catch {}
       });
       this.activeAudioElements.clear();
+
+      // Stop and clear queued elements
+      this.audioQueue.forEach(audio => {
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.src = '';
+        } catch {}
+      });
+      this.audioQueue = [];
+      this.activeAudio = null;
     }
 
     resumePlayback(): void {
@@ -122,6 +169,21 @@ export class AudioManager {
           audio.play().catch(console.error);
         }
       });
+    }
+
+    isPlaying(): boolean {
+      return !!this.activeAudio && !this.activeAudio.paused;
+    }
+
+    private cleanupAudio(audio: HTMLAudioElement): void {
+      const index = this.audioQueue.indexOf(audio);
+      if (index > -1) {
+        this.audioQueue.splice(index, 1);
+      }
+      this.activeAudioElements.delete(audio);
+      if (audio === this.activeAudio) {
+        this.activeAudio = null;
+      }
     }
   }
   

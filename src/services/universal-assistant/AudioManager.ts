@@ -105,6 +105,24 @@ export class AudioManager {
       
       return 'audio/webm';
     }
+
+    stopAllAudio(): void {
+      // Stop all active audio elements
+      this.activeAudioElements.forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+      this.activeAudioElements.clear();
+    }
+
+    resumePlayback(): void {
+      // Resume playback for all paused audio elements
+      this.activeAudioElements.forEach(audio => {
+        if (audio.paused) {
+          audio.play().catch(console.error);
+        }
+      });
+    }
   }
   
   export const audioManager = new AudioManager();

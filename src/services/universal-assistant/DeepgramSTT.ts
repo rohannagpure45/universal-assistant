@@ -40,8 +40,13 @@ export class DeepgramSTT {
         endpointing: 300,
       });
 
+      const connection = this.liveConnection;
+      if (!connection) {
+        throw new Error('Failed to initialize Deepgram live connection');
+      }
+
       // Handle transcription events
-      this.liveConnection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
+      connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
         const result = data.channel?.alternatives?.[0];
         if (result && this.onTranscription) {
           this.onTranscription({
@@ -55,12 +60,12 @@ export class DeepgramSTT {
       });
 
       // Handle errors
-      this.liveConnection.on(LiveTranscriptionEvents.Error, (error: any) => {
+      connection.on(LiveTranscriptionEvents.Error, (error: any) => {
         console.error('Deepgram error:', error);
       });
 
       // Handle connection close
-      this.liveConnection.on(LiveTranscriptionEvents.Close, () => {
+      connection.on(LiveTranscriptionEvents.Close, () => {
         console.log('Deepgram connection closed');
         this.liveConnection = null;
       });

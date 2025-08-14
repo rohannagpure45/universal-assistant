@@ -43,6 +43,15 @@ export class NameRecognitionService {
   private knownNames: Set<string> = new Set();
   private namePatterns: Map<string, RegExp> = new Map();
   private contextClues: Map<string, number> = new Map();
+  private negativePossessiveContexts: Set<string> = new Set([
+    "it's",
+    'its',
+    "that's",
+    "there's",
+    "here's",
+    "who's",
+    "what's",
+  ]);
   private speakerNameMap: Map<string, string> = new Map();
   private pendingSuggestions: Map<string, NameSuggestion[]> = new Map();
   private config: NameRecognitionConfig;
@@ -208,6 +217,12 @@ export class NameRecognitionService {
       }
 
       if (this.isPotentialName(word)) {
+        // Skip obvious possessive contractions before the token: it's/its/that's/etc.
+        const prev = words[i - 1]?.toLowerCase();
+        if (prev && this.negativePossessiveContexts.has(prev)) {
+          continue;
+        }
+
         const contextScore = this.analyzeWordContext(words, i, this.config.contextWindow);
         
         if (contextScore > this.config.confidenceThreshold) {
@@ -337,6 +352,10 @@ export class NameRecognitionService {
       const prevWord = words[index - 1].toLowerCase();
       if (['is', 'am', 'called', 'named'].includes(prevWord)) {
         score += 0.3;
+      }
+      // Penalize possessive/contracted contexts like "it's X"
+      if (this.negativePossessiveContexts.has(prevWord)) {
+        score -= 0.6;
       }
     }
 

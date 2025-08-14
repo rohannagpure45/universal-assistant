@@ -2,6 +2,7 @@ import { InputGatekeeper, InputItem, createInputGatekeeper } from '@/services/ga
 import { createConversationInputHandlers } from '@/services/gating/ConversationInputHandlers';
 import { EnhancedInputGatekeeper } from '@/services/gatekeeper/EnhancedInputGatekeeper';
 import { ConcurrentGatekeeper } from '@/services/gatekeeper/ConcurrentGatekeeper';
+import { ConversationResponse } from '@/services/universal-assistant/ConversationProcessor';
 
 export interface AudioManagerConfig {
   enableInputGating: boolean;
@@ -207,16 +208,46 @@ export class AudioManager {
 
     private initializeConcurrentProcessing(): void {
       try {
-        this.concurrentGatekeeper = new ConcurrentGatekeeper({
-          maxConcurrency: 5,
-          timeout: 5000,
-          enableMetrics: true,
+        const messageProcessor = {
+          processMessage: async (message: any): Promise<ConversationResponse> => {
+            console.log('Processing message in AudioManager:', message);
+            return {
+              shouldRespond: false,
+              responseType: 'none',
+              processedText: message.text,
+              confidence: 1.0,
+              metadata: { 
+                fragmentType: 'AUDIO_PROCESSED',
+                speakerContext: [],
+                conversationTopics: [],
+                interruptDetected: false,
+              },
+            };
+          },
+        };
+
+        this.concurrentGatekeeper = new ConcurrentGatekeeper(messageProcessor, {
+          maxConcurrentProcessing: 5,
+          processingTimeout: 5000,
+          enablePerformanceMonitoring: true,
         });
 
-        this.enhancedInputGatekeeper = new EnhancedInputGatekeeper({
+        const baseHandlers = createConversationInputHandlers();
+        const enhancedHandlers = {
+          handleInput: baseHandlers.handleInput,
+          saveAsContext: baseHandlers.saveAsContext,
+          addToContext: baseHandlers.addToContext,
           concurrentGatekeeper: this.concurrentGatekeeper,
-          enableSpeakerAwareProcessing: true,
-          contextPreservationEnabled: true,
+          handleSpeakerInput: async (input: any, speakerId: string) => {
+            console.log('Handling speaker input:', input, speakerId);
+          },
+          categorizeInput: async (input: any) => 'queued' as const,
+          shouldGateInput: async (input: any) => false,
+        };
+
+        this.enhancedInputGatekeeper = new EnhancedInputGatekeeper(enhancedHandlers, {
+          enableConcurrentProcessing: true,
+          speakerContextWindow: 10,
         });
 
         console.log('AudioManager: Concurrent processing initialized');
@@ -247,7 +278,7 @@ export class AudioManager {
       try {
         // Use enhanced gatekeeper if available and concurrent processing is enabled
         if (this.config.enableConcurrentProcessing && this.enhancedInputGatekeeper && speakerId) {
-          await this.enhancedInputGatekeeper.processInput(speakerId, inputItem);
+          await this.enhancedInputGatekeeper.processInput(inputItem);
         } else {
           // Fallback to regular gatekeeper
           await this.inputGatekeeper.processInput(inputItem);
@@ -266,7 +297,7 @@ export class AudioManager {
         
         // Use enhanced gatekeeper if available
         if (this.config.enableConcurrentProcessing && this.enhancedInputGatekeeper && speakerId) {
-          this.enhancedInputGatekeeper.gateDuringTTS(speakerId, playbackPromise);
+          this.enhancedInputGatekeeper.gateDuringTTS(playbackPromise);
         } else {
           // Fallback to regular gatekeeper
           this.inputGatekeeper.gateDuringTTS(playbackPromise);

@@ -78,9 +78,30 @@ export class PerformanceMonitor {
     }
   }
 
-  recordError(context: string, error: any): void {
+  recordError(context: string, error: any, metadata?: Record<string, any>): void {
     this.errorCount++;
     console.error(`PerformanceMonitor: Error in ${context}:`, error);
+  }
+
+  recordMetric(name: string, data: any, metadata?: Record<string, any>): void {
+    const metric: PerformanceMetric = {
+      name,
+      startTime: performance.now(),
+      endTime: performance.now(),
+      duration: 0,
+      metadata: { ...metadata, data },
+    };
+
+    this.completedMetrics.push(metric);
+
+    // Maintain storage limits
+    if (this.completedMetrics.length > this.maxStoredMetrics) {
+      this.completedMetrics.shift();
+    }
+  }
+
+  recordSuccess(context: string, metadata?: Record<string, any>): void {
+    this.recordMetric(`${context}_success`, { success: true }, metadata);
   }
 
   getStats(): SystemStats['performance'] {

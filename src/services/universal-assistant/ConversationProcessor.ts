@@ -397,17 +397,45 @@ export class ConversationProcessor {
 
   private initializeConcurrentGatekeeper(): void {
     try {
-      this.concurrentGatekeeper = new ConcurrentGatekeeper({
+      const messageProcessor = {
+        processMessage: async (message: any) => {
+          const event = {
+            type: message.metadata?.eventType || 'transcript',
+            data: {
+              text: message.text,
+              speakerId: message.speakerId,
+              timestamp: message.timestamp,
+              confidence: 0.9,
+              ...(message.metadata?.eventData || {}),
+            },
+          };
+          return this.processConversationEvent(event);
+        },
+      };
+
+      this.concurrentGatekeeper = new ConcurrentGatekeeper(messageProcessor, {
         maxConcurrentProcessing: this.config.maxSpeakers,
         processingTimeout: this.config.responseDelayMs * 2,
-        enableMetrics: true,
+        enablePerformanceMonitoring: true,
       });
 
       // Also initialize enhanced input gatekeeper
-      this.enhancedInputGatekeeper = new EnhancedInputGatekeeper({
+      const baseHandlers = createConversationInputHandlers();
+      const enhancedHandlers = {
+        handleInput: baseHandlers.handleInput,
+        saveAsContext: baseHandlers.saveAsContext,
+        addToContext: baseHandlers.addToContext,
         concurrentGatekeeper: this.concurrentGatekeeper,
-        enableSpeakerAwareProcessing: true,
-        contextPreservationEnabled: true,
+        handleSpeakerInput: async (input: any, speakerId: string) => {
+          console.log('Handling speaker input:', input, speakerId);
+        },
+        categorizeInput: async (input: any) => 'queued' as const,
+        shouldGateInput: async (input: any) => false,
+      };
+
+      this.enhancedInputGatekeeper = new EnhancedInputGatekeeper(enhancedHandlers, {
+        enableConcurrentProcessing: true,
+        speakerContextWindow: this.config.maxSpeakers,
       });
 
       console.log('ConversationProcessor: Concurrent gatekeeper initialized');
@@ -442,7 +470,10 @@ export class ConversationProcessor {
       };
 
       // Process through concurrent gatekeeper with speaker-specific locking
-      const result = await this.concurrentGatekeeper!.processMessage(speakerId, message, { priority: 5 });
+      const result = await this.concurrentGatekeeper!.processMessage(speakerId, message.content, { 
+        priority: 5,
+        metadata: message.metadata,
+      });
 
       // Convert result to ConversationResponse format
       return this.convertConcurrentResultToResponse(result, speakerId, timestamp);

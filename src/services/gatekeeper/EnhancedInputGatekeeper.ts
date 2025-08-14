@@ -26,6 +26,7 @@ export interface EnhancedInputHandlers extends InputHandlers {
   handleSpeakerInput: (input: EnhancedInputItem, speakerId: string) => Promise<void>;
   categorizeInput: (input: EnhancedInputItem) => Promise<'immediate' | 'queued' | 'context_only'>;
   shouldGateInput: (input: EnhancedInputItem) => Promise<boolean>;
+  concurrentGatekeeper?: ConcurrentGatekeeper;
 }
 
 export interface GatingState {

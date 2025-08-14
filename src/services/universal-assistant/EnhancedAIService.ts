@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIModel, AIResponse } from '@/types';
 import { 
   ModelConfig, 
@@ -33,7 +32,6 @@ export interface EnhancedAIResponse extends AIResponse {
 export class EnhancedAIService {
   private openai: OpenAI | null = null;
   private anthropic: Anthropic | null = null;
-  private gemini: GoogleGenerativeAI | null = null;
   private requestCount: Map<AIModel, number> = new Map();
   private lastRequestTime: Map<AIModel, number> = new Map();
 
@@ -52,10 +50,6 @@ export class EnhancedAIService {
       this.anthropic = new Anthropic({
         apiKey: process.env.ANTHROPIC_API_KEY,
       });
-    }
-    
-    if (process.env.GOOGLE_AI_API_KEY) {
-      this.gemini = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY);
     }
   }
 
@@ -151,8 +145,6 @@ export class EnhancedAIService {
         return await this.callOpenAI(prompt, model, config, options);
       case 'anthropic':
         return await this.callAnthropic(prompt, model, config, options);
-      case 'google':
-        return await this.callGemini(prompt, model, config, options);
       default:
         throw new Error(`Unknown provider: ${config.provider}`);
     }
@@ -234,42 +226,6 @@ export class EnhancedAIService {
     };
   }
 
-  private async callGemini(
-    prompt: string,
-    model: AIModel,
-    config: ModelConfig,
-    options: AIRequestOptions
-  ): Promise<EnhancedAIResponse> {
-    if (!this.gemini) {
-      throw new Error('Google AI not initialized');
-    }
-
-    const geminiModel = this.gemini.getGenerativeModel({ model: 'gemini-pro' });
-    
-    const result = await geminiModel.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: options.temperature ?? config.temperature,
-        maxOutputTokens: options.maxTokens ?? config.maxTokens,
-      },
-    });
-
-    const text = result.response.text();
-    const tokensUsed = estimateTokens(text + prompt);
-
-    return {
-      text,
-      model,
-      tokensUsed,
-      latency: 0,
-      timestamp: new Date(),
-      cost: 0,
-      inputTokens: estimateTokens(prompt),
-      outputTokens: estimateTokens(text),
-      provider: 'google',
-      processingTime: 0,
-    };
-  }
 
   private async checkRateLimit(model: AIModel, config: ModelConfig): Promise<void> {
     const now = Date.now();
@@ -367,15 +323,6 @@ export class EnhancedAIService {
         health.anthropic = true;
       } catch {
         health.anthropic = false;
-      }
-    }
-
-    if (this.gemini) {
-      try {
-        // Google AI doesn't have a simple health check either
-        health.google = true;
-      } catch {
-        health.google = false;
       }
     }
 

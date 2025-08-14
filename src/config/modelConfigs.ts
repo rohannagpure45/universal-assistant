@@ -1,7 +1,7 @@
 import { AIModel } from '@/types';
 
 export interface ModelConfig {
-  provider: 'openai' | 'anthropic' | 'google';
+  provider: 'openai' | 'anthropic';
   maxTokens: number;
   temperature: number;
   endpoint: string;

@@ -1,3 +1,18 @@
+import { InputGatekeeper, InputItem, createInputGatekeeper } from '@/services/gating/InputGatekeeper';
+import { createConversationInputHandlers } from '@/services/gating/ConversationInputHandlers';
+import { EnhancedInputGatekeeper } from '@/services/gatekeeper/EnhancedInputGatekeeper';
+import { ConcurrentGatekeeper } from '@/services/gatekeeper/ConcurrentGatekeeper';
+
+export interface AudioManagerConfig {
+  enableInputGating: boolean;
+  enableConcurrentProcessing: boolean;
+  chunkInterval: number;
+  audioQuality: {
+    sampleRate: number;
+    audioBitsPerSecond: number;
+  };
+}
+
 export class AudioManager {
     private audioContext: AudioContext | null = null;
     private mediaRecorder: MediaRecorder | null = null;
@@ -7,8 +22,35 @@ export class AudioManager {
     private audioQueue: HTMLAudioElement[] = [];
     private activeAudioElements: Set<HTMLAudioElement> = new Set();
     private recordingCallbacks: ((chunk: Blob) => void)[] = [];
+    private inputGatekeeper: InputGatekeeper;
+    private enhancedInputGatekeeper: EnhancedInputGatekeeper | null = null;
+    private concurrentGatekeeper: ConcurrentGatekeeper | null = null;
+    private config: AudioManagerConfig;
+    private transcriptionCallback?: (text: string, speakerId?: string) => void;
   
-    constructor() {
+    constructor(config?: Partial<AudioManagerConfig>) {
+      this.config = {
+        enableInputGating: true,
+        enableConcurrentProcessing: false,
+        chunkInterval: 100,
+        audioQuality: {
+          sampleRate: 16000,
+          audioBitsPerSecond: 128000,
+        },
+        ...config,
+      };
+
+      // Initialize input gatekeeper with conversation handlers
+      const handlers = createConversationInputHandlers(
+        this.onConversationResponse.bind(this)
+      );
+      this.inputGatekeeper = createInputGatekeeper(handlers);
+
+      // Initialize concurrent processing if enabled
+      if (this.config.enableConcurrentProcessing) {
+        this.initializeConcurrentProcessing();
+      }
+
       if (typeof window !== 'undefined') {
         this.initializeAudioContext();
       }
@@ -31,7 +73,7 @@ export class AudioManager {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
-            sampleRate: 16000,
+            sampleRate: this.config.audioQuality.sampleRate,
           }
         });
   
@@ -39,7 +81,7 @@ export class AudioManager {
         const mimeType = this.getSupportedMimeType();
         this.mediaRecorder = new MediaRecorder(this.audioStream, {
           mimeType,
-          audioBitsPerSecond: 128000,
+          audioBitsPerSecond: this.config.audioQuality.audioBitsPerSecond,
         });
   
         // Handle data available
@@ -53,8 +95,8 @@ export class AudioManager {
           }
         };
   
-        // Start recording with 100ms chunks
-        this.mediaRecorder.start(100);
+        // Start recording with configured chunk interval
+        this.mediaRecorder.start(this.config.chunkInterval);
         console.log('Recording started');
       } catch (error) {
         console.error('Failed to start recording:', error);
@@ -62,29 +104,6 @@ export class AudioManager {
       }
     }
   
-    // Playback: play a single URL and track audio element lifecycle
-    async play(url: string): Promise<void> {
-      this.stopAllAudio();
-
-      this.activeAudio = new Audio(url);
-      this.audioQueue.push(this.activeAudio);
-      this.activeAudioElements.add(this.activeAudio);
-
-      this.activeAudio.addEventListener('ended', () => {
-        if (this.activeAudio) {
-          this.cleanupAudio(this.activeAudio);
-        }
-      });
-
-      try {
-        await this.activeAudio.play();
-      } catch (error) {
-        console.error('Failed to play audio:', error);
-        if (this.activeAudio) {
-          this.cleanupAudio(this.activeAudio);
-        }
-      }
-    }
 
     stopRecording(): Blob | null {
       if (!this.mediaRecorder) {
@@ -184,6 +203,179 @@ export class AudioManager {
       if (audio === this.activeAudio) {
         this.activeAudio = null;
       }
+    }
+
+    private initializeConcurrentProcessing(): void {
+      try {
+        this.concurrentGatekeeper = new ConcurrentGatekeeper({
+          maxConcurrency: 5,
+          timeout: 5000,
+          enableMetrics: true,
+        });
+
+        this.enhancedInputGatekeeper = new EnhancedInputGatekeeper({
+          concurrentGatekeeper: this.concurrentGatekeeper,
+          enableSpeakerAwareProcessing: true,
+          contextPreservationEnabled: true,
+        });
+
+        console.log('AudioManager: Concurrent processing initialized');
+      } catch (error) {
+        console.error('AudioManager: Failed to initialize concurrent processing:', error);
+        this.concurrentGatekeeper = null;
+        this.enhancedInputGatekeeper = null;
+      }
+    }
+
+    // Process transcribed input through the gatekeeper
+    async processTranscriptionInput(text: string, speakerId?: string): Promise<void> {
+      if (!text.trim()) {
+        return;
+      }
+
+      const inputItem: InputItem = {
+        id: `transcript_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        text: text.trim(),
+        timestamp: Date.now(),
+        metadata: {
+          speakerId: speakerId || 'unknown_speaker',
+          source: 'transcription',
+          audioManager: true,
+        },
+      };
+
+      try {
+        // Use enhanced gatekeeper if available and concurrent processing is enabled
+        if (this.config.enableConcurrentProcessing && this.enhancedInputGatekeeper && speakerId) {
+          await this.enhancedInputGatekeeper.processInput(speakerId, inputItem);
+        } else {
+          // Fallback to regular gatekeeper
+          await this.inputGatekeeper.processInput(inputItem);
+        }
+      } catch (error) {
+        console.error('Failed to process transcription input:', error);
+        throw error;
+      }
+    }
+
+    // Enhanced TTS gating with concurrent processing support
+    async play(url: string, speakerId?: string): Promise<void> {
+      // Gate input during TTS playback if enabled
+      if (this.config.enableInputGating) {
+        const playbackPromise = this.performPlayback(url);
+        
+        // Use enhanced gatekeeper if available
+        if (this.config.enableConcurrentProcessing && this.enhancedInputGatekeeper && speakerId) {
+          this.enhancedInputGatekeeper.gateDuringTTS(speakerId, playbackPromise);
+        } else {
+          // Fallback to regular gatekeeper
+          this.inputGatekeeper.gateDuringTTS(playbackPromise);
+        }
+        
+        return playbackPromise;
+      } else {
+        return this.performPlayback(url);
+      }
+    }
+
+    private async performPlayback(url: string): Promise<void> {
+      this.stopAllAudio();
+
+      this.activeAudio = new Audio(url);
+      this.audioQueue.push(this.activeAudio);
+      this.activeAudioElements.add(this.activeAudio);
+
+      this.activeAudio.addEventListener('ended', () => {
+        if (this.activeAudio) {
+          this.cleanupAudio(this.activeAudio);
+        }
+      });
+
+      try {
+        await this.activeAudio.play();
+      } catch (error) {
+        console.error('Failed to play audio:', error);
+        if (this.activeAudio) {
+          this.cleanupAudio(this.activeAudio);
+        }
+      }
+    }
+
+    // Callback for when conversation processor generates a response
+    private async onConversationResponse(response: any): Promise<void> {
+      try {
+        console.log('Conversation response received:', {
+          shouldRespond: response.shouldRespond,
+          responseType: response.responseType,
+          confidence: response.confidence,
+        });
+
+        // If there's a transcription callback, notify it
+        if (this.transcriptionCallback) {
+          this.transcriptionCallback(response.processedText, response.metadata?.speakerId);
+        }
+
+        // Here you could trigger TTS generation, UI updates, etc.
+        // This is where the AudioManager interfaces with other services
+      } catch (error) {
+        console.error('Error handling conversation response:', error);
+      }
+    }
+
+    // Set callback for transcription events
+    setTranscriptionCallback(callback: (text: string, speakerId?: string) => void): void {
+      this.transcriptionCallback = callback;
+    }
+
+    // Configuration methods
+    updateConfig(config: Partial<AudioManagerConfig>): void {
+      const oldConfig = { ...this.config };
+      this.config = { ...this.config, ...config };
+      
+      // Reinitialize concurrent processing if setting changed
+      if (oldConfig.enableConcurrentProcessing !== this.config.enableConcurrentProcessing) {
+        if (this.config.enableConcurrentProcessing) {
+          this.initializeConcurrentProcessing();
+        } else {
+          this.concurrentGatekeeper = null;
+          this.enhancedInputGatekeeper = null;
+        }
+      }
+    }
+
+    getConfig(): AudioManagerConfig {
+      return { ...this.config };
+    }
+
+    // Input gating control
+    enableInputGating(): void {
+      this.config.enableInputGating = true;
+    }
+
+    disableInputGating(): void {
+      this.config.enableInputGating = false;
+    }
+
+    isInputGatingEnabled(): boolean {
+      return this.config.enableInputGating;
+    }
+
+    // Concurrent processing control
+    enableConcurrentProcessing(): void {
+      this.config.enableConcurrentProcessing = true;
+      if (!this.concurrentGatekeeper) {
+        this.initializeConcurrentProcessing();
+      }
+    }
+
+    disableConcurrentProcessing(): void {
+      this.config.enableConcurrentProcessing = false;
+      this.concurrentGatekeeper = null;
+      this.enhancedInputGatekeeper = null;
+    }
+
+    isConcurrentProcessingEnabled(): boolean {
+      return this.config.enableConcurrentProcessing && this.concurrentGatekeeper !== null;
     }
   }
   

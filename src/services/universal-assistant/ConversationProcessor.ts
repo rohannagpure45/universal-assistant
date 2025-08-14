@@ -5,6 +5,8 @@ import { VocalInterruptService } from './VocalInterruptService';
 import { InputGatekeeper, createInputGatekeeper } from '@/services/gating/InputGatekeeper';
 import { createConversationInputHandlers } from '@/services/gating/ConversationInputHandlers';
 import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor';
+import { ConcurrentGatekeeper } from '@/services/gatekeeper/ConcurrentGatekeeper';
+import { EnhancedInputGatekeeper } from '@/services/gatekeeper/EnhancedInputGatekeeper';
 
 export interface ConversationEvent {
   type: 'transcript' | 'silence' | 'speaker_change' | 'interrupt';
@@ -36,6 +38,7 @@ export interface ConversationProcessorConfig {
   enableContextTracking: boolean;
   enableInterruptDetection: boolean;
   enableInputGating: boolean;
+  enableConcurrentProcessing: boolean;
   responseDelayMs: number;
   maxSpeakers: number;
 }
@@ -45,6 +48,8 @@ export class ConversationProcessor {
   private contextTracker: ContextTracker;
   private vocalInterruptService: VocalInterruptService;
   private inputGatekeeper: InputGatekeeper | null = null;
+  private concurrentGatekeeper: ConcurrentGatekeeper | null = null;
+  private enhancedInputGatekeeper: EnhancedInputGatekeeper | null = null;
   private config: ConversationProcessorConfig;
   
   private conversationHistory: Map<string, string[]> = new Map();
@@ -65,18 +70,28 @@ export class ConversationProcessor {
       enableContextTracking: true,
       enableInterruptDetection: true,
       enableInputGating: false, // Disabled by default to avoid breaking existing flows
+      enableConcurrentProcessing: false, // Disabled by default for backward compatibility
       responseDelayMs: 1000,
       maxSpeakers: 10,
       ...config,
     };
 
-    // Initialize input gatekeeper if enabled
+    // Initialize gatekeepers if enabled
     if (this.config.enableInputGating) {
       this.initializeInputGatekeeper();
+    }
+
+    if (this.config.enableConcurrentProcessing) {
+      this.initializeConcurrentGatekeeper();
     }
   }
 
   async processConversationEvent(event: ConversationEvent): Promise<ConversationResponse> {
+    // Use concurrent processing if enabled and speakerId is available
+    if (this.config.enableConcurrentProcessing && this.concurrentGatekeeper && event.data.speakerId) {
+      return this.processConcurrentEvent(event);
+    }
+
     return performanceMonitor.measureAsync(
       'conversation_processing',
       async () => {
@@ -350,12 +365,21 @@ export class ConversationProcessor {
     const oldConfig = { ...this.config };
     this.config = { ...this.config, ...config };
     
-    // Reinitialize gatekeeper if the setting changed
+    // Reinitialize gatekeepers if settings changed
     if (oldConfig.enableInputGating !== this.config.enableInputGating) {
       if (this.config.enableInputGating) {
         this.initializeInputGatekeeper();
       } else {
         this.inputGatekeeper = null;
+      }
+    }
+
+    if (oldConfig.enableConcurrentProcessing !== this.config.enableConcurrentProcessing) {
+      if (this.config.enableConcurrentProcessing) {
+        this.initializeConcurrentGatekeeper();
+      } else {
+        this.concurrentGatekeeper = null;
+        this.enhancedInputGatekeeper = null;
       }
     }
   }
@@ -369,6 +393,92 @@ export class ConversationProcessor {
       console.error('ConversationProcessor: Failed to initialize input gatekeeper:', error);
       this.inputGatekeeper = null;
     }
+  }
+
+  private initializeConcurrentGatekeeper(): void {
+    try {
+      this.concurrentGatekeeper = new ConcurrentGatekeeper({
+        maxConcurrentProcessing: this.config.maxSpeakers,
+        processingTimeout: this.config.responseDelayMs * 2,
+        enableMetrics: true,
+      });
+
+      // Also initialize enhanced input gatekeeper
+      this.enhancedInputGatekeeper = new EnhancedInputGatekeeper({
+        concurrentGatekeeper: this.concurrentGatekeeper,
+        enableSpeakerAwareProcessing: true,
+        contextPreservationEnabled: true,
+      });
+
+      console.log('ConversationProcessor: Concurrent gatekeeper initialized');
+    } catch (error) {
+      console.error('ConversationProcessor: Failed to initialize concurrent gatekeeper:', error);
+      this.concurrentGatekeeper = null;
+      this.enhancedInputGatekeeper = null;
+    }
+  }
+
+  private async processConcurrentEvent(event: ConversationEvent): Promise<ConversationResponse> {
+    try {
+      const { type, data } = event;
+      const { text, speakerId, timestamp } = data;
+
+      if (!speakerId) {
+        // Fallback to regular processing if no speakerId
+        return this.processConversationEvent({ ...event, data: { ...data, speakerId: 'unknown' } });
+      }
+
+      // Create message for concurrent processing
+      const message = {
+        id: `${type}_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+        content: text || '',
+        type: type as 'transcript' | 'silence' | 'speaker_change' | 'interrupt',
+        metadata: {
+          timestamp,
+          confidence: data.confidence,
+          silenceDuration: data.silenceDuration,
+          previousSpeaker: data.previousSpeaker,
+        },
+      };
+
+      // Process through concurrent gatekeeper with speaker-specific locking
+      const result = await this.concurrentGatekeeper!.processMessage(speakerId, message, { priority: 5 });
+
+      // Convert result to ConversationResponse format
+      return this.convertConcurrentResultToResponse(result, speakerId, timestamp);
+
+    } catch (error) {
+      console.error('ConversationProcessor: Error in concurrent processing, falling back to regular processing:', error);
+      performanceMonitor.recordError('concurrent_processing', error);
+      
+      // Fallback to regular processing
+      return this.processConversationEvent({ 
+        ...event, 
+        data: { ...event.data, speakerId: event.data.speakerId || 'unknown' } 
+      });
+    }
+  }
+
+  private convertConcurrentResultToResponse(
+    result: any, 
+    speakerId: string, 
+    timestamp: number
+  ): ConversationResponse {
+    return {
+      shouldRespond: result?.shouldRespond ?? false,
+      responseType: result?.priority > 7 ? 'immediate' : result?.priority > 4 ? 'delayed' : 'none',
+      processedText: result?.processedContent || '',
+      summary: result?.summary,
+      confidence: result?.confidence ?? 0.5,
+      metadata: {
+        fragmentType: result?.type || 'CONCURRENT',
+        speakerContext: this.getRecentUtterances(speakerId),
+        conversationTopics: this.config.enableContextTracking 
+          ? this.contextTracker.getTopKeywords(5)
+          : [],
+        interruptDetected: result?.type === 'interrupt',
+      },
+    };
   }
 
   // Method to gate input during TTS playback (called by AudioManager)

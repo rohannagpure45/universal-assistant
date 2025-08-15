@@ -6,6 +6,8 @@ import {
   CoordinatorState,
   SpeakerProfile 
 } from '@/services/universal-assistant/UniversalAssistantCoordinator';
+import { useMeetingStore } from '@/stores/meetingStore';
+import { useAppStore } from '@/stores/appStore';
 
 export interface UseUniversalAssistantOptions {
   model?: string;
@@ -52,10 +54,19 @@ const DEFAULT_CONFIG: UniversalAssistantConfig = {
 };
 
 export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}): UseUniversalAssistantReturn {
-  // Configuration
+  // Store integration
+  const meetingStore = useMeetingStore();
+  const appStore = useAppStore();
+  
+  // Configuration with app store preferences
   const config: UniversalAssistantConfig = {
     ...DEFAULT_CONFIG,
-    ...options,
+    // Override with app store settings if available
+    model: appStore.aiSettings?.defaultModel || DEFAULT_CONFIG.model,
+    maxTokens: appStore.aiSettings?.maxTokens || DEFAULT_CONFIG.maxTokens,
+    voiceId: appStore.ttsSettings?.voiceId || DEFAULT_CONFIG.voiceId,
+    ttsSpeed: appStore.ttsSettings?.speed || DEFAULT_CONFIG.ttsSpeed,
+    ...options, // User options take final priority
   };
 
   // State management
@@ -76,7 +87,7 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
   // Initialize coordinator on mount
   useEffect(() => {
     try {
-      const coordinator = createUniversalAssistantCoordinator(config);
+      const coordinator = createUniversalAssistantCoordinator(config, meetingStore, appStore);
       coordinatorRef.current = coordinator;
 
       // Subscribe to state changes
@@ -89,12 +100,29 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
       if (options.autoStart) {
         coordinator.startRecording().catch((err) => {
           setError(`Failed to auto-start recording: ${err.message}`);
+          
+          // Also add notification to app store
+          appStore.addNotification({
+            type: 'error',
+            title: 'Auto-start Failed',
+            message: `Failed to auto-start recording: ${err.message}`,
+            persistent: false,
+          });
         });
       }
 
       setError(null);
     } catch (err) {
-      setError(`Failed to initialize Universal Assistant: ${(err as Error).message}`);
+      const errorMessage = `Failed to initialize Universal Assistant: ${(err as Error).message}`;
+      setError(errorMessage);
+      
+      // Add error notification
+      appStore.addNotification({
+        type: 'error',
+        title: 'Initialization Failed',
+        message: errorMessage,
+        persistent: false,
+      });
     }
 
     // Cleanup on unmount
@@ -106,7 +134,19 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
         coordinatorRef.current.cleanup();
       }
     };
-  }, []); // Empty dependency array - only run on mount
+  }, [meetingStore, appStore]); // Include stores in dependencies
+
+  // Sync app store settings when they change
+  useEffect(() => {
+    if (coordinatorRef.current && appStore.aiSettings && appStore.ttsSettings) {
+      coordinatorRef.current.updateConfig({
+        model: appStore.aiSettings.defaultModel,
+        maxTokens: appStore.aiSettings.maxTokens,
+        voiceId: appStore.ttsSettings.voiceId,
+        ttsSpeed: appStore.ttsSettings.speed,
+      });
+    }
+  }, [appStore.aiSettings, appStore.ttsSettings]);
 
   // Action handlers with error handling
   const startRecording = useCallback(async () => {
@@ -164,12 +204,34 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
       setError(null);
       if (coordinatorRef.current) {
         coordinatorRef.current.updateConfig(newConfig);
+        
+        // Also update app store if config includes relevant settings
+        if (newConfig.model || newConfig.maxTokens) {
+          appStore.updateAISettings({
+            ...(newConfig.model && { defaultModel: newConfig.model as any }),
+            ...(newConfig.maxTokens && { maxTokens: newConfig.maxTokens }),
+          });
+        }
+        
+        if (newConfig.voiceId || newConfig.ttsSpeed) {
+          appStore.updateTTSSettings({
+            ...(newConfig.voiceId && { voiceId: newConfig.voiceId }),
+            ...(newConfig.ttsSpeed && { speed: newConfig.ttsSpeed }),
+          });
+        }
       }
     } catch (err) {
       const errorMessage = `Failed to update config: ${(err as Error).message}`;
       setError(errorMessage);
+      
+      appStore.addNotification({
+        type: 'error',
+        title: 'Config Update Failed',
+        message: errorMessage,
+        persistent: false,
+      });
     }
-  }, []);
+  }, [appStore]);
 
   const getConfig = useCallback((): UniversalAssistantConfig => {
     if (coordinatorRef.current) {

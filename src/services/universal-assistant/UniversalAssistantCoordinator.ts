@@ -4,6 +4,15 @@ import { audioManager } from './AudioManager';
 import { improvedFragmentAggregator } from '@/services/fragments/ImprovedFragmentAggregator';
 import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor';
 import { createProductionGatekeeper } from '@/services/gatekeeper';
+import type { MeetingStore } from '@/stores/meetingStore';
+import type { AppStore } from '@/stores/appStore';
+import type { TranscriptEntry } from '@/types';
+import { useMeetingStore } from '@/stores/meetingStore';
+import { useAppStore } from '@/stores/appStore';
+
+// Get the return type of the store hooks for type safety
+type MeetingStoreType = ReturnType<typeof useMeetingStore>;
+type AppStoreType = ReturnType<typeof useAppStore>;
 
 export interface SpeakerProfile {
   id: string;
@@ -39,6 +48,8 @@ export class UniversalAssistantCoordinator {
   private currentAudioUrl: string | null = null;
   private config: UniversalAssistantConfig;
   private stateListeners: Set<(state: CoordinatorState) => void> = new Set();
+  private meetingStore: MeetingStoreType | null = null;
+  private appStore: AppStoreType | null = null;
   private state: CoordinatorState = {
     isRecording: false,
     isPlaying: false,
@@ -47,8 +58,14 @@ export class UniversalAssistantCoordinator {
     isProcessing: false,
   };
 
-  constructor(config: UniversalAssistantConfig) {
+  constructor(
+    config: UniversalAssistantConfig,
+    meetingStore?: MeetingStoreType,
+    appStore?: AppStoreType
+  ) {
     this.config = config;
+    this.meetingStore = meetingStore || null;
+    this.appStore = appStore || null;
     
     // Initialize concurrent processing if enabled
     if (config.enableConcurrentProcessing) {
@@ -58,12 +75,55 @@ export class UniversalAssistantCoordinator {
 
     // Set up audio manager callbacks
     audioManager.setTranscriptionCallback(this.handleTranscriptionResponse.bind(this));
+    
+    // Set up store synchronization if available
+    this.setupStoreSynchronization();
   }
 
-  // State management
+  // Store synchronization setup
+  private setupStoreSynchronization(): void {
+    if (this.meetingStore) {
+      // Sync recording state changes to meeting store
+      const originalSetState = this.setState.bind(this);
+      this.setState = (newState: Partial<CoordinatorState>) => {
+        // Update local state
+        originalSetState(newState);
+        
+        // Sync to meeting store
+        if (newState.isRecording !== undefined && this.meetingStore) {
+          if (newState.isRecording) {
+            this.meetingStore.startRecording();
+          } else {
+            this.meetingStore.stopRecording();
+          }
+        }
+        
+        if (newState.currentSpeaker !== undefined && this.meetingStore) {
+          this.meetingStore.setActiveSpeaker(newState.currentSpeaker);
+        }
+      };
+    }
+  }
+
+  // Enhanced state management
   private setState(newState: Partial<CoordinatorState>): void {
     this.state = { ...this.state, ...newState };
     this.stateListeners.forEach(listener => listener(this.state));
+    
+    // Sync critical state to stores if available
+    if (this.meetingStore) {
+      if (newState.isRecording !== undefined) {
+        if (newState.isRecording) {
+          this.meetingStore.startRecording();
+        } else {
+          this.meetingStore.stopRecording();
+        }
+      }
+      
+      if (newState.currentSpeaker !== undefined) {
+        this.meetingStore.setActiveSpeaker(newState.currentSpeaker);
+      }
+    }
   }
 
   public subscribe(listener: (state: CoordinatorState) => void): () => void {
@@ -73,6 +133,39 @@ export class UniversalAssistantCoordinator {
 
   public getState(): CoordinatorState {
     return { ...this.state };
+  }
+
+  // Store integration methods
+  public setStores(
+    meetingStore: MeetingStoreType,
+    appStore: AppStoreType
+  ): void {
+    this.meetingStore = meetingStore;
+    this.appStore = appStore;
+    this.setupStoreSynchronization();
+    
+    // Update config from app store if available
+    try {
+      const storeState = (appStore as any);
+      if (storeState && storeState.aiSettings && storeState.ttsSettings) {
+        this.updateConfig({
+          model: storeState.aiSettings.defaultModel,
+          maxTokens: storeState.aiSettings.maxTokens,
+          voiceId: storeState.ttsSettings.voiceId,
+          ttsSpeed: storeState.ttsSettings.speed,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to sync config from app store:', error);
+    }
+  }
+
+  public getMeetingStore(): MeetingStoreType | null {
+    return this.meetingStore;
+  }
+
+  public getAppStore(): AppStoreType | null {
+    return this.appStore;
   }
 
   // Deepgram Integration
@@ -388,9 +481,41 @@ export class UniversalAssistantCoordinator {
   }
 
   // Utility Methods
-  private handleTranscriptionResponse(text: string, speakerId?: string): void {
+  private async handleTranscriptionResponse(text: string, speakerId?: string): Promise<void> {
     // This is called by AudioManager when responses are processed
     console.log(`Response processed for ${speakerId}: ${text}`);
+    
+    // Add transcript entry to meeting store if available
+    if (this.meetingStore && text.trim()) {
+      const transcriptEntry: Omit<TranscriptEntry, 'id'> = {
+        text: text.trim(),
+        timestamp: new Date(),
+        speakerId: speakerId || 'unknown',
+        confidence: 0.8, // Default confidence
+        isComplete: true,
+        // Remove words field as it doesn't exist in TranscriptEntry type
+        duration: text.split(' ').length * 0.1,
+        language: 'en',
+      };
+      
+      try {
+        if ('addTranscriptEntry' in this.meetingStore) {
+          await (this.meetingStore as any).addTranscriptEntry(transcriptEntry);
+        }
+      } catch (error) {
+        console.error('Failed to add transcript entry:', error);
+        
+        // Add to app store notifications if available
+        if (this.appStore && 'addNotification' in this.appStore) {
+          (this.appStore as any).addNotification({
+            type: 'error',
+            title: 'Transcript Error',
+            message: 'Failed to save transcript entry',
+            persistent: false,
+          });
+        }
+      }
+    }
   }
 
   private getConversationContext(): string[] {
@@ -441,6 +566,10 @@ export class UniversalAssistantCoordinator {
 }
 
 // Factory function for easy setup
-export function createUniversalAssistantCoordinator(config: UniversalAssistantConfig): UniversalAssistantCoordinator {
-  return new UniversalAssistantCoordinator(config);
+export function createUniversalAssistantCoordinator(
+  config: UniversalAssistantConfig,
+  meetingStore?: MeetingStoreType,
+  appStore?: AppStoreType
+): UniversalAssistantCoordinator {
+  return new UniversalAssistantCoordinator(config, meetingStore, appStore);
 }

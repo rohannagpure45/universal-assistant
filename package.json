@@ -6,7 +6,20 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "ts-node tests/run-integration-tests.ts",
+    "test:integration:auth": "jest tests/integration/auth-flow.test.ts",
+    "test:integration:database": "jest tests/integration/database-state.test.ts",
+    "test:integration:sync": "jest tests/integration/cross-store-sync.test.ts",
+    "test:integration:realtime": "jest tests/integration/realtime.test.ts",
+    "test:integration:e2e": "jest tests/integration/e2e-user-journey.test.ts",
+    "test:integration:performance": "jest tests/integration/performance-concurrency.test.ts",
+    "test:all": "npm run test:unit && npm run test:integration",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --ci --coverage --maxWorkers=2"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",
@@ -53,6 +66,7 @@
     "postcss": "^8",
     "prettier": "^3.6.2",
     "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }

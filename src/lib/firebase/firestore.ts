@@ -1,6 +1,15 @@
 import { adminDb } from '@/lib/firebase/admin';
 import type { VoiceProfile } from '@/services/universal-assistant/VoiceProfileService';
+// Import unified types from central location
+import type { 
+  User, 
+  Meeting, 
+  TranscriptEntry, 
+  SpeakerProfile, 
+  Participant 
+} from '@/types';
 
+// Legacy interface for backward compatibility - will be phased out
 export interface UserProfile {
   email: string;
   displayName: string;
@@ -15,55 +24,6 @@ export interface UserProfile {
   };
 }
 
-export interface Meeting {
-  title: string;
-  organizerId: string;
-  participants: Array<{
-    userId: string;
-    role: 'organizer' | 'participant' | 'observer';
-    joinedAt: Date;
-    leftAt?: Date;
-  }>;
-  type: string;
-  startTime: Date;
-  endTime?: Date;
-  status: 'scheduled' | 'active' | 'completed' | 'cancelled';
-  settings: {
-    enableRecording: boolean;
-    enableTranscription: boolean;
-    enableAI: boolean;
-    language: string;
-    maxParticipants: number;
-  };
-  metadata: {
-    tags: string[];
-    department?: string;
-    project?: string;
-    confidentiality: 'public' | 'internal' | 'confidential';
-  };
-}
-
-export interface TranscriptEntry {
-  text: string;
-  speakerId: string;
-  confidence: number;
-  timestamp: Date;
-  duration: number;
-  metadata: Record<string, any>;
-}
-
-export interface SpeakerProfile {
-  name: string;
-  userId?: string;
-  voiceProfile: Record<string, any>;
-  statistics: {
-    totalSpeakTime: number;
-    averageConfidence: number;
-    wordCount: number;
-  };
-  firstDetected: Date;
-}
-
 export interface MeetingNote {
   content: string;
   authorId: string;
@@ -73,6 +33,11 @@ export interface MeetingNote {
   isPublic: boolean;
 }
 
+/**
+ * @deprecated This service is being phased out in favor of DatabaseService.
+ * Please use DatabaseService from @/services/firebase/DatabaseService instead.
+ * This class remains for backward compatibility during the migration period.
+ */
 export class FirestoreService {
   // User Management
   static async createUserProfile(userId: string, userData: Omit<UserProfile, 'createdAt' | 'lastLoginAt'>): Promise<void> {

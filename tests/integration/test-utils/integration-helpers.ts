@@ -470,6 +470,101 @@ export const runIntegrationTestSuite = async (
   console.log(`✅ Test suite completed: ${suiteName}`);
 };
 
+/**
+ * Memory leak detection utility
+ */
+export class MemoryLeakDetector {
+  private initialHeapSize: number = 0;
+  private monitoringInterval?: NodeJS.Timeout;
+  private samples: number[] = [];
+
+  startMonitoring() {
+    this.initialHeapSize = this.getHeapSize();
+    this.samples = [];
+    
+    this.monitoringInterval = setInterval(() => {
+      this.samples.push(this.getHeapSize());
+    }, 100);
+  }
+
+  stopMonitoring() {
+    if (this.monitoringInterval) {
+      clearInterval(this.monitoringInterval);
+      this.monitoringInterval = undefined;
+    }
+  }
+
+  detectLeaks(): Array<{ type: string; size: number; description: string }> {
+    const leaks: Array<{ type: string; size: number; description: string }> = [];
+    const currentHeapSize = this.getHeapSize();
+    const growth = currentHeapSize - this.initialHeapSize;
+    const threshold = 10 * 1024 * 1024; // 10MB threshold
+
+    if (growth > threshold) {
+      leaks.push({
+        type: 'MEMORY_GROWTH',
+        size: growth,
+        description: `Memory growth of ${(growth / 1024 / 1024).toFixed(2)}MB detected`
+      });
+    }
+
+    return leaks;
+  }
+
+  cleanup() {
+    this.stopMonitoring();
+  }
+
+  private getHeapSize(): number {
+    return (performance as any).memory?.usedJSHeapSize || 0;
+  }
+}
+
+/**
+ * Performance benchmark utility
+ */
+export class PerformanceBenchmark {
+  private results: Array<{
+    name: string;
+    duration: number;
+    target: number;
+    passed: boolean;
+  }> = [];
+
+  async runAll(benchmarks: Array<{
+    name: string;
+    operation: () => Promise<void>;
+    target: number;
+    description: string;
+  }>): Promise<typeof this.results> {
+    this.results = [];
+
+    for (const benchmark of benchmarks) {
+      const startTime = performance.now();
+      await benchmark.operation();
+      const duration = performance.now() - startTime;
+      const passed = duration <= benchmark.target;
+
+      this.results.push({
+        name: benchmark.name,
+        duration,
+        target: benchmark.target,
+        passed
+      });
+    }
+
+    return this.results;
+  }
+
+  getResults() {
+    return this.results;
+  }
+
+  cleanup() {
+    this.results = [];
+  }
+}
+
 export default {
   IntegrationTestScenario,
   createAuthScenario,
@@ -485,4 +580,6 @@ export default {
   runIntegrationTestSuite,
   captureStoreSnapshot,
   compareStoreSnapshots,
+  MemoryLeakDetector,
+  PerformanceBenchmark,
 };

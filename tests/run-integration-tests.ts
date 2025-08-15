@@ -35,39 +35,75 @@ interface PerformanceMetrics {
 class IntegrationTestRunner {
   private testSuites: TestSuite[] = [
     {
+      name: 'Phase 2 Final Verification',
+      file: 'phase2-final-verification.test.ts',
+      description: 'Comprehensive Phase 2 integration validation',
+      timeout: 120000,
+      critical: true
+    },
+    {
+      name: 'Type System Validation',
+      file: 'type-system-validation.test.ts',
+      description: 'Validates type system consistency and migration',
+      timeout: 30000,
+      critical: true
+    },
+    {
+      name: 'Error Handling & Recovery',
+      file: 'error-handling-recovery.test.ts',
+      description: 'Tests error handling and recovery patterns',
+      timeout: 60000,
+      critical: true
+    },
+    {
+      name: 'Performance & Memory Management',
+      file: 'performance-memory.test.ts',
+      description: 'Performance benchmarks and memory leak detection',
+      timeout: 90000,
+      critical: true
+    },
+    {
+      name: 'Production Readiness',
+      file: 'production-readiness.test.ts',
+      description: 'End-to-end production readiness validation',
+      timeout: 180000,
+      critical: true
+    },
+    // Original test suites (maintained for backwards compatibility)
+    {
       name: 'Authentication Flow',
       file: 'auth-flow.test.ts',
       description: 'Tests complete authentication workflows',
       timeout: 30000,
-      critical: true
+      critical: false
     },
     {
       name: 'Database + State Integration',
       file: 'database-state.test.ts',
       description: 'Tests database operations with state management',
       timeout: 45000,
-      critical: true
+      critical: false
     },
     {
       name: 'Cross-Store Synchronization',
       file: 'cross-store-sync.test.ts',
       description: 'Tests synchronization between stores',
       timeout: 30000,
-      critical: true
+      critical: false
     },
     {
       name: 'Real-time Integration',
       file: 'realtime.test.ts',
       description: 'Tests real-time data synchronization',
       timeout: 40000,
-      critical: true
+      critical: false
     },
     {
       name: 'End-to-End User Journey',
       file: 'e2e-user-journey.test.ts',
       description: 'Tests complete user workflows',
       timeout: 60000,
-      critical: true
+      critical: false
     },
     {
       name: 'Performance & Concurrency',

@@ -7,6 +7,10 @@ export * from './appStore';
 export * from './hooks/useMeetingHooks';
 export * from './hooks/useAppHooks';
 
+// ============ EVENT SYSTEM ============
+export * from './eventListeners';
+export * from '../lib/events/StoreEventBus';
+
 // ============ TYPE EXPORTS ============
 export type { MeetingError } from './meetingStore';
 export type { 

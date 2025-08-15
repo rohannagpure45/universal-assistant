@@ -6,6 +6,10 @@
 import '@testing-library/jest-dom';
 import { setupFirebaseTestEnvironment } from './firebase-test-utils';
 
+// Node.js polyfills for browser APIs
+global.TextEncoder = require('util').TextEncoder;
+global.TextDecoder = require('util').TextDecoder;
+
 // Mock Firebase modules
 jest.mock('firebase/auth', () => ({
   getAuth: jest.fn(() => ({
@@ -68,6 +72,24 @@ jest.mock('firebase/app', () => ({
   initializeApp: jest.fn(() => ({ name: 'mock-app' })),
   getApps: jest.fn(() => []),
   getApp: jest.fn(() => ({ name: 'mock-app' })),
+}));
+
+jest.mock('firebase/storage', () => ({
+  getStorage: jest.fn(() => ({
+    app: { name: 'mock-app' },
+  })),
+  ref: jest.fn(),
+  uploadBytes: jest.fn(),
+  uploadBytesResumable: jest.fn(),
+  getDownloadURL: jest.fn(),
+  deleteObject: jest.fn(),
+  listAll: jest.fn(),
+}));
+
+jest.mock('firebase/analytics', () => ({
+  getAnalytics: jest.fn(() => ({ app: { name: 'mock-app' } })),
+  logEvent: jest.fn(),
+  isSupported: jest.fn().mockResolvedValue(false),
 }));
 
 // Mock Firebase Admin SDK

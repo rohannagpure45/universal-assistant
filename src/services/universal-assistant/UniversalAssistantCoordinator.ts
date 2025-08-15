@@ -1,18 +1,13 @@
-import { useState, useCallback, useRef } from 'react';
 import { conversationProcessor } from './ConversationProcessor';
 import { audioManager } from './AudioManager';
-import { improvedFragmentAggregator } from '@/services/fragments/ImprovedFragmentAggregator';
 import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor';
-import { createProductionGatekeeper } from '@/services/gatekeeper';
-import type { MeetingStore } from '@/stores/meetingStore';
-import type { AppStore } from '@/stores/appStore';
 import type { TranscriptEntry } from '@/types';
-import { useMeetingStore } from '@/stores/meetingStore';
-import { useAppStore } from '@/stores/appStore';
+import { useMeetingStore, useAppStore } from '@/stores';
 
-// Get the return type of the store hooks for type safety
-type MeetingStoreType = ReturnType<typeof useMeetingStore>;
-type AppStoreType = ReturnType<typeof useAppStore>;
+// Define store types based on the actual Zustand store instances
+// useMeetingStore and useAppStore are Zustand stores, so we get the store API type
+type MeetingStoreInstance = typeof useMeetingStore;
+type AppStoreInstance = typeof useAppStore;
 
 export interface SpeakerProfile {
   id: string;
@@ -48,8 +43,8 @@ export class UniversalAssistantCoordinator {
   private currentAudioUrl: string | null = null;
   private config: UniversalAssistantConfig;
   private stateListeners: Set<(state: CoordinatorState) => void> = new Set();
-  private meetingStore: MeetingStoreType | null = null;
-  private appStore: AppStoreType | null = null;
+  private meetingStore: MeetingStoreInstance | null = null;
+  private appStore: AppStoreInstance | null = null;
   private state: CoordinatorState = {
     isRecording: false,
     isPlaying: false,
@@ -60,8 +55,8 @@ export class UniversalAssistantCoordinator {
 
   constructor(
     config: UniversalAssistantConfig,
-    meetingStore?: MeetingStoreType,
-    appStore?: AppStoreType
+    meetingStore?: MeetingStoreInstance,
+    appStore?: AppStoreInstance
   ) {
     this.config = config;
     this.meetingStore = meetingStore || null;
@@ -91,15 +86,17 @@ export class UniversalAssistantCoordinator {
         
         // Sync to meeting store
         if (newState.isRecording !== undefined && this.meetingStore) {
+          const meetingActions = this.meetingStore.getState();
           if (newState.isRecording) {
-            this.meetingStore.startRecording();
+            meetingActions.startRecording();
           } else {
-            this.meetingStore.stopRecording();
+            meetingActions.stopRecording();
           }
         }
         
         if (newState.currentSpeaker !== undefined && this.meetingStore) {
-          this.meetingStore.setActiveSpeaker(newState.currentSpeaker);
+          const meetingActions = this.meetingStore.getState();
+          meetingActions.setActiveSpeaker(newState.currentSpeaker);
         }
       };
     }
@@ -112,16 +109,17 @@ export class UniversalAssistantCoordinator {
     
     // Sync critical state to stores if available
     if (this.meetingStore) {
+      const meetingActions = this.meetingStore.getState();
       if (newState.isRecording !== undefined) {
         if (newState.isRecording) {
-          this.meetingStore.startRecording();
+          meetingActions.startRecording();
         } else {
-          this.meetingStore.stopRecording();
+          meetingActions.stopRecording();
         }
       }
       
       if (newState.currentSpeaker !== undefined) {
-        this.meetingStore.setActiveSpeaker(newState.currentSpeaker);
+        meetingActions.setActiveSpeaker(newState.currentSpeaker);
       }
     }
   }
@@ -137,8 +135,8 @@ export class UniversalAssistantCoordinator {
 
   // Store integration methods
   public setStores(
-    meetingStore: MeetingStoreType,
-    appStore: AppStoreType
+    meetingStore: MeetingStoreInstance,
+    appStore: AppStoreInstance
   ): void {
     this.meetingStore = meetingStore;
     this.appStore = appStore;
@@ -146,13 +144,13 @@ export class UniversalAssistantCoordinator {
     
     // Update config from app store if available
     try {
-      const storeState = (appStore as any);
-      if (storeState && storeState.aiSettings && storeState.ttsSettings) {
+      const appState = appStore.getState();
+      if (appState.aiSettings && appState.ttsSettings) {
         this.updateConfig({
-          model: storeState.aiSettings.defaultModel,
-          maxTokens: storeState.aiSettings.maxTokens,
-          voiceId: storeState.ttsSettings.voiceId,
-          ttsSpeed: storeState.ttsSettings.speed,
+          model: appState.aiSettings.defaultModel,
+          maxTokens: appState.aiSettings.maxTokens,
+          voiceId: appState.ttsSettings.voiceId,
+          ttsSpeed: appState.ttsSettings.speed,
         });
       }
     } catch (error) {
@@ -160,11 +158,11 @@ export class UniversalAssistantCoordinator {
     }
   }
 
-  public getMeetingStore(): MeetingStoreType | null {
+  public getMeetingStore(): MeetingStoreInstance | null {
     return this.meetingStore;
   }
 
-  public getAppStore(): AppStoreType | null {
+  public getAppStore(): AppStoreInstance | null {
     return this.appStore;
   }
 
@@ -488,26 +486,25 @@ export class UniversalAssistantCoordinator {
     // Add transcript entry to meeting store if available
     if (this.meetingStore && text.trim()) {
       const transcriptEntry: Omit<TranscriptEntry, 'id'> = {
+        speaker: speakerId || 'unknown', // Speaker name/display text
+        speakerId: speakerId || 'unknown', // Unique speaker identifier
         text: text.trim(),
         timestamp: new Date(),
-        speakerId: speakerId || 'unknown',
         confidence: 0.8, // Default confidence
+        isFragment: false,
         isComplete: true,
-        // Remove words field as it doesn't exist in TranscriptEntry type
-        duration: text.split(' ').length * 0.1,
-        language: 'en',
       };
       
       try {
-        if ('addTranscriptEntry' in this.meetingStore) {
-          await (this.meetingStore as any).addTranscriptEntry(transcriptEntry);
-        }
+        const meetingActions = this.meetingStore.getState();
+        await meetingActions.addTranscriptEntry(transcriptEntry);
       } catch (error) {
         console.error('Failed to add transcript entry:', error);
         
         // Add to app store notifications if available
-        if (this.appStore && 'addNotification' in this.appStore) {
-          (this.appStore as any).addNotification({
+        if (this.appStore) {
+          const appActions = this.appStore.getState();
+          appActions.addNotification({
             type: 'error',
             title: 'Transcript Error',
             message: 'Failed to save transcript entry',
@@ -568,8 +565,8 @@ export class UniversalAssistantCoordinator {
 // Factory function for easy setup
 export function createUniversalAssistantCoordinator(
   config: UniversalAssistantConfig,
-  meetingStore?: MeetingStoreType,
-  appStore?: AppStoreType
+  meetingStore?: MeetingStoreInstance,
+  appStore?: AppStoreInstance
 ): UniversalAssistantCoordinator {
   return new UniversalAssistantCoordinator(config, meetingStore, appStore);
 }

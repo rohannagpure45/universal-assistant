@@ -963,3 +963,6 @@ export class DatabaseService {
     }
   }
 }
+
+// Create a singleton instance for use in API routes
+export const databaseService = new DatabaseService();

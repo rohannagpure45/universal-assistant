@@ -1,0 +1,334 @@
+'use client';
+
+import React, { useEffect } from 'react';
+import { MainLayout } from '@/components/layouts/MainLayout';
+import { useMeetingStore } from '@/stores/meetingStore';
+import { useAuthStore } from '@/stores/authStore';
+import { useAppStore } from '@/stores/appStore';
+import { 
+  Calendar, 
+  Clock, 
+  Users, 
+  Mic, 
+  BarChart3, 
+  TrendingUp, 
+  Activity,
+  Plus,
+  PlayCircle,
+  PauseCircle,
+  StopCircle
+} from 'lucide-react';
+import { MeetingType } from '@/types';
+
+interface DashboardCardProps {
+  title: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+  trend?: {
+    value: number;
+    isPositive: boolean;
+  };
+  className?: string;
+}
+
+const DashboardCard: React.FC<DashboardCardProps> = ({
+  title,
+  value,
+  icon: Icon,
+  trend,
+  className = '',
+}) => {
+  return (
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 ${className}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+            {title}
+          </p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            {value}
+          </p>
+          {trend && (
+            <div className={`flex items-center mt-2 text-sm ${
+              trend.isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+            }`}>
+              <TrendingUp className={`w-4 h-4 mr-1 ${!trend.isPositive ? 'rotate-180' : ''}`} />
+              <span>{Math.abs(trend.value)}% from last week</span>
+            </div>
+          )}
+        </div>
+        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+          <Icon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface RecentMeetingProps {
+  meeting: {
+    id: string;
+    title: string;
+    date: string;
+    duration: string;
+    participants: number;
+    status: 'completed' | 'in-progress' | 'scheduled';
+  };
+}
+
+const RecentMeetingCard: React.FC<RecentMeetingProps> = ({ meeting }) => {
+  const statusColors = {
+    completed: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400',
+    'in-progress': 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400',
+    scheduled: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+  };
+
+  const statusIcons = {
+    completed: <StopCircle className="w-4 h-4" />,
+    'in-progress': <PlayCircle className="w-4 h-4" />,
+    scheduled: <PauseCircle className="w-4 h-4" />,
+  };
+
+  return (
+    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <h4 className="font-medium text-gray-900 dark:text-white">
+            {meeting.title}
+          </h4>
+          <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex items-center">
+              <Calendar className="w-4 h-4 mr-1" />
+              {meeting.date}
+            </div>
+            <div className="flex items-center">
+              <Clock className="w-4 h-4 mr-1" />
+              {meeting.duration}
+            </div>
+            <div className="flex items-center">
+              <Users className="w-4 h-4 mr-1" />
+              {meeting.participants}
+            </div>
+          </div>
+        </div>
+        <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColors[meeting.status]}`}>
+          {statusIcons[meeting.status]}
+          <span className="ml-1 capitalize">{meeting.status.replace('-', ' ')}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const QuickActions: React.FC = () => {
+  const { startMeeting } = useMeetingStore();
+  const { addNotification } = useAppStore();
+  const { user } = useAuthStore();
+
+  const handleStartMeeting = async () => {
+    try {
+      await startMeeting({
+        title: `Meeting ${new Date().toLocaleTimeString()}`,
+        type: MeetingType.TEAM_STANDUP,
+        hostId: user?.uid || 'anonymous',
+        participants: [],
+        keywords: [],
+        notes: [],
+        appliedRules: [],
+      });
+      
+      addNotification({
+        type: 'success',
+        title: 'Meeting Started',
+        message: 'Your meeting has been started successfully.',
+        persistent: false,
+      });
+    } catch (error) {
+      addNotification({
+        type: 'error',
+        title: 'Failed to Start Meeting',
+        message: 'There was an error starting your meeting. Please try again.',
+        persistent: false,
+      });
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        Quick Actions
+      </h3>
+      <div className="space-y-3">
+        <button
+          onClick={handleStartMeeting}
+          className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Mic className="w-5 h-5 mr-2" />
+          Start New Meeting
+        </button>
+        <button className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <Plus className="w-5 h-5 mr-2" />
+          Schedule Meeting
+        </button>
+        <button className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <BarChart3 className="w-5 h-5 mr-2" />
+          View Analytics
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default function DashboardPage() {
+  const { user } = useAuthStore();
+  const { recentMeetings: meetings, isInMeeting, currentMeeting } = useMeetingStore();
+  const { addNotification } = useAppStore();
+
+  // Mock data for demonstration
+  const dashboardStats = {
+    totalMeetings: meetings.length || 12,
+    activeMeetings: isInMeeting ? 1 : 0,
+    totalHours: 48.5,
+    participants: 156,
+  };
+
+  const recentMeetings = [
+    {
+      id: '1',
+      title: 'Weekly Team Sync',
+      date: 'Today, 2:00 PM',
+      duration: '45 min',
+      participants: 8,
+      status: 'completed' as const,
+    },
+    {
+      id: '2',
+      title: 'Product Planning',
+      date: 'Yesterday, 10:00 AM',
+      duration: '1h 30min',
+      participants: 6,
+      status: 'completed' as const,
+    },
+    {
+      id: '3',
+      title: 'Client Presentation',
+      date: 'Tomorrow, 3:00 PM',
+      duration: '1h',
+      participants: 4,
+      status: 'scheduled' as const,
+    },
+  ];
+
+  useEffect(() => {
+    // Add welcome notification
+    if (user) {
+      addNotification({
+        type: 'info',
+        title: 'Welcome back!',
+        message: `Good ${new Date().getHours() < 12 ? 'morning' : 'afternoon'}, ${user.displayName || user.email?.split('@')[0] || 'User'}`,
+        persistent: false,
+      });
+    }
+  }, [user, addNotification]);
+
+  return (
+    <MainLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Dashboard
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
+              Welcome back, {user?.displayName || user?.email?.split('@')[0] || 'User'}
+            </p>
+          </div>
+          {isInMeeting && currentMeeting && (
+            <div className="flex items-center space-x-2 px-4 py-2 bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg">
+              <Activity className="w-5 h-5 animate-pulse" />
+              <span className="font-medium">Meeting in Progress</span>
+            </div>
+          )}
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <DashboardCard
+            title="Total Meetings"
+            value={dashboardStats.totalMeetings}
+            icon={Calendar}
+            trend={{ value: 12, isPositive: true }}
+          />
+          <DashboardCard
+            title="Active Meetings"
+            value={dashboardStats.activeMeetings}
+            icon={Activity}
+            className={isInMeeting ? "ring-2 ring-red-500" : ""}
+          />
+          <DashboardCard
+            title="Total Hours"
+            value={`${dashboardStats.totalHours}h`}
+            icon={Clock}
+            trend={{ value: 8, isPositive: true }}
+          />
+          <DashboardCard
+            title="Participants"
+            value={dashboardStats.participants}
+            icon={Users}
+            trend={{ value: 15, isPositive: true }}
+          />
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Recent Meetings */}
+          <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Recent Meetings
+              </h3>
+              <button className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium">
+                View All
+              </button>
+            </div>
+            <div className="space-y-4">
+              {recentMeetings.map((meeting) => (
+                <RecentMeetingCard key={meeting.id} meeting={meeting} />
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="space-y-6">
+            <QuickActions />
+            
+            {/* Today's Schedule */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Today's Schedule
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3 text-sm">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                  <span className="text-gray-600 dark:text-gray-400">2:00 PM</span>
+                  <span className="text-gray-900 dark:text-white">Team Sync</span>
+                </div>
+                <div className="flex items-center space-x-3 text-sm">
+                  <div className="w-2 h-2 bg-green-500 rounded-full" />
+                  <span className="text-gray-600 dark:text-gray-400">4:30 PM</span>
+                  <span className="text-gray-900 dark:text-white">Client Call</span>
+                </div>
+                <div className="flex items-center space-x-3 text-sm">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                  <span className="text-gray-600 dark:text-gray-400">6:00 PM</span>
+                  <span className="text-gray-900 dark:text-white">Planning Session</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </MainLayout>
+  );
+}

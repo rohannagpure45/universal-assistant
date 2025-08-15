@@ -76,6 +76,9 @@ export interface NotificationSettings {
   errorNotifications: boolean;
   meetingReminders: boolean;
   participantJoined: boolean;
+  transcriptionComplete: boolean;
+  systemUpdates: boolean;
+  securityAlerts: boolean;
 }
 
 // App error types
@@ -261,6 +264,9 @@ const defaultNotificationSettings: NotificationSettings = {
   errorNotifications: true,
   meetingReminders: true,
   participantJoined: true,
+  transcriptionComplete: true,
+  systemUpdates: true,
+  securityAlerts: true,
 };
 
 export const useAppStore = create<AppStore>()(

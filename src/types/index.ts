@@ -1,12 +1,15 @@
 // User types
 export interface User {
+    id: string;
     uid: string;
     email: string;
     displayName: string;
-    photoURL?: string;
+    photoURL?: string | null;
     preferences: UserPreferences;
     createdAt: Date;
+    updatedAt: Date;
     lastActive: Date;
+    lastLoginAt: Date;
   }
   
   export interface UserPreferences {
@@ -16,6 +19,40 @@ export interface User {
     autoTranscribe: boolean;
     saveTranscripts: boolean;
     theme: 'light' | 'dark' | 'system';
+    language: string;
+    notifications: {
+      emailNotifications: boolean;
+      pushNotifications: boolean;
+      desktopNotifications: boolean;
+    };
+    privacy: {
+      dataRetention: number;
+      allowAnalytics: boolean;
+      shareImprovement: boolean;
+    };
+    accessibility: {
+      highContrast: boolean;
+      largeText: boolean;
+      keyboardNavigation: boolean;
+    };
+    ai?: {
+      defaultModel: AIModel;
+      temperature: number;
+      maxTokens: number;
+      enableFallback: boolean;
+    };
+    tts?: {
+      voice: string;
+      speed: number;
+      pitch: number;
+      volume: number;
+    };
+    ui?: {
+      theme: 'light' | 'dark' | 'system';
+      language: string;
+      fontSize: number;
+      compactMode: boolean;
+    };
   }
   
   // Audio types
@@ -48,13 +85,23 @@ export interface User {
     FORMAL_PRESENTATION = 'formal_presentation',
     ONE_ON_ONE = 'one_on_one',
     TEAM_STANDUP = 'team_standup',
-    CLIENT_MEETING = 'client_meeting'
+    CLIENT_MEETING = 'client_meeting',
+    GENERAL = 'general',
+    STANDUP = 'standup',
+    PLANNING = 'planning',
+    RETROSPECTIVE = 'retrospective',
+    INTERVIEW = 'interview',
+    PRESENTATION = 'presentation',
+    TRAINING = 'training'
   }
   
   export interface Meeting {
+    id: string;
     meetingId: string;
     hostId: string;
+    createdBy: string;
     title: string;
+    description?: string;
     type: MeetingType;
     participants: Participant[];
     transcript: TranscriptEntry[];
@@ -63,30 +110,73 @@ export interface User {
     appliedRules: string[];
     startTime: Date;
     endTime?: Date;
+    startedAt?: Date;
+    endedAt?: Date;
+    scheduledFor?: Date;
+    status: 'scheduled' | 'active' | 'ended' | 'cancelled';
+    duration?: number;
     recording?: {
       url: string;
       duration: number;
     };
+    settings?: {
+      isPublic: boolean;
+      allowRecording: boolean;
+      autoTranscribe: boolean;
+      language: string;
+      maxParticipants: number;
+    };
+    metadata?: {
+      totalWords: number;
+      totalSpeakers: number;
+      averageWPM: number;
+      topics: string[];
+    };
+    summary?: string;
+    actionItems?: string[];
+    createdAt: Date;
+    updatedAt: Date;
   }
   
   export interface Participant {
+    id: string;
     userId: string;
     userName: string;
+    displayName: string;
+    email: string;
     voiceProfileId: string;
+    role: 'host' | 'participant' | 'guest';
     joinTime: Date;
+    joinedAt: Date;
     speakingTime: number;
+    isActive: boolean;
   }
+
+  // Type alias for meeting participant context
+  export type MeetingParticipant = Participant;
   
   // Transcript types
   export interface TranscriptEntry {
     id: string;
+    meetingId: string;
+    content: string;
     speaker: string;
     speakerId: string;
+    speakerName: string;
     text: string;
     timestamp: Date;
+    duration: number;
     confidence: number;
+    language: string;
     isFragment: boolean;
     isComplete: boolean;
+    isProcessed: boolean;
+    metadata?: {
+      volume: number;
+      pace: number;
+      sentiment: string;
+      keywords: string[];
+    };
   }
   
   // AI types

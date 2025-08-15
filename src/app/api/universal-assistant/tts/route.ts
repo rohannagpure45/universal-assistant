@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ElevenLabsTTS } from '@/services/universal-assistant/ElevenLabsTTS';
-import { voiceProfileService } from '@/services/universal-assistant/VoiceProfileService';
+import { voiceProfileManager } from '@/services/universal-assistant/VoiceProfileManager';
 import { adminStorage, verifyIdToken } from '@/lib/firebase/admin';
 import { createHash } from 'crypto';
 
@@ -134,7 +134,7 @@ async function processVoiceSettings(
   // If voice profile ID is provided, get settings from voice profile
   if (voiceProfileId && userId) {
     try {
-      const profile = await voiceProfileService.getProfile(userId, voiceProfileId);
+      const profile = await voiceProfileManager.getProfile(voiceProfileId);
       if (profile) {
         finalVoiceId = profile.voiceId || finalVoiceId;
         voiceSettings = {

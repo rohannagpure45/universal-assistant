@@ -13,6 +13,40 @@ export interface AudioDevice {
   groupId: string;
 }
 
+// Phase 3 Audio Enhancement Settings
+export interface VoiceActivitySettings {
+  enabled: boolean;
+  sensitivity: number; // 0-1, higher means more sensitive
+  minSpeechDuration: number; // minimum ms of speech to trigger
+  maxSilenceDuration: number; // ms of silence before declaring speech end
+  energyThreshold: number; // energy level threshold for speech detection
+  frequencyThreshold: number; // frequency-based speech detection
+  adaptiveThreshold: boolean; // dynamically adjust thresholds
+}
+
+export interface SilenceDetectionSettings {
+  enabled: boolean;
+  silenceThreshold: number; // audio level threshold for silence
+  silenceDuration: number; // ms of silence before triggering callback
+  debounceMs: number; // debounce silence detection
+}
+
+export interface RealtimeProcessingSettings {
+  enabled: boolean;
+  latencyTarget: number; // target latency in ms
+  bufferOptimization: boolean;
+  concurrentProcessing: boolean;
+  performanceMonitoring: boolean;
+}
+
+export interface VocalInterruptSettings {
+  enabled: boolean;
+  commands: string[]; // voice commands like "stop", "pause", "skip"
+  sensitivity: number; // command detection sensitivity
+  confirmationRequired: boolean; // require confirmation for commands
+  customCommands: Record<string, string>; // custom command mappings
+}
+
 // App settings types
 export interface AudioSettings {
   inputDeviceId: string | null;
@@ -25,6 +59,12 @@ export interface AudioSettings {
   sampleRate: number;
   channelCount: number;
   bufferSize: number;
+  // Phase 3 Enhanced Features
+  voiceActivityDetection: VoiceActivitySettings;
+  silenceDetection: SilenceDetectionSettings;
+  realtimeProcessing: RealtimeProcessingSettings;
+  vocalInterrupts: VocalInterruptSettings;
+  enablePhase3Features: boolean;
 }
 
 export interface UISettings {
@@ -116,6 +156,14 @@ export interface AppState {
     networkLatency: number;
     memoryUsage: number;
     cpuUsage: number;
+    // Phase 3 Enhanced Metrics
+    voiceActivityAccuracy: number;
+    speechDetectionLatency: number;
+    silenceDetectionLatency: number;
+    realtimeProcessingLatency: number;
+    audioQueueLength: number;
+    voiceActivityLevel: number;
+    fragmentCompleteness: number;
   };
   
   // UI state
@@ -201,6 +249,40 @@ export interface AppActions {
 
 type AppStore = AppState & AppActions;
 
+// Default Phase 3 settings
+const defaultVoiceActivitySettings: VoiceActivitySettings = {
+  enabled: true,
+  sensitivity: 0.6,
+  minSpeechDuration: 300,
+  maxSilenceDuration: 800,
+  energyThreshold: 0.01,
+  frequencyThreshold: 85,
+  adaptiveThreshold: true,
+};
+
+const defaultSilenceDetectionSettings: SilenceDetectionSettings = {
+  enabled: true,
+  silenceThreshold: 30,
+  silenceDuration: 1500,
+  debounceMs: 100,
+};
+
+const defaultRealtimeProcessingSettings: RealtimeProcessingSettings = {
+  enabled: true,
+  latencyTarget: 500,
+  bufferOptimization: true,
+  concurrentProcessing: false,
+  performanceMonitoring: true,
+};
+
+const defaultVocalInterruptSettings: VocalInterruptSettings = {
+  enabled: true,
+  commands: ['stop', 'pause', 'resume', 'skip', 'repeat'],
+  sensitivity: 0.8,
+  confirmationRequired: false,
+  customCommands: {},
+};
+
 // Default settings
 const defaultAudioSettings: AudioSettings = {
   inputDeviceId: null,
@@ -213,6 +295,12 @@ const defaultAudioSettings: AudioSettings = {
   sampleRate: 44100,
   channelCount: 1,
   bufferSize: 4096,
+  // Phase 3 Enhanced Features
+  voiceActivityDetection: defaultVoiceActivitySettings,
+  silenceDetection: defaultSilenceDetectionSettings,
+  realtimeProcessing: defaultRealtimeProcessingSettings,
+  vocalInterrupts: defaultVocalInterruptSettings,
+  enablePhase3Features: true,
 };
 
 const defaultUISettings: UISettings = {
@@ -295,6 +383,14 @@ export const useAppStore = create<AppStore>()(
             networkLatency: 0,
             memoryUsage: 0,
             cpuUsage: 0,
+            // Phase 3 Enhanced Metrics
+            voiceActivityAccuracy: 0,
+            speechDetectionLatency: 0,
+            silenceDetectionLatency: 0,
+            realtimeProcessingLatency: 0,
+            audioQueueLength: 0,
+            voiceActivityLevel: 0,
+            fragmentCompleteness: 0,
           },
           
           sidebarOpen: true,
@@ -311,6 +407,16 @@ export const useAppStore = create<AppStore>()(
             'ai-summaries': true,
             'voice-profiles': true,
             'custom-rules': true,
+            // Phase 3 Feature Flags
+            'phase3-features': true,
+            'voice-activity-detection': true,
+            'silence-detection': true,
+            'realtime-processing': true,
+            'vocal-interrupts': true,
+            'enhanced-tts': true,
+            'streaming-audio': true,
+            'message-queuing': true,
+            'fragment-detection': true,
           },
 
           // Device management actions

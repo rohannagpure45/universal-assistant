@@ -9,7 +9,7 @@ import { useMeetingStore, useAppStore } from '@/stores';
 type MeetingStoreInstance = typeof useMeetingStore;
 type AppStoreInstance = typeof useAppStore;
 
-export interface SpeakerProfile {
+export interface CoordinatorSpeakerProfile {
   id: string;
   name?: string;
   voiceId?: string;
@@ -31,7 +31,7 @@ export interface CoordinatorState {
   isRecording: boolean;
   isPlaying: boolean;
   transcript: string;
-  speakers: Map<string, SpeakerProfile>;
+  speakers: Map<string, CoordinatorSpeakerProfile>;
   currentSpeaker?: string;
   isProcessing: boolean;
 }
@@ -86,17 +86,17 @@ export class UniversalAssistantCoordinator {
         
         // Sync to meeting store
         if (newState.isRecording !== undefined && this.meetingStore) {
-          const meetingActions = this.meetingStore.getState();
+          const { startRecording, stopRecording } = this.meetingStore.getState();
           if (newState.isRecording) {
-            meetingActions.startRecording();
+            startRecording();
           } else {
-            meetingActions.stopRecording();
+            stopRecording();
           }
         }
         
         if (newState.currentSpeaker !== undefined && this.meetingStore) {
-          const meetingActions = this.meetingStore.getState();
-          meetingActions.setActiveSpeaker(newState.currentSpeaker);
+          const { setActiveSpeaker } = this.meetingStore.getState();
+          setActiveSpeaker(newState.currentSpeaker);
         }
       };
     }

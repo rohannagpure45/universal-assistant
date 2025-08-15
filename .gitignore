@@ -211,7 +211,14 @@ next-env.d.ts
 # cursorrules
 /cursorrules
 
-# markdown files
-*.md
-!README.md
-!CHANGELOG.md
+# Firebase
+firebase-service-account.json
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Project specific
+/recordings
+/temp
+/uploads

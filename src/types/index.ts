@@ -136,3 +136,6 @@ export interface User {
     type: 'respond' | 'summarize' | 'ignore' | 'highlight' | 'notify';
     parameters?: Record<string, any>;
   }
+
+  // Re-export Firebase-specific types
+  export * from './firebase';

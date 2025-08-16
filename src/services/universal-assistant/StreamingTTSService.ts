@@ -32,6 +32,7 @@ export interface StreamingSession {
   endTime?: number;
   status: 'initializing' | 'streaming' | 'completed' | 'failed' | 'cancelled';
   streamUrl?: string;
+  audioUrl?: string;
   audioBuffer?: ArrayBuffer;
   chunkCount: number;
   bytesReceived: number;

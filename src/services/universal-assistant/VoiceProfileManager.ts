@@ -1,10 +1,13 @@
-import { SpeakerProfile } from '@/types';
-import { db } from '@/lib/firebase/client';
+import { SpeakerProfile } from '../../types';
+import { db } from '../../lib/firebase/client';
 import { collection, doc, setDoc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
 
 // Enhanced voice profile with advanced embeddings
 export interface EnhancedSpeakerProfile extends SpeakerProfile {
+  // Override required fields from SpeakerProfile
+  userName: string; // Make userName required in enhanced profile
+  
   // Advanced embeddings
   speakerEmbedding: number[]; // Speaker identity embedding
   emotionalEmbedding: number[]; // Emotional state embedding
@@ -107,6 +110,9 @@ export interface VoiceAnalysisMetrics {
   modelVersion: string;
   lastModelUpdate: Date;
   dataQualityScore: number;
+  sessionHistory: Array<any>;
+  responseTimeHistory: Array<any>;
+  confidenceHistory: Array<any>;
 }
 
 // Voice recognition events
@@ -151,6 +157,7 @@ export class VoiceProfileManager {
   // Audio processing
   private audioContext: AudioContext | null = null;
   private analysisBuffer: Float32Array[] = [];
+  private processedTranscripts: Set<string> = new Set();
   
   constructor(config?: Partial<EmbeddingConfig>) {
     // Initialize enhanced configuration
@@ -178,6 +185,9 @@ export class VoiceProfileManager {
       modelVersion: '1.0.0',
       lastModelUpdate: new Date(),
       dataQualityScore: 0,
+      sessionHistory: [],
+      responseTimeHistory: [],
+      confidenceHistory: [],
     };
     
     this.initializeEnhancedFeatures();
@@ -401,7 +411,8 @@ export class VoiceProfileManager {
       }
     } else {
       // Legacy matching
-      for (const profile of this.profiles.values()) {
+      const profileValues = Array.from(this.profiles.values());
+      for (const profile of profileValues) {
         const similarity = this.calculateCosineSimilarity(
           voiceEmbedding,
           profile.voiceEmbedding || profile.speakerEmbedding
@@ -449,7 +460,8 @@ export class VoiceProfileManager {
     const extractedFeatures = audioFeatures.audioBuffer ? 
       await this.extractAudioFeatures(audioFeatures.audioBuffer) : null;
 
-    for (const profile of this.profiles.values()) {
+    const profileValues = Array.from(this.profiles.values());
+    for (const profile of profileValues) {
       if (!this.isEnhancedProfile(profile)) continue;
 
       // Multi-dimensional similarity calculation
@@ -1144,7 +1156,7 @@ export class VoiceProfileManager {
       .reduce((sum, p) => sum + (p.adaptationMetrics?.dataQuality || 0.5), 0) / 
       Math.max(this.profiles.size, 1);
     
-    this.metrics.lastModelUpdate = now;
+    this.metrics.lastModelUpdate = new Date(now);
   }
 
   private updateSaveMetrics(): void {

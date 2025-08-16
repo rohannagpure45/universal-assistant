@@ -822,7 +822,8 @@ export class EnhancedMessageQueueManager extends MessageQueueManager {
   private cleanupExpiredCache(): void {
     const now = Date.now();
     
-    for (const [key, entry] of this.ttsCache.entries()) {
+    const entries = Array.from(this.ttsCache.entries());
+    for (const [key, entry] of entries) {
       if (entry.expiresAt < now) {
         this.ttsCache.delete(key);
       }

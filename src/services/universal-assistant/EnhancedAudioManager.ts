@@ -1,8 +1,8 @@
 import { AudioManager, AudioManagerConfig } from './AudioManager';
-import { InputGatekeeper, InputItem, createInputGatekeeper } from '@/services/gating/InputGatekeeper';
-import { createConversationInputHandlers } from '@/services/gating/ConversationInputHandlers';
-import { EnhancedInputGatekeeper } from '@/services/gatekeeper/EnhancedInputGatekeeper';
-import { ConcurrentGatekeeper } from '@/services/gatekeeper/ConcurrentGatekeeper';
+import { InputGatekeeper, InputItem, createInputGatekeeper } from '../gating/InputGatekeeper';
+import { createConversationInputHandlers } from '../gating/ConversationInputHandlers';
+import { EnhancedInputGatekeeper } from '../gatekeeper/EnhancedInputGatekeeper';
+import { ConcurrentGatekeeper } from '../gatekeeper/ConcurrentGatekeeper';
 
 // Voice Activity Detection Configuration
 export interface VoiceActivityConfig {
@@ -63,8 +63,10 @@ export interface AudioAnalysisData {
 
 // Voice Activity State
 export interface VoiceActivityState {
+  isActive: boolean;
   isSpeaking: boolean;
   isSilent: boolean;
+  level: number;
   confidence: number;
   speechDuration: number;
   silenceDuration: number;
@@ -78,6 +80,15 @@ export interface VoiceActivityState {
  * silence detection, and real-time audio analysis
  */
 export class EnhancedAudioManager extends AudioManager {
+  // Add missing property for recording state
+  private recordingActive: boolean = false;
+  
+  /**
+   * Check if recording is currently active
+   */
+  private isRecordingActive(): boolean {
+    return this.recordingActive;
+  }
   private analyser: AnalyserNode | null = null;
   private audioAnalysisData: AudioAnalysisData | null = null;
   private voiceActivityState: VoiceActivityState;
@@ -140,8 +151,10 @@ export class EnhancedAudioManager extends AudioManager {
     
     // Initialize voice activity state
     this.voiceActivityState = {
+      isActive: false,
       isSpeaking: false,
       isSilent: true,
+      level: 0,
       confidence: 0,
       speechDuration: 0,
       silenceDuration: 0,
@@ -165,8 +178,8 @@ export class EnhancedAudioManager extends AudioManager {
     // Initialize audio analysis buffers
     if (this.enhancedConfig.audioAnalysis.enabled) {
       const bufferSize = this.enhancedConfig.audioAnalysis.fftSize / 2;
-      this.frequencyBuffer = new Uint8Array(bufferSize);
-      this.timeBuffer = new Uint8Array(this.enhancedConfig.audioAnalysis.fftSize);
+      this.frequencyBuffer = new Uint8Array(new ArrayBuffer(bufferSize));
+      this.timeBuffer = new Uint8Array(new ArrayBuffer(this.enhancedConfig.audioAnalysis.fftSize));
     }
   }
   
@@ -176,6 +189,7 @@ export class EnhancedAudioManager extends AudioManager {
   async startRecording(onDataAvailable?: (chunk: Blob) => void): Promise<void> {
     // Call parent startRecording
     await super.startRecording(onDataAvailable);
+    this.recordingActive = true;
     
     if (!this.enhancedConfig.enablePhase3Features) {
       return;
@@ -203,6 +217,7 @@ export class EnhancedAudioManager extends AudioManager {
    * Enhanced recording stop with cleanup
    */
   stopRecording(): Blob | null {
+    this.recordingActive = false;
     this.stopEnhancedFeatures();
     return super.stopRecording();
   }
@@ -247,7 +262,7 @@ export class EnhancedAudioManager extends AudioManager {
     }
     
     const analyzeAudio = () => {
-      if (!this.analyser || !this.isRecording()) {
+      if (!this.analyser || !this.isRecordingActive()) {
         return;
       }
       
@@ -395,6 +410,7 @@ export class EnhancedAudioManager extends AudioManager {
     if (analysisData.spectralCentroid > 200 && analysisData.spectralCentroid < 3000) confidence += 0.1;
     
     this.voiceActivityState.confidence = confidence;
+    this.voiceActivityState.level = analysisData.audioLevel;
     
     const isSpeechDetected = confidence > config.sensitivity;
     
@@ -423,6 +439,7 @@ export class EnhancedAudioManager extends AudioManager {
       
       this.speechDetectionTimer = setTimeout(() => {
         if (!this.voiceActivityState.isSpeaking && confidence > config.sensitivity) {
+          this.voiceActivityState.isActive = true;
           this.voiceActivityState.isSpeaking = true;
           this.voiceActivityState.isSilent = false;
           this.vadEventListeners.onSpeechStart?.();
@@ -441,6 +458,7 @@ export class EnhancedAudioManager extends AudioManager {
       
       this.silenceDetectionTimer = setTimeout(() => {
         if (this.voiceActivityState.isSpeaking) {
+          this.voiceActivityState.isActive = false;
           this.voiceActivityState.isSpeaking = false;
           this.voiceActivityState.isSilent = true;
           this.vadEventListeners.onSpeechEnd?.();
@@ -520,8 +538,10 @@ export class EnhancedAudioManager extends AudioManager {
     
     // Reset state
     this.voiceActivityState = {
+      isActive: false,
       isSpeaking: false,
       isSilent: true,
+      level: 0,
       confidence: 0,
       speechDuration: 0,
       silenceDuration: 0,
@@ -584,7 +604,7 @@ export class EnhancedAudioManager extends AudioManager {
     this.updateConfig(config);
     
     // Reinitialize features if needed
-    if (this.isRecording() && config.enablePhase3Features !== undefined) {
+    if (this.isRecordingActive() && config.enablePhase3Features !== undefined) {
       if (config.enablePhase3Features) {
         this.initializeEnhancedFeatures();
       } else {
@@ -619,6 +639,71 @@ export class EnhancedAudioManager extends AudioManager {
    */
   getSpeechConfidence(): number {
     return this.voiceActivityState.confidence;
+  }
+
+  /**
+   * Stop voice activity detection
+   */
+  stopVoiceActivityDetection(): void {
+    try {
+      if (this.speechDetectionTimer) {
+        clearTimeout(this.speechDetectionTimer);
+        this.speechDetectionTimer = null;
+      }
+      
+      if (this.silenceDetectionTimer) {
+        clearTimeout(this.silenceDetectionTimer);
+        this.silenceDetectionTimer = null;
+      }
+      
+      if (this.analysisTimer) {
+        clearTimeout(this.analysisTimer);
+        this.analysisTimer = null;
+      }
+      
+      // Reset voice activity state
+      this.voiceActivityState = {
+        isActive: false,
+        isSpeaking: false,
+        isSilent: true,
+        level: 0,
+        confidence: 0,
+        speechDuration: 0,
+        silenceDuration: 0,
+        lastActivity: Date.now(),
+        adaptiveThreshold: this.enhancedConfig.voiceActivityDetection.energyThreshold,
+      };
+      
+      console.log('EnhancedAudioManager: Voice activity detection stopped');
+    } catch (error) {
+      console.error('EnhancedAudioManager: Error stopping voice activity detection:', error);
+    }
+  }
+
+  /**
+   * Update buffer configuration
+   */
+  updateBufferConfig(config: Partial<{ bufferSize: number; sampleRate: number; channels: number }>): void {
+    try {
+      if (config.bufferSize && config.bufferSize > 0) {
+        this.enhancedConfig.audioAnalysis.bufferSize = config.bufferSize;
+      }
+      
+      if (config.sampleRate && config.sampleRate > 0) {
+        this.enhancedConfig.audioAnalysis.sampleRate = config.sampleRate;
+      }
+      
+      if (config.channels && config.channels > 0) {
+        this.enhancedConfig.audioAnalysis.channels = config.channels;
+      }
+      
+      // Reinitialize buffers with new configuration
+      this.initializeAudioAnalysis();
+      
+      console.log('EnhancedAudioManager: Buffer configuration updated:', config);
+    } catch (error) {
+      console.error('EnhancedAudioManager: Error updating buffer configuration:', error);
+    }
   }
   
   // Private helper methods to access parent protected members

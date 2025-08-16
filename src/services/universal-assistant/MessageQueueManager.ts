@@ -13,10 +13,10 @@ export interface QueuedMessage {
   
   export class MessageQueueManager {
     private queue: QueuedMessage[] = [];
-    private isProcessing: boolean = false;
+    protected isProcessing: boolean = false;
     private currentMessage: QueuedMessage | null = null;
-    private onMessageProcess: ((message: QueuedMessage) => Promise<void>) | null = null;
-    private interruptFlag: boolean = false;
+    protected onMessageProcess: ((message: QueuedMessage) => Promise<void>) | null = null;
+    protected interruptFlag: boolean = false;
   
     addMessage(message: Omit<QueuedMessage, 'id' | 'timestamp'>): void {
       const queuedMessage: QueuedMessage = {

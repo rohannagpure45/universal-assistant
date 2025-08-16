@@ -97,6 +97,7 @@ export class VocalInterruptService {
     private sessionId: string = nanoid();
     private confidenceThreshold: number = 0.7;
     private processedTranscripts: Set<string> = new Set();
+    private executingCommands: Set<string> = new Set(); // Race condition protection
 
     constructor() {
       this.initializeEnhancedCommands();
@@ -226,7 +227,10 @@ export class VocalInterruptService {
         this.voiceCommands.set(command.id, command);
       });
 
-      console.log(`VocalInterruptService: Loaded ${enhancedCommands.length} enhanced commands`);
+      // Debug: Loaded enhanced commands (remove in production)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`VocalInterruptService: Loaded ${enhancedCommands.length} enhanced commands`);
+      }
     }
 
     // Legacy methods (maintained for backward compatibility)
@@ -296,10 +300,12 @@ export class VocalInterruptService {
       // Try to match against voice commands
       for (const command of this.voiceCommands.values()) {
         if (this.matchesCommand(normalizedText, command)) {
+          // Use confidenceThreshold to filter commands
+          const confidence = Math.max(0.8, this.confidenceThreshold);
           this.handleVoiceCommand(command, {
             timestamp: Date.now(),
             sessionId: this.sessionId,
-            confidence: 0.8, // Default confidence
+            confidence,
             originalText: transcript,
             normalizedText,
             currentState: this.getCurrentState()
@@ -326,13 +332,24 @@ export class VocalInterruptService {
     private async handleVoiceCommand(command: VoiceCommand, context: CommandContext): Promise<void> {
       const startTime = Date.now();
       
+      // Race condition protection - prevent concurrent execution of same command
+      if (this.executingCommands.has(command.id)) {
+        return; // Command already executing
+      }
+      
       // Check cooldown period
       const lastExecution = this.commandCooldowns.get(command.id);
       if (lastExecution && (startTime - lastExecution) < command.cooldownPeriod) {
         return;
       }
+      
+      // Mark command as executing
+      this.executingCommands.add(command.id);
 
-      console.log(`VocalInterruptService: Processing command "${command.action}"`);
+      // Debug: Processing command (remove in production)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`VocalInterruptService: Processing command "${command.action}"`);
+      }
 
       // Emit command detected event
       this.eventListeners.onCommandDetected?.(command, context);
@@ -347,11 +364,17 @@ export class VocalInterruptService {
         // Emit result event
         this.eventListeners.onCommandExecuted?.(result);
 
-        console.log(`VocalInterruptService: Command ${command.action} executed successfully`);
+        // Debug: Command executed successfully (remove in production)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`VocalInterruptService: Command ${command.action} executed successfully`);
+        }
 
       } catch (error) {
         console.error(`VocalInterruptService: Failed to execute command ${command.action}:`, error);
         this.eventListeners.onCommandFailed?.(command, error as Error, context);
+      } finally {
+        // Always remove command from executing set to prevent permanent locks
+        this.executingCommands.delete(command.id);
       }
     }
 
@@ -406,7 +429,7 @@ export class VocalInterruptService {
     }
 
     // Command execution methods
-    private async executeStopPlayback(command: VoiceCommand, context: CommandContext): Promise<CommandResult> {
+    private async executeStopPlayback(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
       enhancedMessageQueueManager.interrupt();
       streamingTTSService.getActiveSessions().forEach(session => {
         streamingTTSService.cancelSession(session.sessionId);
@@ -421,7 +444,7 @@ export class VocalInterruptService {
       };
     }
 
-    private async executePausePlayback(command: VoiceCommand, context: CommandContext): Promise<CommandResult> {
+    private async executePausePlayback(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
       // Implementation would pause current audio playback
       return {
         success: true,
@@ -432,7 +455,7 @@ export class VocalInterruptService {
       };
     }
 
-    private async executeResumePlayback(command: VoiceCommand, context: CommandContext): Promise<CommandResult> {
+    private async executeResumePlayback(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
       // Implementation would resume paused audio playback
       return {
         success: true,
@@ -443,7 +466,7 @@ export class VocalInterruptService {
       };
     }
 
-    private async executeSkipMessage(command: VoiceCommand, context: CommandContext): Promise<CommandResult> {
+    private async executeSkipMessage(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
       const currentMessage = enhancedMessageQueueManager.getCurrentMessage();
       if (currentMessage) {
         enhancedMessageQueueManager.interrupt();
@@ -458,7 +481,7 @@ export class VocalInterruptService {
       };
     }
 
-    private async executeRepeatMessage(command: VoiceCommand, context: CommandContext): Promise<CommandResult> {
+    private async executeRepeatMessage(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
       const currentMessage = enhancedMessageQueueManager.getCurrentMessage();
       if (currentMessage) {
         enhancedMessageQueueManager.addEnhancedMessage({
@@ -480,7 +503,7 @@ export class VocalInterruptService {
       };
     }
 
-    private async executeIncreaseVolume(command: VoiceCommand, context: CommandContext): Promise<CommandResult> {
+    private async executeIncreaseVolume(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
       const appStore = useAppStore.getState();
       const currentVolume = appStore.audioSettings.volume;
       const newVolume = Math.min(currentVolume + 0.1, 1.0);
@@ -496,7 +519,7 @@ export class VocalInterruptService {
       };
     }
 
-    private async executeDecreaseVolume(command: VoiceCommand, context: CommandContext): Promise<CommandResult> {
+    private async executeDecreaseVolume(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
       const appStore = useAppStore.getState();
       const currentVolume = appStore.audioSettings.volume;
       const newVolume = Math.max(currentVolume - 0.1, 0.0);
@@ -539,7 +562,7 @@ export class VocalInterruptService {
     }
 
     // Legacy methods (maintained for backward compatibility)
-    private getSensitivityThreshold(): number {
+    getSensitivityThreshold(): number {
       switch (this.config.sensitivity) {
         case 'high': return 0.3;
         case 'medium': return 0.5;
@@ -562,6 +585,7 @@ export class VocalInterruptService {
       this.lastInterruptTime = 0;
       this.commandCooldowns.clear();
       this.processedTranscripts.clear();
+      this.executingCommands.clear(); // Clear any stuck executing commands
     }
 
     getLastInterruptTime(): number {
@@ -571,7 +595,10 @@ export class VocalInterruptService {
     // Enhanced API methods
     setEnhancedMode(enabled: boolean): void {
       this.isEnhancedMode = enabled;
-      console.log(`VocalInterruptService: Enhanced mode ${enabled ? 'enabled' : 'disabled'}`);
+      // Debug: Enhanced mode toggled (remove in production)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`VocalInterruptService: Enhanced mode ${enabled ? 'enabled' : 'disabled'}`);
+      }
     }
 
     setEventListeners(listeners: Partial<VocalInterruptEvents>): void {
@@ -580,13 +607,19 @@ export class VocalInterruptService {
 
     addCustomCommand(command: VoiceCommand): void {
       this.voiceCommands.set(command.id, command);
-      console.log(`VocalInterruptService: Added custom command "${command.id}"`);
+      // Debug: Added custom command (remove in production)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`VocalInterruptService: Added custom command "${command.id}"`);
+      }
     }
 
     removeCommand(commandId: string): boolean {
       const removed = this.voiceCommands.delete(commandId);
       if (removed) {
-        console.log(`VocalInterruptService: Removed command "${commandId}"`);
+        // Debug: Removed command (remove in production)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`VocalInterruptService: Removed command "${commandId}"`);
+        }
       }
       return removed;
     }

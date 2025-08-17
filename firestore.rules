@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        request.auth.token.admin == true;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+      
+      // Voice profiles subcollection
+      match /voiceProfiles/{profileId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId);
+      }
+    }
+    
+    // Meetings collection
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.hostId == request.auth.uid ||
+         request.auth.uid in resource.data.participants);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+        resource.data.hostId == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        resource.data.hostId == request.auth.uid;
+        
+      // Notes subcollection
+      match /notes/{noteId} {
+        allow read, write: if isAuthenticated() &&
+          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
+           request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participants);
+      }
+    }
+    
+    // Audio clips collection
+    match /audioClips/{clipId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    
+    // Custom rules collection
+    match /customRules/{ruleId} {
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || resource.data.isPublic == true);
+      allow write: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Agent configurations
+    match /agents/{agentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Session analytics
+    match /analytics/{sessionId} {
+      allow read: if isAuthenticated() && 
+        resource.data.userId == request.auth.uid;
+      allow write: if isAuthenticated();
+    }
+  }
+}

@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+import { enableMapSet } from 'immer';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { devtools } from 'zustand/middleware';
+
+// Enable MapSet plugin for Immer to handle Map and Set objects
+enableMapSet();
 import type { Unsubscribe } from 'firebase/firestore';
 import { 
   Meeting, 
@@ -660,8 +664,6 @@ export const useMeetingStore = create<MeetingStore>()(
 
         // Real-time synchronization
         setupRealtimeListeners: (meetingId) => {
-          const listeners = get().listeners;
-
           // Cleanup existing listeners
           get().cleanupRealtimeListeners();
 
@@ -714,9 +716,11 @@ export const useMeetingStore = create<MeetingStore>()(
               }
             );
 
-            // Store listeners for cleanup
-            listeners.set('meeting', meetingListener);
-            listeners.set('transcript', transcriptListener);
+            // Store listeners for cleanup using Immer-safe state update
+            set((state) => {
+              state.listeners.set('meeting', meetingListener);
+              state.listeners.set('transcript', transcriptListener);
+            });
 
           } catch (error) {
             console.error('Failed to setup real-time listeners:', error);
@@ -742,7 +746,10 @@ export const useMeetingStore = create<MeetingStore>()(
             }
           });
 
-          listeners.clear();
+          // Use set to clear the listeners Map properly with Immer
+          set((state) => {
+            state.listeners.clear();
+          });
         },
 
         // Search and filters

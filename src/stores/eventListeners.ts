@@ -146,7 +146,5 @@ export const initializeStoreEventListeners = () => {
   };
 };
 
-// Auto-initialize listeners when module is loaded
-if (typeof window !== 'undefined') {
-  initializeStoreEventListeners();
-}
+// Note: Listeners should be initialized in StoreProviders component
+// to avoid circular dependencies during SSR

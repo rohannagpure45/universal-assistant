@@ -72,14 +72,14 @@ export interface MessageProcessor {
  * ConcurrentGatekeeper manages thread-safe message processing with speaker-specific locking
  */
 export class ConcurrentGatekeeper {
-  private messageQueue: AsyncQueue<ConcurrentMessage>;
-  private speakerLockManager: SpeakerLockManager;
+  private messageQueue!: AsyncQueue<ConcurrentMessage>;
+  private speakerLockManager!: SpeakerLockManager;
   private inputGatekeeper: InputGatekeeper | null = null;
-  private messageProcessor: MessageProcessor;
+  private messageProcessor!: MessageProcessor;
   private config: ConcurrentGatekeeperConfig;
   
   private activeProcessing: Map<string, ProcessingContext> = new Map();
-  private processingStats: GatekeeperStats;
+  private processingStats!: GatekeeperStats;
   private cleanupInterval?: NodeJS.Timeout;
   private isShuttingDown = false;
   
@@ -586,8 +586,6 @@ export class ConcurrentGatekeeper {
         speakerContext: [],
         conversationTopics: [],
         interruptDetected: false,
-        gated: true,
-        reason: 'Input gated during TTS playback',
       },
     };
   }
@@ -606,9 +604,6 @@ export class ConcurrentGatekeeper {
         speakerContext: [],
         conversationTopics: [],
         interruptDetected: false,
-        queued: true,
-        queuePosition: this.messageQueue.size(),
-        messageId: message.id,
       },
     };
   }

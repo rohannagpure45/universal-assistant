@@ -1,4 +1,4 @@
-import { storage, adminStorage } from '@/lib/firebase/admin';
+import { adminStorage } from '@/lib/firebase/admin';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 export class StorageService {
@@ -9,8 +9,13 @@ export class StorageService {
     audioFile: Buffer,
     mimeType: string
   ): Promise<string> {
+    const storage = adminStorage();
+    if (!storage) {
+      throw new Error('Firebase Admin Storage not initialized');
+    }
+
     const fileName = `voice-samples/${userId}/${profileId}/sample.${mimeType.split('/')[1]}`;
-    const file = adminStorage.bucket().file(fileName);
+    const file = storage.bucket().file(fileName);
     
     await file.save(audioFile, {
       metadata: {
@@ -33,8 +38,13 @@ export class StorageService {
     audioFile: Buffer,
     ownerId: string
   ): Promise<string> {
+    const storage = adminStorage();
+    if (!storage) {
+      throw new Error('Firebase Admin Storage not initialized');
+    }
+
     const fileName = `meeting-recordings/${meetingId}/full-recording.mp3`;
-    const file = adminStorage.bucket().file(fileName);
+    const file = storage.bucket().file(fileName);
     
     await file.save(audioFile, {
       metadata: {
@@ -48,7 +58,13 @@ export class StorageService {
   
   // Clean up expired TTS cache
   static async cleanupTTSCache(): Promise<void> {
-    const [files] = await adminStorage.bucket().getFiles({
+    const storage = adminStorage();
+    if (!storage) {
+      console.error('Firebase Admin Storage not initialized');
+      return;
+    }
+
+    const [files] = await storage.bucket().getFiles({
       prefix: 'tts-cache/',
     });
     
@@ -57,7 +73,7 @@ export class StorageService {
     
     for (const file of files) {
       const [metadata] = await file.getMetadata();
-      const created = new Date(metadata.timeCreated);
+      const created = new Date(metadata.timeCreated || new Date());
       
       if (now.getTime() - created.getTime() > expirationMs) {
         await file.delete().catch(console.error);
@@ -71,9 +87,14 @@ export class StorageService {
     imageFile: Buffer,
     mimeType: string
   ): Promise<string> {
+    const storage = adminStorage();
+    if (!storage) {
+      throw new Error('Firebase Admin Storage not initialized');
+    }
+
     const extension = mimeType.split('/')[1];
     const fileName = `user-uploads/${userId}/avatars/avatar.${extension}`;
-    const file = adminStorage.bucket().file(fileName);
+    const file = storage.bucket().file(fileName);
     
     await file.save(imageFile, {
       metadata: {
@@ -98,8 +119,13 @@ export class StorageService {
     fileBuffer: Buffer,
     mimeType: string
   ): Promise<string> {
+    const storage = adminStorage();
+    if (!storage) {
+      throw new Error('Firebase Admin Storage not initialized');
+    }
+
     const filePath = `user-uploads/${userId}/documents/${meetingId}/${fileName}`;
-    const file = adminStorage.bucket().file(filePath);
+    const file = storage.bucket().file(filePath);
     
     await file.save(fileBuffer, {
       metadata: {
@@ -129,8 +155,13 @@ export class StorageService {
     content: Buffer,
     format: 'pdf' | 'docx' | 'json'
   ): Promise<string> {
+    const storage = adminStorage();
+    if (!storage) {
+      throw new Error('Firebase Admin Storage not initialized');
+    }
+
     const fileName = `exports/${userId}/meeting-summaries/${meetingId}/${exportType}.${format}`;
-    const file = adminStorage.bucket().file(fileName);
+    const file = storage.bucket().file(fileName);
     
     const mimeTypes = {
       pdf: 'application/pdf',

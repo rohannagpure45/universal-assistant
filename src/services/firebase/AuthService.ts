@@ -11,7 +11,7 @@ import {
   updatePassword,
   reauthenticateWithCredential,
   EmailAuthProvider,
-  AuthError,
+  AuthError as FirebaseAuthError,
   UserCredential,
 } from 'firebase/auth';
 import {
@@ -42,14 +42,14 @@ export interface SignInData {
   password: string;
 }
 
-export interface AuthError extends Error {
+export interface LocalAuthError extends Error {
   code: string;
   message: string;
 }
 
 export interface AuthResult {
   user: User | null;
-  error?: AuthError;
+  error?: LocalAuthError;
 }
 
 export class AuthService {
@@ -177,7 +177,7 @@ export class AuthService {
   /**
    * Sign out current user
    */
-  public async signOut(): Promise<{ error?: AuthError }> {
+  public async signOut(): Promise<{ error?: LocalAuthError }> {
     try {
       await signOut(auth);
       return {};
@@ -191,7 +191,7 @@ export class AuthService {
   /**
    * Send password reset email
    */
-  public async resetPassword(email: string): Promise<{ error?: AuthError }> {
+  public async resetPassword(email: string): Promise<{ error?: LocalAuthError }> {
     try {
       await sendPasswordResetEmail(auth, email);
       return {};
@@ -208,7 +208,7 @@ export class AuthService {
   public async updateUserPassword(
     currentPassword: string,
     newPassword: string
-  ): Promise<{ error?: AuthError }> {
+  ): Promise<{ error?: LocalAuthError }> {
     try {
       if (!auth.currentUser) {
         throw new Error('No authenticated user');
@@ -321,6 +321,40 @@ export class AuthService {
       autoTranscribe: true,
       saveTranscripts: true,
       theme: 'system',
+      language: 'en',
+      notifications: {
+        emailNotifications: true,
+        pushNotifications: true,
+        desktopNotifications: true,
+      },
+      privacy: {
+        dataRetention: 30,
+        allowAnalytics: true,
+        shareImprovement: true,
+      },
+      accessibility: {
+        highContrast: false,
+        largeText: false,
+        keyboardNavigation: true,
+      },
+      ai: {
+        defaultModel: 'gpt-4o',
+        temperature: 0.7,
+        maxTokens: 2000,
+        enableFallback: true,
+      },
+      tts: {
+        voice: 'alloy',
+        speed: 1.0,
+        pitch: 1.0,
+        volume: 0.8,
+      },
+      ui: {
+        theme: 'system',
+        language: 'en',
+        fontSize: 14,
+        compactMode: false,
+      },
       ...userData.preferences,
     };
 
@@ -370,6 +404,40 @@ export class AuthService {
           autoTranscribe: true,
           saveTranscripts: true,
           theme: 'system',
+          language: 'en',
+          notifications: {
+            emailNotifications: true,
+            pushNotifications: true,
+            desktopNotifications: true,
+          },
+          privacy: {
+            dataRetention: 30,
+            allowAnalytics: true,
+            shareImprovement: true,
+          },
+          accessibility: {
+            highContrast: false,
+            largeText: false,
+            keyboardNavigation: true,
+          },
+          ai: {
+            defaultModel: 'gpt-4o',
+            temperature: 0.7,
+            maxTokens: 2000,
+            enableFallback: true,
+          },
+          tts: {
+            voice: 'alloy',
+            speed: 1.0,
+            pitch: 1.0,
+            volume: 0.8,
+          },
+          ui: {
+            theme: 'system',
+            language: 'en',
+            fontSize: 14,
+            compactMode: false,
+          },
         };
 
         return {
@@ -405,8 +473,8 @@ export class AuthService {
   /**
    * Handle authentication errors
    */
-  private handleAuthError(error: any): AuthError {
-    const authError = error as AuthError;
+  private handleAuthError(error: any): LocalAuthError {
+    const authError = error as FirebaseAuthError;
     
     let message = 'An authentication error occurred';
     

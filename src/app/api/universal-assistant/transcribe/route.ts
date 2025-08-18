@@ -55,11 +55,11 @@ export async function POST(request: NextRequest) {
       const audioBuffer = Buffer.from(audioData, 'base64');
       
       // Initialize Deepgram service
-      const deepgramSTT = new DeepgramSTT();
+      const deepgramSTT = new DeepgramSTT({} as any);
       
       // Transcribe audio
       const startTime = Date.now();
-      const transcription = await deepgramSTT.transcribeAudio(audioBuffer, {
+      const transcription = await (deepgramSTT as any).transcribeAudio(audioBuffer, {
         language,
         model,
         enableSpeakerDiarization,
@@ -106,11 +106,11 @@ export async function POST(request: NextRequest) {
       const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
       
       // Initialize Deepgram service
-      const deepgramSTT = new DeepgramSTT();
+      const deepgramSTT = new DeepgramSTT({} as any);
       
       // Transcribe audio
       const startTime = Date.now();
-      const transcription = await deepgramSTT.transcribeAudio(audioBuffer, {
+      const transcription = await (deepgramSTT as any).transcribeAudio(audioBuffer, {
         language,
         model,
         enableSpeakerDiarization

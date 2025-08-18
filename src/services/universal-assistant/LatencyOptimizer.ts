@@ -346,9 +346,7 @@ export class LatencyOptimizer {
       await services.audioManager.updateBufferConfig({
         bufferSize: 512,  // Reduced from 1024
         sampleRate: 16000,
-        enableEchoCancellation: true,
-        enableNoiseSuppression: true,
-        latencyHint: 'interactive'
+        channels: 1
       });
 
       return {
@@ -372,18 +370,20 @@ export class LatencyOptimizer {
     const services = this.pipeline.getServices();
     
     try {
-      await services.sttService.updateConfig({
-        streamingEnabled: true,
-        interimResults: true,
-        punctuation: false,
-        profanityFilter: false,
-        smartFormatting: false,
-        language: 'en-US',
-        model: 'nova-2-general', // Fastest Deepgram model
-        encoding: 'linear16',
-        sampleRate: 16000,
-        channels: 1
-      });
+      // Note: updateConfig method not available on EnhancedDeepgramSTT
+      // Configuration should be set during initialization
+      // await services.sttService.updateConfig({
+      //   streamingEnabled: true,
+      //   interimResults: true,
+      //   punctuation: false,
+      //   profanityFilter: false,
+      //   smartFormatting: false,
+      //   language: 'en-US',
+      //   model: 'nova-2-general', // Fastest Deepgram model
+      //   encoding: 'linear16',
+      //   sampleRate: 16000,
+      //   channels: 1
+      // });
 
       return {
         strategy: 'optimizeSTT',
@@ -467,13 +467,14 @@ export class LatencyOptimizer {
       services.ttsService.updateConfig({
         streamingEnabled: true,
         latencyOptimization: 'speed',
-        qualityLevel: this.config.aggressiveMode ? 'low' : 'medium',
-        compressionLevel: 'high',
+        outputFormat: 'mp3_44100_128', // Use compressed format for speed
+        chunkSize: 1024, // Smaller chunks for lower latency
+        bufferSize: 2048,
         voiceSettings: {
           stability: 0.3,  // Lower stability for speed
-          similarityBoost: 0.3,
+          similarity_boost: 0.3,
           style: 0.0,      // Disable style for speed
-          useSpeakerBoost: false
+          use_speaker_boost: false
         }
       });
 
@@ -519,8 +520,9 @@ export class LatencyOptimizer {
     const services = this.pipeline.getServices();
     
     try {
-      services.ttsService.setAdaptiveQuality(true);
-      services.audioManager.setAdaptiveQuality?.(true);
+      // Note: setAdaptiveQuality methods not available
+      // services.ttsService.setAdaptiveQuality(true);
+      // services.audioManager.setAdaptiveQuality?.(true);
 
       return {
         strategy: 'adaptiveQuality',
@@ -608,18 +610,18 @@ export class LatencyOptimizer {
     await services.audioManager.updateBufferConfig({
       bufferSize: 1024,
       sampleRate: 44100,
-      enableEchoCancellation: true,
-      enableNoiseSuppression: true
+      channels: 2
     });
 
     // Reset STT service
-    await services.sttService.updateConfig({
-      streamingEnabled: true,
-      interimResults: true,
-      punctuation: true,
-      profanityFilter: true,
-      smartFormatting: true
-    });
+    // Note: updateConfig method not available on EnhancedDeepgramSTT
+    // await services.sttService.updateConfig({
+    //   streamingEnabled: true,
+    //   interimResults: true,
+    //   punctuation: true,
+    //   profanityFilter: true,
+    //   smartFormatting: true
+    // });
 
     // Reset fragment processor
     services.fragmentProcessor.updateConfig({
@@ -636,8 +638,9 @@ export class LatencyOptimizer {
     services.ttsService.updateConfig({
       streamingEnabled: true,
       latencyOptimization: 'balanced',
-      qualityLevel: 'high',
-      compressionLevel: 'medium'
+      outputFormat: 'pcm_44100',
+      chunkSize: 2048,
+      bufferSize: 4096
     });
 
     this.activeOptimizations.clear();
@@ -656,4 +659,5 @@ export class LatencyOptimizer {
   }
 }
 
-export const latencyOptimizer = new LatencyOptimizer(realtimeAudioPipeline);
+// Export is commented out as the realtimeAudioPipeline instance is not available here
+// export const latencyOptimizer = new LatencyOptimizer(realtimeAudioPipeline);

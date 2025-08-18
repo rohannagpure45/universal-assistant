@@ -1,15 +1,14 @@
 // User types
 export interface User {
-    id: string;
     uid: string;
     email: string;
     displayName: string;
     photoURL?: string | null;
     preferences: UserPreferences;
     createdAt: Date;
-    updatedAt: Date;
     lastActive: Date;
-    lastLoginAt: Date;
+    emailVerified?: boolean;
+    lastLoginAt?: string;
   }
   
   export interface UserPreferences {

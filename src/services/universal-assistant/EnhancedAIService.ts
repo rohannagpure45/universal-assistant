@@ -173,8 +173,8 @@ export class EnhancedAIService {
       stream: options.stream ?? false,
     });
 
-    const text = completion.choices[0]?.message?.content || '';
-    const tokensUsed = completion.usage?.total_tokens || 0;
+    const text = 'choices' in completion ? completion.choices[0]?.message?.content || '' : '';
+    const tokensUsed = 'usage' in completion ? completion.usage?.total_tokens || 0 : 0;
 
     return {
       text,
@@ -183,8 +183,8 @@ export class EnhancedAIService {
       latency: Date.now() - Date.now(),
       timestamp: new Date(),
       cost: 0, // Will be calculated in parent method
-      inputTokens: completion.usage?.prompt_tokens || 0,
-      outputTokens: completion.usage?.completion_tokens || 0,
+      inputTokens: 'usage' in completion ? completion.usage?.prompt_tokens || 0 : 0,
+      outputTokens: 'usage' in completion ? completion.usage?.completion_tokens || 0 : 0,
       provider: 'openai',
       processingTime: 0, // Will be set in parent method
     };

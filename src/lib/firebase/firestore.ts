@@ -33,6 +33,15 @@ export interface MeetingNote {
   isPublic: boolean;
 }
 
+// Helper function to ensure adminDb is initialized
+function ensureAdminDb(): import('firebase-admin/firestore').Firestore {
+  const db = adminDb();
+  if (!db) {
+    throw new Error('Firebase Admin Database not initialized');
+  }
+  return db;
+}
+
 /**
  * @deprecated This service is being phased out in favor of DatabaseService.
  * Please use DatabaseService from @/services/firebase/DatabaseService instead.
@@ -41,7 +50,7 @@ export interface MeetingNote {
 export class FirestoreService {
   // User Management
   static async createUserProfile(userId: string, userData: Omit<UserProfile, 'createdAt' | 'lastLoginAt'>): Promise<void> {
-    await adminDb.collection('users').doc(userId).set({
+    await ensureAdminDb().collection('users').doc(userId).set({
       ...userData,
       createdAt: new Date(),
       lastLoginAt: new Date(),
@@ -49,12 +58,12 @@ export class FirestoreService {
   }
   
   static async getUserProfile(userId: string): Promise<UserProfile | null> {
-    const doc = await adminDb.collection('users').doc(userId).get();
+    const doc = await ensureAdminDb().collection('users').doc(userId).get();
     return doc.exists ? doc.data() as UserProfile : null;
   }
   
   static async updateUserProfile(userId: string, updates: Partial<UserProfile>): Promise<void> {
-    await adminDb.collection('users').doc(userId).update({
+    await ensureAdminDb().collection('users').doc(userId).update({
       ...updates,
       lastLoginAt: new Date(),
     });
@@ -62,7 +71,7 @@ export class FirestoreService {
   
   // Meeting Management
   static async createMeeting(meetingData: Omit<Meeting, 'createdAt' | 'status'>): Promise<string> {
-    const meetingRef = await adminDb.collection('meetings').add({
+    const meetingRef = await ensureAdminDb().collection('meetings').add({
       ...meetingData,
       createdAt: new Date(),
       status: 'scheduled',
@@ -71,19 +80,19 @@ export class FirestoreService {
   }
   
   static async getMeeting(meetingId: string): Promise<Meeting | null> {
-    const doc = await adminDb.collection('meetings').doc(meetingId).get();
+    const doc = await ensureAdminDb().collection('meetings').doc(meetingId).get();
     return doc.exists ? doc.data() as Meeting : null;
   }
   
   static async updateMeetingStatus(meetingId: string, status: Meeting['status']): Promise<void> {
-    await adminDb.collection('meetings').doc(meetingId).update({
+    await ensureAdminDb().collection('meetings').doc(meetingId).update({
       status,
       updatedAt: new Date(),
     });
   }
   
   static async getUserMeetings(userId: string, limit: number = 20): Promise<Meeting[]> {
-    const snapshot = await adminDb
+    const snapshot = await ensureAdminDb()
       .collection('meetings')
       .where('participants', 'array-contains', userId)
       .orderBy('startTime', 'desc')
@@ -101,10 +110,11 @@ export class FirestoreService {
     meetingId: string, 
     entryData: Omit<TranscriptEntry, 'timestamp'>
   ): Promise<string> {
-    const entryRef = await adminDb
+    const entryRef = await ensureAdminDb()
       .collection('meetings')
       .doc(meetingId)
       .collection('transcripts')
+      .doc('main')
       .collection('entries')
       .add({
         ...entryData,
@@ -118,10 +128,11 @@ export class FirestoreService {
     startTime?: Date, 
     endTime?: Date
   ): Promise<TranscriptEntry[]> {
-    let query = adminDb
+    let query = ensureAdminDb()
       .collection('meetings')
       .doc(meetingId)
       .collection('transcripts')
+      .doc('main')
       .collection('entries')
       .orderBy('timestamp', 'asc');
     
@@ -146,7 +157,7 @@ export class FirestoreService {
     speakerId: string, 
     speakerData: Omit<SpeakerProfile, 'firstDetected'>
   ): Promise<void> {
-    await adminDb
+    await ensureAdminDb()
       .collection('meetings')
       .doc(meetingId)
       .collection('speakers')
@@ -160,9 +171,9 @@ export class FirestoreService {
   static async updateSpeakerStatistics(
     meetingId: string, 
     speakerId: string, 
-    statistics: Partial<SpeakerProfile['statistics']>
+    statistics: any
   ): Promise<void> {
-    await adminDb
+    await ensureAdminDb()
       .collection('meetings')
       .doc(meetingId)
       .collection('speakers')
@@ -175,7 +186,7 @@ export class FirestoreService {
   
   // Voice Profile Management
   static async getUserVoiceProfiles(userId: string): Promise<VoiceProfile[]> {
-    const snapshot = await adminDb
+    const snapshot = await ensureAdminDb()
       .collection('users')
       .doc(userId)
       .collection('voiceProfiles')
@@ -191,7 +202,7 @@ export class FirestoreService {
     userId: string, 
     profileData: Omit<VoiceProfile, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<string> {
-    const profileRef = await adminDb
+    const profileRef = await ensureAdminDb()
       .collection('users')
       .doc(userId)
       .collection('voiceProfiles')
@@ -208,7 +219,7 @@ export class FirestoreService {
     meetingId: string, 
     noteData: Omit<MeetingNote, 'timestamp'>
   ): Promise<string> {
-    const noteRef = await adminDb
+    const noteRef = await ensureAdminDb()
       .collection('meetings')
       .doc(meetingId)
       .collection('notes')
@@ -220,7 +231,7 @@ export class FirestoreService {
   }
   
   static async getMeetingNotes(meetingId: string): Promise<MeetingNote[]> {
-    const snapshot = await adminDb
+    const snapshot = await ensureAdminDb()
       .collection('meetings')
       .doc(meetingId)
       .collection('notes')
@@ -230,7 +241,7 @@ export class FirestoreService {
     return snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-    })) as MeetingNote[];
+    })) as any;
   }
   
   // Analytics
@@ -239,7 +250,7 @@ export class FirestoreService {
     analysisType: 'speaking-time' | 'sentiment' | 'topics',
     analytics: Record<string, any>
   ): Promise<void> {
-    await adminDb
+    await ensureAdminDb()
       .collection('meetings')
       .doc(meetingId)
       .collection('analytics')
@@ -254,7 +265,7 @@ export class FirestoreService {
     meetingId: string, 
     analysisType: 'speaking-time' | 'sentiment' | 'topics'
   ): Promise<Record<string, any> | null> {
-    const doc = await adminDb
+    const doc = await ensureAdminDb()
       .collection('meetings')
       .doc(meetingId)
       .collection('analytics')
@@ -275,7 +286,7 @@ export class FirestoreService {
       size: number;
     }
   ): Promise<void> {
-    await adminDb.collection('cache').collection('ttsCache').doc(cacheKey).set({
+    await ensureAdminDb().collection('ttsCache').doc(cacheKey).set({
       ...metadata,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
@@ -283,13 +294,13 @@ export class FirestoreService {
   }
   
   static async getTTSCacheEntry(cacheKey: string): Promise<any | null> {
-    const doc = await adminDb.collection('cache').collection('ttsCache').doc(cacheKey).get();
+    const doc = await ensureAdminDb().collection('ttsCache').doc(cacheKey).get();
     return doc.exists ? doc.data() : null;
   }
   
   // System Configuration
   static async getSystemConfig(configType: 'aiModels' | 'features' | 'limits'): Promise<any | null> {
-    const doc = await adminDb.collection('systemConfig').doc(configType).get();
+    const doc = await ensureAdminDb().collection('systemConfig').doc(configType).get();
     return doc.exists ? doc.data() : null;
   }
   
@@ -297,7 +308,7 @@ export class FirestoreService {
     configType: 'aiModels' | 'features' | 'limits',
     config: Record<string, any>
   ): Promise<void> {
-    await adminDb.collection('systemConfig').doc(configType).set({
+    await ensureAdminDb().collection('systemConfig').doc(configType).set({
       ...config,
       updatedAt: new Date(),
     });
@@ -314,7 +325,7 @@ export class FirestoreService {
       activeUsers: number;
     }
   ): Promise<void> {
-    await adminDb.collection('analytics').collection('daily').doc(date).set({
+    await ensureAdminDb().collection('dailyAnalytics').doc(date).set({
       ...metrics,
       date,
       updatedAt: new Date(),
@@ -326,13 +337,13 @@ export class FirestoreService {
     meetingId: string,
     speakerUpdates: Array<{
       speakerId: string;
-      statistics: Partial<SpeakerProfile['statistics']>;
+      statistics: any;
     }>
   ): Promise<void> {
-    const batch = adminDb.batch();
+    const batch = ensureAdminDb().batch();
     
     speakerUpdates.forEach(({ speakerId, statistics }) => {
-      const speakerRef = adminDb
+      const speakerRef = ensureAdminDb()
         .collection('meetings')
         .doc(meetingId)
         .collection('speakers')
@@ -350,13 +361,12 @@ export class FirestoreService {
   // Cleanup Operations
   static async cleanupExpiredCache(): Promise<number> {
     const now = new Date();
-    const expiredSnapshot = await adminDb
-      .collection('cache')
+    const expiredSnapshot = await ensureAdminDb()
       .collection('ttsCache')
       .where('expiresAt', '<', now)
       .get();
     
-    const batch = adminDb.batch();
+    const batch = ensureAdminDb().batch();
     expiredSnapshot.docs.forEach(doc => {
       batch.delete(doc.ref);
     });

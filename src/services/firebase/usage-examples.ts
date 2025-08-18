@@ -168,14 +168,27 @@ export class TranscriptProcessor {
     isFragment: boolean = false
   ): Promise<string> {
     try {
-      const transcriptEntry: Omit<TranscriptEntry, 'id'> = {
+      const transcriptEntry = {
         speaker: await this.getSpeakerName(speakerId),
         speakerId,
         text,
         timestamp: new Date(),
         confidence,
         isFragment,
-        isComplete: !isFragment
+        isComplete: !isFragment,
+        language: 'en',
+        content: text,
+        duration: 0,
+        meetingId: 'example-meeting',
+        type: 'transcript' as const,
+        metadata: {
+          volume: 0.5,
+          pace: 1.0,
+          sentiment: 'neutral',
+          keywords: [],
+        },
+        speakerName: await this.getSpeakerName(speakerId),
+        isProcessed: false,
       };
 
       return await DatabaseService.addTranscriptEntry(this.meetingId, transcriptEntry);
@@ -241,16 +254,23 @@ export class MeetingManager {
     participants: string[]
   ): Promise<string> {
     try {
-      const meeting: Omit<Meeting, 'meetingId'> = {
+      const meeting = {
         hostId,
         title,
         type,
         participants: participants.map(userId => ({
           userId,
-          userName: `User ${userId}`, // Would get actual name from user service
+          id: userId,
+          displayName: `User ${userId}`,
+          email: `${userId}@example.com`,
+          role: 'participant' as const,
+          joinedAt: new Date(),
+          leftAt: undefined,
+          userName: `User ${userId}`,
           voiceProfileId: `voice-${userId}`,
           joinTime: new Date(),
-          speakingTime: 0
+          speakingTime: 0,
+          isActive: true,
         })),
         transcript: [],
         notes: [],
@@ -260,7 +280,7 @@ export class MeetingManager {
         endTime: undefined
       };
 
-      this.meetingId = await DatabaseService.createMeeting(meeting);
+      this.meetingId = await DatabaseService.createMeeting(meeting as any);
       
       // Set up real-time listeners
       this.setupRealtimeListeners();
@@ -319,7 +339,7 @@ export class MeetingManager {
       }];
 
       await DatabaseService.updateMeeting(this.meetingId, {
-        participants: updatedParticipants
+        participants: updatedParticipants as any
       });
 
       console.log(`👤 Participant added: ${userName}`);
@@ -351,7 +371,7 @@ export class MeetingManager {
       });
 
       await DatabaseService.updateMeeting(this.meetingId, {
-        participants: updatedParticipants
+        participants: updatedParticipants as any
       });
 
     } catch (error) {

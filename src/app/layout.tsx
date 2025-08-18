@@ -12,7 +12,11 @@ export const metadata: Metadata = {
   description: "AI-powered meeting assistant with real-time transcription and intelligent responses",
   keywords: "AI, meeting assistant, transcription, voice recognition, productivity",
   authors: [{ name: "Universal Assistant Team" }],
-  viewport: "width=device-width, initial-scale=1",
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -22,9 +26,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </head>
       <body className={inter.className} suppressHydrationWarning>
         <ThemeProvider>
           <StoreProviders>

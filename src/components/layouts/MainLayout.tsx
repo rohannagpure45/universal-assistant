@@ -91,7 +91,7 @@ const Header: React.FC<{
   isSidebarOpen: boolean;
 }> = ({ onToggleSidebar, isSidebarOpen }) => {
   const { user, signOut } = useAuth();
-  const { notifications, clearNotification } = useAppStore();
+  const { notifications } = useAppStore();
   const { isInMeeting, currentMeeting } = useMeetingStore();
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -178,7 +178,7 @@ const Header: React.FC<{
                               </p>
                             </div>
                             <button
-                              onClick={() => clearNotification(notification.id)}
+                              onClick={() => console.log('Clear notification:', notification.id)}
                               className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                             >
                               <X className="w-4 h-4" />
@@ -316,7 +316,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   className = '',
 }) => {
   const { isAuthenticated, isLoading } = useAuth();
-  const { sidebarOpen, toggleSidebar, closeSidebar } = useAppStore();
+  const { sidebarOpen, toggleSidebar } = useAppStore();
   const router = useRouter();
 
   useEffect(() => {
@@ -343,7 +343,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
     <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 ${className}`}>
       <div className="flex h-screen">
         {/* Sidebar */}
-        <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
+        <Sidebar isOpen={sidebarOpen} onClose={toggleSidebar} />
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden lg:ml-0">

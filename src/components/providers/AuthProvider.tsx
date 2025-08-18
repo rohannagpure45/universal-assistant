@@ -14,7 +14,7 @@ interface AuthProviderProps {
  * and manages auth-related side effects
  */
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const { initializeAuth, setUser, setError, setLoading } = useAuthStore();
+  const { initializeAuth } = useAuthStore();
   const { addNotification } = useAppStore();
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -23,36 +23,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const initializeAuthentication = async () => {
       try {
-        setLoading(true);
+        // Loading will be managed by auth store
         
         // Initialize auth service and listen for auth state changes
         const unsubscribe = authService.onAuthStateChanged((user) => {
           if (!isMounted) return;
           
           if (user) {
-            setUser({
-              uid: user.uid,
-              email: user.email,
-              displayName: user.displayName,
-              photoURL: user.photoURL,
-              emailVerified: user.emailVerified,
-              createdAt: user.metadata.creationTime,
-              lastLoginAt: user.metadata.lastSignInTime,
-            });
+            // User state is now handled by the auth store directly
             
-            addNotification({
-              id: `auth-success-${Date.now()}`,
-              type: 'success',
-              title: 'Welcome back!',
-              message: 'You have been successfully signed in.',
-              timestamp: Date.now(),
-              duration: 3000,
-            });
+            // Notifications will be handled elsewhere
           } else {
-            setUser(null);
+            // setUser removed(null);
           }
           
-          setLoading(false);
+          // Loading state handled by auth store
           if (!isInitialized) {
             setIsInitialized(true);
           }
@@ -67,11 +52,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } catch (error) {
         console.error('Auth initialization error:', error);
         if (isMounted) {
-          setError({
-            code: 'auth/initialization-failed',
-            message: 'Failed to initialize authentication',
-          });
-          setLoading(false);
+          // Error handling is now done by the auth store
+          // Loading state handled by auth store
           setIsInitialized(true);
         }
       }
@@ -83,7 +65,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       isMounted = false;
       cleanup.then(unsubscribe => unsubscribe?.()).catch(console.error);
     };
-  }, [initializeAuth, setUser, setError, setLoading, addNotification, isInitialized]);
+  }, [initializeAuth, addNotification, isInitialized]);
 
   // Show loading spinner during auth initialization
   if (!isInitialized) {

@@ -413,9 +413,15 @@ export const useMeetingStore = create<MeetingStore>()(
           try {
             const entryId = await DatabaseService.addTranscriptEntry(meetingId, entry);
 
-            // Optimistic update - the real-time listener will handle the final state
+            // Optimistic update with race-safe de-duplication:
+            // If the realtime listener already inserted this id, update it instead of pushing a duplicate.
             set((state) => {
-              state.transcript.push({ ...entry, id: entryId });
+              const existingIndex = state.transcript.findIndex(t => t.id === entryId);
+              if (existingIndex !== -1) {
+                state.transcript[existingIndex] = { ...state.transcript[existingIndex], ...entry, id: entryId };
+              } else {
+                state.transcript.push({ ...entry, id: entryId });
+              }
             });
 
             return entryId;
@@ -691,6 +697,19 @@ export const useMeetingStore = create<MeetingStore>()(
                           entry => entry.id === change.doc.id
                         );
                         if (existingIndex === -1) {
+                          // UI-level duplicate guard: if the newest entry for the same speaker
+                          // in the last few seconds has identical text (case-insensitive), skip.
+                          const last = state.transcript.length > 0 ? state.transcript[state.transcript.length - 1] : null;
+                          if (last) {
+                            const sameSpeaker = last.speakerId === change.doc.speakerId;
+                            const t1 = last.timestamp instanceof Date ? last.timestamp.getTime() : new Date(last.timestamp as any).getTime();
+                            const t2 = change.doc.timestamp instanceof Date ? change.doc.timestamp.getTime() : new Date(change.doc.timestamp as any).getTime();
+                            const withinWindow = Math.abs(t2 - t1) <= 12000;
+                            const sameText = (last.text || '').trim().toLowerCase() === (change.doc.text || '').trim().toLowerCase();
+                            if (sameSpeaker && withinWindow && sameText) {
+                              break;
+                            }
+                          }
                           state.transcript.push(change.doc);
                         }
                         break;

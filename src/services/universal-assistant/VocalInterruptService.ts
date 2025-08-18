@@ -1,5 +1,5 @@
-import { enhancedMessageQueueManager } from './EnhancedMessageQueueManager';
-import { streamingTTSService } from './StreamingTTSService';
+import type { EnhancedMessageQueueManager } from './EnhancedMessageQueueManager';
+import type { StreamingTTSService } from './StreamingTTSService';
 import { useAppStore } from '@/stores/appStore';
 import { nanoid } from 'nanoid';
 

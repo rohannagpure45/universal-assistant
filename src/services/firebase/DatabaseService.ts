@@ -405,11 +405,47 @@ export class DatabaseService {
     transcriptData: Omit<TranscriptEntry, 'id'>
   ): Promise<string> {
     try {
+      // Dedupe-at-write: if the most recent transcript (same speaker) within a short window
+      // has identical normalized text, update it instead of creating a new doc.
+      const transcriptsCol = collection(db, 'meetings', meetingId, 'transcripts');
+      const latestQuery = query(
+        transcriptsCol,
+        orderBy('timestamp', 'desc'),
+        limit(1)
+      );
+      const latestSnap = await getDocs(latestQuery);
+      const normalize = (s: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const newTextNorm = normalize(transcriptData.text);
+      const newSpeaker = transcriptData.speakerId;
+      const newTs = transcriptData.timestamp instanceof Date ? transcriptData.timestamp.getTime() : new Date(transcriptData.timestamp as any).getTime();
+      const windowMs = 12000; // 12 seconds
+
+      if (!latestSnap.empty) {
+        const docSnap = latestSnap.docs[0];
+        const latest = convertTimestamps({ id: docSnap.id, ...docSnap.data() }) as TranscriptEntry;
+        const latestTextNorm = normalize(latest.text);
+        const latestSpeaker = latest.speakerId;
+        const latestTs = latest.timestamp instanceof Date ? latest.timestamp.getTime() : new Date(latest.timestamp as any).getTime();
+
+        const sameSpeaker = latestSpeaker === newSpeaker;
+        const withinWindow = Math.abs(newTs - latestTs) <= windowMs;
+        const sameText = latestTextNorm === newTextNorm;
+
+        if (sameSpeaker && withinWindow && sameText) {
+          await updateDoc(doc(db, 'meetings', meetingId, 'transcripts', docSnap.id), convertDatesToTimestamps({
+            // prefer higher confidence and newer timestamp
+            text: transcriptData.text,
+            confidence: Math.max((latest.confidence || 0) as number, (transcriptData.confidence || 0) as number),
+            timestamp: transcriptData.timestamp,
+          }));
+          return docSnap.id;
+        }
+      }
+
       const transcriptRef = await addDoc(
-        collection(db, 'meetings', meetingId, 'transcripts'),
+        transcriptsCol,
         convertDatesToTimestamps(transcriptData)
       );
-      
       return transcriptRef.id;
     } catch (error) {
       throw new DatabaseError(

@@ -59,6 +59,10 @@ export class DeepgramService {
       });
 
       connection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
+        // Only forward final transcripts to avoid duplicate interim updates
+        if (!data?.is_final) {
+          return;
+        }
         const result = this.processDiarizationResult(data);
         if (result && onTranscript) {
           onTranscript(result);

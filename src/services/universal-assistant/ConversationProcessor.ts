@@ -586,4 +586,16 @@ export class ConversationProcessor {
   }
 }
 
-export const conversationProcessor = new ConversationProcessor();
+/**
+ * Factory function to create ConversationProcessor instance
+ * Use this instead of the singleton to avoid SSR issues
+ */
+export function createConversationProcessor(config?: Partial<ConversationProcessorConfig>): ConversationProcessor {
+  return new ConversationProcessor(config);
+}
+
+/**
+ * @deprecated Use createConversationProcessor() factory function instead to avoid SSR issues
+ * This singleton export will be removed in a future version
+ */
+export const conversationProcessor = typeof window !== 'undefined' ? new ConversationProcessor() : null as any;

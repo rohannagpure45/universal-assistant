@@ -941,5 +941,16 @@ export class StreamingTTSService {
   }
 }
 
-// Export singleton instance
-export const streamingTTSService = new StreamingTTSService();
+/**
+ * Factory function to create StreamingTTSService instance
+ * Use this instead of the singleton to avoid SSR issues
+ */
+export function createStreamingTTSService(): StreamingTTSService {
+  return new StreamingTTSService();
+}
+
+/**
+ * @deprecated Use createStreamingTTSService() factory function instead to avoid SSR issues
+ * This singleton export will be removed in a future version
+ */
+export const streamingTTSService = typeof window !== 'undefined' ? new StreamingTTSService() : null as any;

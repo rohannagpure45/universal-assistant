@@ -211,6 +211,12 @@ const Sidebar: React.FC<{
 
   const navigationItems: NavigationItem[] = [
     {
+      label: 'Meeting',
+      href: '/meeting',
+      icon: Mic,
+      active: pathname === '/meeting',
+    },
+    {
       label: 'Dashboard',
       href: '/dashboard',
       icon: Home,

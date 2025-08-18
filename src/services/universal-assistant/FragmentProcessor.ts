@@ -136,13 +136,22 @@ export class FragmentProcessor {
       previousUtterances?: string[];
     }
   ): ProcessResult {
+    console.log('[FragmentProcessor] Received input:', {
+      text,
+      speakerId,
+      timestamp,
+      context
+    });
+    
     const trimmedText = text.trim();
     if (!trimmedText) {
+      console.log('[FragmentProcessor] Empty text after trimming, returning FRAGMENT');
       return { type: 'FRAGMENT', shouldRespond: false, shouldWait: true };
     }
 
     // Update conversation history
     this.updateConversationHistory(trimmedText, speakerId, timestamp);
+    console.log('[FragmentProcessor] Updated conversation history, total entries:', this.conversationHistory.length);
 
     // Analyze the fragment using existing FragmentDetector
     const analysis = this.fragmentDetector.analyzeUtterance(trimmedText, {

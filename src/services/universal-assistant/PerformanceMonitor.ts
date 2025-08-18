@@ -7,6 +7,24 @@
 
 import { LatencyMetrics, PipelineError } from './RealtimeAudioPipeline';
 import { nanoid } from 'nanoid';
+import {
+  PerformanceMetrics,
+  PerformanceTrend,
+  PerformanceScore,
+  PerformanceAlert,
+  PerformanceThreshold,
+  FallbackTracking,
+  ModelPerformanceAnalysis,
+  ResourceMonitoring,
+  PerformanceAnalytics,
+  PerformanceOptimization,
+  CostPerformanceCorrelation,
+  PerformanceMonitoringConfig,
+  PerformancePeriod,
+  TrendDirection
+} from '@/types/performance';
+import { AIModel } from '@/types';
+import { APICall, CostBreakdown } from '@/types/cost';
 
 export interface PerformanceReport {
   id: string;
@@ -109,19 +127,83 @@ export class PerformanceMonitor {
   private activeAlerts: Map<string, PerformanceAlert> = new Map();
   private lastAlertTimes: Map<string, number> = new Map();
   
+  // Enhanced monitoring data
+  private enhancedMetrics: PerformanceMetrics[] = [];
+  private fallbackHistory: FallbackTracking[] = [];
+  private resourceHistory: ResourceMonitoring[] = [];
+  private performanceThresholds: Map<string, PerformanceThreshold> = new Map();
+  private modelAnalytics: Map<AIModel, ModelPerformanceAnalysis> = new Map();
+  private costData: APICall[] = [];
+  private optimizations: Map<string, PerformanceOptimization> = new Map();
+  private trends: Map<string, PerformanceTrend> = new Map();
+  
   // Configuration
   private reportingInterval: number = 60000; // 1 minute
   private maxHistorySize: number = 10000;
   private targetLatency: number = 350;
   private maxLatency: number = 500;
+  private config: PerformanceMonitoringConfig;
+  
+  // Enhanced monitoring state
+  private resourceMonitoringInterval: NodeJS.Timeout | null = null;
+  private trendAnalysisInterval: NodeJS.Timeout | null = null;
+  private fallbackTracker: Map<string, number> = new Map();
+  private performanceScore: PerformanceScore | null = null;
   
   // Monitoring state
   private isMonitoring: boolean = false;
   private reportingTimer: NodeJS.Timeout | null = null;
 
-  constructor(targetLatency: number = 350) {
+  constructor(targetLatency: number = 350, config?: Partial<PerformanceMonitoringConfig>) {
     this.targetLatency = targetLatency;
+    this.config = {
+      enabled: true,
+      metricsCollection: {
+        interval: 5000,
+        retention: 30,
+        detailLevel: 'detailed'
+      },
+      alerting: {
+        enabled: true,
+        channels: ['email'],
+        escalation: {
+          warning: 15,
+          critical: 5
+        }
+      },
+      fallbackTracking: {
+        enabled: true,
+        trackReasons: true,
+        trackImpact: true
+      },
+      resourceMonitoring: {
+        enabled: true,
+        interval: 10000,
+        thresholds: {
+          memoryWarning: 80,
+          memoryCritical: 95,
+          cpuWarning: 80,
+          cpuCritical: 95,
+          storageWarning: 85,
+          storageCritical: 95
+        }
+      },
+      reporting: {
+        dailyReports: true,
+        weeklyReports: true,
+        monthlyReports: true,
+        recipients: []
+      },
+      optimization: {
+        autoOptimization: false,
+        testingEnabled: true,
+        rollbackThreshold: 10
+      },
+      ...config
+    };
+    
     this.initializeDefaultAlertRules();
+    this.initializePerformanceThresholds();
   }
 
   /**
@@ -657,9 +739,364 @@ export class PerformanceMonitor {
     this.activeAlerts.clear();
   }
 
+  /**
+   * Collect system resource metrics
+   */
+  private async collectResourceMetrics(): Promise<void> {
+    try {
+      // Get system metrics (this would integrate with actual system monitoring)
+      const resourceMetrics: ResourceMonitoring = {
+        timestamp: Date.now(),
+        system: {
+          memory: {
+            total: this.getSystemMemoryTotal(),
+            used: this.getSystemMemoryUsed(),
+            free: this.getSystemMemoryFree(),
+            percentage: this.getSystemMemoryPercentage(),
+            swapUsed: this.getSystemSwapUsed()
+          },
+          cpu: {
+            percentage: this.getSystemCpuUsage(),
+            loadAverage: this.getSystemLoadAverage(),
+            cores: this.getSystemCores(),
+            processes: this.getSystemProcesses()
+          },
+          network: {
+            bytesReceived: this.getNetworkBytesReceived(),
+            bytesSent: this.getNetworkBytesSent(),
+            packetsReceived: this.getNetworkPacketsReceived(),
+            packetsSent: this.getNetworkPacketsSent(),
+            connectionsActive: this.getNetworkActiveConnections()
+          },
+          storage: {
+            totalSpace: this.getStorageTotal(),
+            usedSpace: this.getStorageUsed(),
+            freeSpace: this.getStorageFree(),
+            percentage: this.getStoragePercentage()
+          }
+        },
+        application: {
+          heapUsed: this.getHeapUsed(),
+          heapTotal: this.getHeapTotal(),
+          external: this.getHeapExternal(),
+          activeConnections: this.getActiveConnections(),
+          pendingRequests: this.getPendingRequests(),
+          cacheSize: this.getCacheSize(),
+          sessionCount: this.getSessionCount()
+        },
+        thresholds: this.config.resourceMonitoring.thresholds
+      };
+      
+      this.resourceHistory.push(resourceMetrics);
+      
+      // Maintain history size
+      if (this.resourceHistory.length > this.maxHistorySize) {
+        this.resourceHistory = this.resourceHistory.slice(-this.maxHistorySize);
+      }
+      
+      // Check resource thresholds
+      this.checkResourceThresholds(resourceMetrics);
+      
+    } catch (error) {
+      console.error('Failed to collect resource metrics:', error);
+    }
+  }
+  
+  /**
+   * Analyze performance trends
+   */
+  private analyzeTrends(): void {
+    const now = Date.now();
+    const periods: { name: string; duration: number }[] = [
+      { name: 'hourly', duration: 3600000 },
+      { name: 'daily', duration: 86400000 },
+      { name: 'weekly', duration: 604800000 }
+    ];
+    
+    periods.forEach(period => {
+      const startTime = now - period.duration;
+      const periodMetrics = this.enhancedMetrics.filter(m => m.timestamp >= startTime);
+      
+      if (periodMetrics.length > 0) {
+        const trend = this.calculateTrend(periodMetrics, period.name);
+        this.trends.set(period.name, trend);
+      }
+    });
+  }
+  
+  /**
+   * Calculate trend for a specific period
+   */
+  private calculateTrend(metrics: PerformanceMetrics[], period: string): PerformanceTrend {
+    const latencies = metrics.map(m => m.latency.total);
+    const fallbacks = metrics.filter(m => m.context.fallbackUsed);
+    
+    // Calculate latency percentiles
+    const sortedLatencies = [...latencies].sort((a, b) => a - b);
+    const p50 = sortedLatencies[Math.floor(sortedLatencies.length * 0.5)];
+    const p95 = sortedLatencies[Math.floor(sortedLatencies.length * 0.95)];
+    const p99 = sortedLatencies[Math.floor(sortedLatencies.length * 0.99)];
+    
+    const averageLatency = latencies.reduce((sum, l) => sum + l, 0) / latencies.length;
+    const throughput = metrics.length / (metrics[metrics.length - 1].timestamp - metrics[0].timestamp) * 1000;
+    const errorRate = metrics.filter(m => m.context.retryCount > 0).length / metrics.length;
+    const successRate = 1 - errorRate;
+    
+    // Calculate scores
+    const latencyScore = Math.max(0, 100 - (averageLatency - this.targetLatency) / this.targetLatency * 100);
+    const reliabilityScore = successRate * 100;
+    const efficiencyScore = this.calculateEfficiencyScore(metrics);
+    const qualityScore = this.calculateQualityScore(metrics);
+    const overallScore = (latencyScore * 0.3 + reliabilityScore * 0.3 + efficiencyScore * 0.2 + qualityScore * 0.2);
+    
+    // Calculate fallback analysis
+    const fallbacksByReason: Record<string, number> = {};
+    fallbacks.forEach(m => {
+      const reason = m.context.fallbackReason || 'unknown';
+      fallbacksByReason[reason] = (fallbacksByReason[reason] || 0) + 1;
+    });
+    
+    return {
+      period: new Date().toISOString().split('T')[0],
+      metrics: {
+        averageLatency,
+        p50Latency: p50,
+        p95Latency: p95,
+        p99Latency: p99,
+        throughput,
+        errorRate,
+        successRate
+      },
+      scores: {
+        overall: overallScore,
+        latency: latencyScore,
+        reliability: reliabilityScore,
+        efficiency: efficiencyScore,
+        quality: qualityScore
+      },
+      fallbacks: {
+        total: fallbacks.length,
+        byReason: fallbacksByReason,
+        impactOnLatency: this.calculateFallbackLatencyImpact(fallbacks)
+      },
+      comparison: {
+        previousPeriod: this.calculatePeriodComparison(period)
+      }
+    };
+  }
+  
+  // Helper methods for system metrics (would integrate with actual system monitoring)
+  private getSystemMemoryTotal(): number { return process.memoryUsage().heapTotal || 0; }
+  private getSystemMemoryUsed(): number { return process.memoryUsage().heapUsed || 0; }
+  private getSystemMemoryFree(): number { return this.getSystemMemoryTotal() - this.getSystemMemoryUsed(); }
+  private getSystemMemoryPercentage(): number { return (this.getSystemMemoryUsed() / this.getSystemMemoryTotal()) * 100; }
+  private getSystemSwapUsed(): number { return 0; } // Would implement actual swap monitoring
+  private getSystemCpuUsage(): number { return 0; } // Would implement actual CPU monitoring
+  private getSystemLoadAverage(): number[] { return [0, 0, 0]; } // Would implement actual load average
+  private getSystemCores(): number { return require('os').cpus().length; }
+  private getSystemProcesses(): number { return 0; } // Would implement actual process counting
+  private getNetworkBytesReceived(): number { return 0; } // Would implement actual network monitoring
+  private getNetworkBytesSent(): number { return 0; }
+  private getNetworkPacketsReceived(): number { return 0; }
+  private getNetworkPacketsSent(): number { return 0; }
+  private getNetworkActiveConnections(): number { return 0; }
+  private getStorageTotal(): number { return 0; } // Would implement actual storage monitoring
+  private getStorageUsed(): number { return 0; }
+  private getStorageFree(): number { return 0; }
+  private getStoragePercentage(): number { return 0; }
+  private getHeapUsed(): number { return process.memoryUsage().heapUsed; }
+  private getHeapTotal(): number { return process.memoryUsage().heapTotal; }
+  private getHeapExternal(): number { return process.memoryUsage().external; }
+  private getActiveConnections(): number { return 0; } // Would implement actual connection monitoring
+  private getPendingRequests(): number { return 0; }
+  private getCacheSize(): number { return 0; }
+  private getSessionCount(): number { return 0; }
+  
+  private calculateEfficiencyScore(metrics: PerformanceMetrics[]): number {
+    // Combine resource usage efficiency with cache hit rate
+    const cacheHitRate = metrics.filter(m => m.context.cacheHit).length / metrics.length;
+    const resourceEfficiency = 80; // Would calculate based on actual resource usage
+    
+    return (cacheHitRate * 40 + resourceEfficiency * 0.6);
+  }
+  
+  private calculateQualityScore(metrics: PerformanceMetrics[]): number {
+    // Average quality metrics where available
+    const qualityMetrics = metrics.filter(m => m.quality.transcriptionAccuracy !== undefined);
+    if (qualityMetrics.length === 0) return 85; // Default score
+    
+    const avgAccuracy = qualityMetrics.reduce((sum, m) => sum + (m.quality.transcriptionAccuracy || 0), 0) / qualityMetrics.length;
+    const avgRelevance = qualityMetrics.reduce((sum, m) => sum + (m.quality.responseRelevance || 0), 0) / qualityMetrics.length;
+    
+    return (avgAccuracy + avgRelevance) / 2;
+  }
+  
+  private calculateFallbackLatencyImpact(fallbacks: PerformanceMetrics[]): number {
+    if (fallbacks.length === 0) return 0;
+    
+    const fallbackLatencies = fallbacks.map(m => m.latency.total);
+    const allLatencies = this.enhancedMetrics.map(m => m.latency.total);
+    
+    const fallbackAvg = fallbackLatencies.reduce((sum, l) => sum + l, 0) / fallbackLatencies.length;
+    const overallAvg = allLatencies.reduce((sum, l) => sum + l, 0) / allLatencies.length;
+    
+    return fallbackAvg - overallAvg;
+  }
+  
+  private calculatePeriodComparison(period: string): PerformanceTrend['comparison']['previousPeriod'] {
+    // Would compare with previous period data
+    return {
+      latencyChange: 0,
+      throughputChange: 0,
+      errorRateChange: 0,
+      trend: 'stable'
+    };
+  }
+
+  // Enhanced public API methods
+  public getPerformanceScore(): PerformanceScore | null {
+    return this.performanceScore;
+  }
+  
+  public getPerformanceTrends(period?: PerformancePeriod): PerformanceTrend[] {
+    if (period) {
+      const trend = this.trends.get(period);
+      return trend ? [trend] : [];
+    }
+    return Array.from(this.trends.values());
+  }
+  
+  public getModelAnalytics(model?: AIModel): ModelPerformanceAnalysis[] {
+    if (model) {
+      const analysis = this.modelAnalytics.get(model);
+      return analysis ? [analysis] : [];
+    }
+    return Array.from(this.modelAnalytics.values());
+  }
+  
+  public getFallbackHistory(limit?: number): FallbackTracking[] {
+    return limit ? this.fallbackHistory.slice(-limit) : [...this.fallbackHistory];
+  }
+  
+  public getResourceMetrics(limit?: number): ResourceMonitoring[] {
+    return limit ? this.resourceHistory.slice(-limit) : [...this.resourceHistory];
+  }
+
   // Event handlers (would be connected to notification systems)
   public onAlert?: (alert: PerformanceAlert) => void;
   public onReport?: (report: PerformanceReport) => void;
+  public onPerformanceAlert?: (alert: PerformanceAlert) => void;
+  public onResourceAlert?: (alert: PerformanceAlert) => void;
+  public onTrendChange?: (trend: PerformanceTrend) => void;
 }
 
 export const performanceMonitor = new PerformanceMonitor();
+
+// Export enhanced monitor with fallback tracking capabilities
+export class EnhancedPerformanceMonitor extends PerformanceMonitor {
+  constructor(config?: Partial<PerformanceMonitoringConfig>) {
+    super(350, config);
+  }
+  
+  /**
+   * Fallback tracking method for when primary metrics fail
+   */
+  public trackFallbackMetrics(context: {
+    operation: string;
+    startTime: number;
+    endTime: number;
+    success: boolean;
+    error?: string;
+  }): void {
+    const fallbackMetrics: PerformanceMetrics = {
+      id: nanoid(),
+      timestamp: context.endTime,
+      latency: {
+        total: context.endTime - context.startTime,
+        stages: {
+          audioCapture: 0,
+          speechToText: 0,
+          textProcessing: context.endTime - context.startTime,
+          aiResponse: 0,
+          textToSpeech: 0,
+          audioPlayback: 0
+        },
+        network: {
+          deepgram: 0,
+          openai: 0,
+          anthropic: 0,
+          elevenlabs: 0
+        }
+      },
+      resources: {
+        memory: {
+          used: this.getHeapUsed(),
+          available: this.getHeapTotal() - this.getHeapUsed(),
+          percentage: (this.getHeapUsed() / this.getHeapTotal()) * 100
+        },
+        cpu: {
+          usage: 0,
+          cores: this.getSystemCores()
+        },
+        network: {
+          bytesIn: 0,
+          bytesOut: 0,
+          bandwidth: 0
+        }
+      },
+      quality: {},
+      context: {
+        modelUsed: 'gpt-4o' as AIModel,
+        fallbackUsed: true,
+        fallbackReason: 'primary_metrics_failed',
+        retryCount: context.success ? 0 : 1,
+        cacheHit: false
+      }
+    };
+    
+    this.recordEnhancedMetrics(fallbackMetrics);
+  }
+  
+  /**
+   * Emergency performance assessment when all monitoring fails
+   */
+  public emergencyPerformanceCheck(): {
+    status: 'healthy' | 'degraded' | 'critical';
+    issues: string[];
+    recommendations: string[];
+  } {
+    const issues: string[] = [];
+    const recommendations: string[] = [];
+    
+    // Basic health checks
+    const memoryUsage = (this.getHeapUsed() / this.getHeapTotal()) * 100;
+    if (memoryUsage > 90) {
+      issues.push('High memory usage');
+      recommendations.push('Restart service or clear cache');
+    }
+    
+    // Check if monitoring is working
+    const recentMetrics = this.enhancedMetrics.filter(m => 
+      Date.now() - m.timestamp < 300000 // Last 5 minutes
+    );
+    
+    if (recentMetrics.length === 0) {
+      issues.push('No recent performance data');
+      recommendations.push('Check monitoring system');
+    }
+    
+    // Determine status
+    let status: 'healthy' | 'degraded' | 'critical';
+    if (issues.length === 0) {
+      status = 'healthy';
+    } else if (issues.length <= 2) {
+      status = 'degraded';
+    } else {
+      status = 'critical';
+    }
+    
+    return { status, issues, recommendations };
+  }
+}
+
+export const enhancedPerformanceMonitor = new EnhancedPerformanceMonitor();

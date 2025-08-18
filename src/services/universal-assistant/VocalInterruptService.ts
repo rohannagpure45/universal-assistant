@@ -435,7 +435,7 @@ export class VocalInterruptService {
       // Guard against SSR or uninitialized singletons
       enhancedMessageQueueManager?.interrupt?.();
       const active = streamingTTSService?.getActiveSessions?.() || [];
-      active.forEach(session => {
+      active.forEach((session: any) => {
         streamingTTSService?.cancelSession?.(session.sessionId);
       });
 

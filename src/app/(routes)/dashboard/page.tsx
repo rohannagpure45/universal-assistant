@@ -16,9 +16,12 @@ import {
   Plus,
   PlayCircle,
   PauseCircle,
-  StopCircle
+  StopCircle,
+  DollarSign
 } from 'lucide-react';
 import { MeetingType } from '@/types';
+import { CostTracker } from '@/components/dashboard/CostTracker';
+import { useCostSummary } from '@/stores/costStore';
 
 interface DashboardCardProps {
   title: string;
@@ -188,6 +191,7 @@ export default function DashboardPage() {
   const { user } = useAuthStore();
   const { recentMeetings: meetings, isInMeeting, currentMeeting } = useMeetingStore();
   const { addNotification } = useAppStore();
+  const costSummary = useCostSummary();
 
   // Mock data for demonstration
   const dashboardStats = {
@@ -285,6 +289,37 @@ export default function DashboardPage() {
           />
         </div>
 
+        {/* Cost Summary Card */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Cost Summary
+            </h3>
+            <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Total Cost</p>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">
+                ${costSummary.totalCost.toFixed(3)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">API Calls</p>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">
+                {costSummary.totalCalls.toLocaleString()}
+              </p>
+            </div>
+          </div>
+          {costSummary.activeBudgets > 0 && (
+            <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+              <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                {costSummary.activeBudgets} budget(s) need attention
+              </p>
+            </div>
+          )}
+        </div>
+
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Meetings */}
@@ -332,6 +367,11 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Cost Tracking Section */}
+        <div className="space-y-6">
+          <CostTracker />
         </div>
       </div>
     </MainLayout>

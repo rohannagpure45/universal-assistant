@@ -254,13 +254,17 @@ export default function MeetingPage() {
         hostId: user.uid,
         createdBy: user.uid,
         participants: [{
+          id: user.uid + '-participant',
           userId: user.uid,
+          userName: user.displayName || user.email?.split('@')[0] || 'Host',
           displayName: user.displayName || user.email?.split('@')[0] || 'Host',
           email: user.email || '',
+          voiceProfileId: 'default-voice-profile',
           role: 'host' as const,
           joinTime: new Date(),
+          joinedAt: new Date(),
           speakingTime: 0,
-          isHost: true
+          isActive: true
         }],
         keywords: [],
         notes: [],

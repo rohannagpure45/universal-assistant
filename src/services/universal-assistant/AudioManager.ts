@@ -324,7 +324,8 @@ export class AudioManager {
         this.analyserNode.smoothingTimeConstant = 0.8;
         
         // Create data array for frequency analysis
-        this.audioDataArray = new Uint8Array(this.analyserNode.frequencyBinCount);
+        const arrayBuffer = new ArrayBuffer(this.analyserNode.frequencyBinCount);
+        this.audioDataArray = new Uint8Array(arrayBuffer);
         
         // Connect source to analyser
         source.connect(this.analyserNode);
@@ -365,7 +366,7 @@ export class AudioManager {
         }
         
         // OPTIMIZATION 2: Reduced frequency domain analysis - only sample key frequencies
-        this.analyserNode.getByteFrequencyData(this.audioDataArray);
+        this.analyserNode.getByteFrequencyData(this.audioDataArray as Uint8Array<ArrayBuffer>);
         
         // Voice typically occurs in 300-3400 Hz range
         // Sample only these frequencies for better performance (roughly 1/8 of full spectrum)
@@ -382,7 +383,7 @@ export class AudioManager {
         // OPTIMIZATION 3: Use cached RMS calculation every other chunk to reduce CPU load
         let rmsLevel = 0;
         if (this.vadChunkCount % 2 === 0) {
-          this.analyserNode.getByteTimeDomainData(this.audioDataArray);
+          this.analyserNode.getByteTimeDomainData(this.audioDataArray as Uint8Array<ArrayBuffer>);
           let rmsSum = 0;
           // Sample every 4th value for performance
           for (let i = 0; i < this.audioDataArray.length; i += 4) {

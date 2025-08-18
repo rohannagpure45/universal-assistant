@@ -591,7 +591,7 @@ export class ConversationProcessor {
  * Use this instead of the singleton to avoid SSR issues
  */
 export function createConversationProcessor(config?: Partial<ConversationProcessorConfig>): ConversationProcessor {
-  return new ConversationProcessor(config);
+  return new ConversationProcessor(undefined, undefined, undefined, config);
 }
 
 /**

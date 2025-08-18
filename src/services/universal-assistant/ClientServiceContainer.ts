@@ -49,15 +49,23 @@ export class ClientServiceContainer {
     };
     
     this.conversationProcessorConfig = {
-      enableSemanticAnalysis: true,
-      enableEmotionDetection: true,
-      maxBufferSize: 50,
+      enableContextTracking: true,
+      enableInterruptDetection: true,
+      enableInputGating: true,
+      enableConcurrentProcessing: false,
+      responseDelayMs: 500,
     };
     
     this.fragmentProcessorConfig = {
-      minFragmentLength: 10,
-      maxFragmentAge: 30000,
-      enableContextAnalysis: true,
+      silenceThreshold: 2000,
+      bufferTimeout: 10000,
+      minFragmentsForAggregation: 2,
+      maxBufferSize: 10,
+      confidenceThreshold: 0.6,
+      enableSemanticAnalysis: true,
+      semanticAnalysisDepth: 'standard',
+      enableEmotionDetection: true,
+      enableActionItemExtraction: true,
     };
   }
   
@@ -337,7 +345,7 @@ export class ClientServiceContainer {
               timestamp,
               confidence: processResult.confidence || result.confidence,
               silenceDuration: 0, // Would need to be calculated from audio
-              previousSpeaker: null // Would need speaker tracking
+              previousSpeaker: undefined // Would need speaker tracking
             }
           };
           
@@ -395,11 +403,9 @@ export class ClientServiceContainer {
       this._deepgramSTT = null;
     }
     if (this._conversationProcessor) {
-      this._conversationProcessor.cleanup?.();
       this._conversationProcessor = null;
     }
     if (this._fragmentProcessor) {
-      this._fragmentProcessor.cleanup?.();
       this._fragmentProcessor = null;
     }
     
@@ -429,7 +435,7 @@ export class ClientServiceContainer {
   }
   
   private createConversationProcessor(config: Partial<ConversationProcessorConfig>): ConversationProcessor {
-    return new ConversationProcessor(config);
+    return new ConversationProcessor(undefined, undefined, undefined, config);
   }
   
   private createDeepgramSTT(apiKey: string): DeepgramSTT {
@@ -445,7 +451,10 @@ export class ClientServiceContainer {
   }
   
   private createSpeakerIdentificationService(): SpeakerIdentificationService {
-    return new SpeakerIdentificationService();
+    // Create placeholder services - these would need proper implementation
+    const nameRecognitionService = {} as any; // Placeholder
+    const diarizationService = {} as any; // Placeholder
+    return new SpeakerIdentificationService(nameRecognitionService, diarizationService);
   }
   
   private createVocalInterruptService(): VocalInterruptService {

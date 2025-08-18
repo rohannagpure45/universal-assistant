@@ -98,8 +98,25 @@ export function useUniversalAssistantClient() {
               }
             }
 
-            console.log('Adding transcript entry:', entry);
-            store.addTranscriptEntry(entry);
+            // Convert simplified entry to full TranscriptEntry format
+            const fullEntry = {
+              meetingId: store.currentMeeting.meetingId,
+              content: entry.text,
+              speaker: entry.speakerId,
+              speakerId: entry.speakerId,
+              speakerName: entry.speakerId,
+              text: entry.text,
+              timestamp: entry.timestamp,
+              duration: 0,
+              confidence: entry.confidence,
+              language: 'en-US',
+              isFragment: false,
+              isComplete: entry.isFinal,
+              isProcessed: false
+            };
+
+            console.log('Adding transcript entry:', fullEntry);
+            store.addTranscriptEntry(fullEntry);
           } else {
             console.warn('No current meeting found to add transcript entry:', {
               hasCurrentMeeting: !!store.currentMeeting,
@@ -199,7 +216,7 @@ export function useUniversalAssistantClient() {
       const { audioManager } = servicesRef.current;
       
       // Stop any current audio playback
-      audioManager.stopPlayback?.();
+      audioManager.stopAllAudio();
       
       // Simulate processing delay
       setTimeout(() => {

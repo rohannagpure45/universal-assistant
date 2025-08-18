@@ -10,6 +10,11 @@ import { AIModel } from '@/types';
  * Used by UniversalAssistantCoordinator for real-time AI responses
  */
 export async function POST(request: NextRequest) {
+  let decodedToken: any;
+  let text: string = '';
+  let model: AIModel = 'claude-3-5-sonnet';
+  let body: any = {};
+  
   try {
     // Verify authentication
     const authHeader = request.headers.get('authorization');
@@ -21,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     const idToken = authHeader.split('Bearer ')[1];
-    const decodedToken = await verifyIdToken(idToken);
+    decodedToken = await verifyIdToken(idToken);
     
     if (!decodedToken) {
       return NextResponse.json(
@@ -31,15 +36,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const body = await request.json();
+    body = await request.json();
     const { 
-      text, 
+      text: requestText, 
       context, 
       meetingType, 
       participants,
-      model = 'claude-3-5-sonnet' as AIModel,
+      model: requestModel = 'claude-3-5-sonnet' as AIModel,
       options = {}
     } = body;
+    
+    text = requestText;
+    model = requestModel;
 
     // Validate required fields
     if (!text || typeof text !== 'string') {
@@ -68,19 +76,27 @@ export async function POST(request: NextRequest) {
       ...context
     };
 
-    // Generate AI response
+    // Prepare context array for AI response
+    const contextArray = context ? Object.values(context).filter(val => typeof val === 'string') : [];
+    
+    // Generate AI response with cost tracking
     const startTime = Date.now();
-    const response = await aiService.generateResponse(text, aiContext, {
-      model,
-      maxTokens: options.maxTokens || 1000,
-      temperature: options.temperature || 0.7,
-      ...options
-    });
+    const response = await aiService.generateResponse(
+      text, 
+      model as AIModel, 
+      contextArray,
+      {
+        userId: decodedToken.uid,
+        meetingId: body.meetingId,
+        operation: 'ai_response_generation'
+      }
+    );
 
     const latency = Date.now() - startTime;
 
-    // Log for monitoring
-    console.log(`AI response generated for user ${decodedToken.uid}: ${latency}ms latency`);
+    // Log for monitoring with cost information
+    const costInfo = response.cost ? ` ($${response.cost.toFixed(4)})` : '';
+    console.log(`AI response generated for user ${decodedToken.uid}: ${latency}ms latency${costInfo}`);
 
     return NextResponse.json({
       success: true,
@@ -88,14 +104,37 @@ export async function POST(request: NextRequest) {
         text: response.text,
         model: response.model,
         tokensUsed: response.tokensUsed,
-        latency,
-        timestamp: new Date().toISOString()
+        latency: response.latency,
+        timestamp: response.timestamp.toISOString(),
+        cost: response.cost,
+        costMetadata: response.costMetadata
       },
       context: aiContext
     });
 
   } catch (error) {
     console.error('Error in ai-response API route:', error);
+    
+    // Attempt to track failed API call for cost monitoring
+    try {
+      const aiService = new AIService();
+      // Track failed call with minimal cost (estimated input tokens only)
+      const estimatedInputTokens = Math.ceil((text || '').length / 4);
+      
+      await aiService.trackResponseCost({
+        model: model as AIModel,
+        tokenUsage: { inputTokens: estimatedInputTokens, outputTokens: 0, totalTokens: estimatedInputTokens },
+        latency: 0, // 0 for failed calls
+        metadata: {
+          userId: decodedToken?.uid,
+          meetingId: body?.meetingId,
+          operation: 'ai_response_generation_failed',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+    } catch (costTrackingError) {
+      console.warn('Failed to track cost for failed API call:', costTrackingError);
+    }
     
     // Handle specific error types
     if (error instanceof Error) {

@@ -20,6 +20,7 @@ export interface TranscriptionResult {
   timestamp: number;
   isFinal: boolean;
   speaker?: number;
+  utteranceKey?: string;
 }
 
 export interface ConnectionStatus {
@@ -289,12 +290,26 @@ export class DeepgramSTT {
           });
           
           if (alternative.transcript && alternative.transcript.trim()) {
+            // Compute utterance key using segment timings and normalized text
+            let utteranceKey: string | undefined = undefined;
+            try {
+              const normalized = (alternative.transcript || '').replace(/\s+/g, ' ').trim().toLowerCase();
+              const start = typeof (data.start) === 'number' ? data.start : alternative.words?.[0]?.start || 0;
+              const duration = typeof (data.duration) === 'number' ? data.duration : 0;
+              const segStart = Math.max(0, Math.round(start * 100) / 100);
+              const segEnd = Math.max(segStart, Math.round((start + duration) * 100) / 100);
+              utteranceKey = `${data.request_id || 'req'}|${segStart}|${segEnd}|${normalized}`;
+            } catch {
+              // ignore
+            }
+
             const result: TranscriptionResult = {
               transcript: alternative.transcript,
               confidence: alternative.confidence || 0,
               timestamp: Date.now(),
               isFinal: data.is_final || false,
-              speaker: this.extractSpeakerId(alternative)
+              speaker: this.extractSpeakerId(alternative),
+              utteranceKey
             };
 
             // CRITICAL FIX: Filter interim results to prevent duplicates

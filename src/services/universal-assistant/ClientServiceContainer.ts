@@ -286,6 +286,7 @@ export class ClientServiceContainer {
         if (processResult.text) {
           // Duplicate suppression: avoid emitting identical finals twice within a short window
           const speakerKey = result.speaker?.toString() || 'unknown';
+          const utteranceKey = result.utteranceKey ? `${speakerKey}|${result.utteranceKey}` : undefined;
           const recent = this.recentFinalsBySpeaker.get(speakerKey);
           const newText = processResult.text.trim();
           const now = timestamp;
@@ -313,7 +314,15 @@ export class ClientServiceContainer {
             }
           }
           
-          // Update cache with the latest final
+          // Update cache with the latest final; also short-circuit if utteranceKey matches
+          if (utteranceKey) {
+            const lastKey = (this as any)._lastUtteranceKey;
+            if (lastKey === utteranceKey) {
+              console.log('[ClientServiceContainer] Suppressing duplicate based on utteranceKey');
+              return;
+            }
+            (this as any)._lastUtteranceKey = utteranceKey;
+          }
           this.recentFinalsBySpeaker.set(speakerKey, { text: newText, timestamp: now });
           
           if (!shouldEmit) {
@@ -343,6 +352,8 @@ export class ClientServiceContainer {
               timestamp: new Date(timestamp),
               confidence: processResult.confidence || result.confidence,
               isFinal: true,
+              // carry a stable clientId for dedupe across optimistic + realtime
+              // (meetingStore will persist within metadata)
             });
           }
         }

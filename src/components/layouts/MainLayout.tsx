@@ -32,7 +32,9 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onSignOut }) => {
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        aria-label="Open user menu"
+        aria-expanded={isOpen}
       >
         <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
           <User className="w-4 h-4 text-white" />
@@ -63,7 +65,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onSignOut }) => {
                   setIsOpen(false);
                   // Navigate to settings
                 }}
-                className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center"
+                className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
               >
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
@@ -73,7 +75,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onSignOut }) => {
                   setIsOpen(false);
                   onSignOut();
                 }}
-                className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center"
+                className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign Out
@@ -105,7 +107,9 @@ const Header: React.FC<{
         <div className="flex items-center space-x-4">
           <button
             onClick={onToggleSidebar}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors lg:hidden"
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors lg:hidden focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            aria-label={isSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={isSidebarOpen}
           >
             {isSidebarOpen ? (
               <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
@@ -132,7 +136,8 @@ const Header: React.FC<{
           <div className="relative">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative"
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors relative focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        aria-label="View notifications"
             >
               <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400" />
               {notifications.length > 0 && (
@@ -255,13 +260,13 @@ const Sidebar: React.FC<{
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-0 z-30 h-full w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+        className={`fixed left-0 top-0 z-30 h-full w-72 sm:w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
                 <Mic className="w-4 h-4 text-white" />
@@ -283,12 +288,12 @@ const Sidebar: React.FC<{
           )}
 
           {/* Navigation */}
-          <nav className="flex-1 p-4 space-y-2">
+          <nav className="flex-1 p-4 space-y-1 sm:space-y-2" role="navigation" aria-label="Main navigation">
             {navigationItems.map((item) => (
               <button
                 key={item.href}
                 onClick={() => handleNavigation(item.href)}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center space-x-3 px-3 py-3 sm:py-2 rounded-lg text-left transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset ${
                   item.active
                     ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
@@ -358,7 +363,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
           {/* Main Content Area */}
           <main className="flex-1 overflow-auto">
-            <div className="container mx-auto px-4 py-6 max-w-7xl">
+            <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6 max-w-7xl">
               {children}
             </div>
           </main>

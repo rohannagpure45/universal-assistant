@@ -18,6 +18,57 @@ import {
 import { AIModel } from '@/types';
 import { CostTracker } from '@/lib/costTracking';
 
+// Validation schemas and utilities
+const VALIDATION_ERRORS = {
+  INVALID_BUDGET_LIMIT: 'Budget limit must be greater than 0',
+  INVALID_BUDGET_NAME: 'Budget name must be at least 3 characters',
+  INVALID_PERIOD: 'Invalid period specified',
+  INVALID_MODEL: 'Invalid AI model specified',
+  INVALID_COST: 'Cost must be a positive number',
+  BUDGET_NOT_FOUND: 'Budget not found',
+  TRACKER_UNAVAILABLE: 'Cost tracker is not available',
+} as const;
+
+// Input validation utilities
+const validateBudget = (budget: Partial<CostBudget>): string[] => {
+  const errors: string[] = [];
+  
+  if (budget.name && budget.name.length < 3) {
+    errors.push(VALIDATION_ERRORS.INVALID_BUDGET_NAME);
+  }
+  
+  if (budget.limit !== undefined && budget.limit <= 0) {
+    errors.push(VALIDATION_ERRORS.INVALID_BUDGET_LIMIT);
+  }
+  
+  return errors;
+};
+
+const validateAPICall = (call: Partial<APICall>): string[] => {
+  const errors: string[] = [];
+  
+  if (call.cost !== undefined && call.cost < 0) {
+    errors.push(VALIDATION_ERRORS.INVALID_COST);
+  }
+  
+  return errors;
+};
+
+// Error boundary wrapper for store actions
+const withErrorBoundary = <T extends any[], R>(
+  action: (...args: T) => R,
+  errorMessage: string
+) => {
+  return (...args: T): R => {
+    try {
+      return action(...args);
+    } catch (error) {
+      console.error(`${errorMessage}:`, error);
+      throw new Error(`${errorMessage}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+};
+
 // Cost store state interface
 export interface CostState {
   // Core tracking data
@@ -132,14 +183,34 @@ export const useCostStore = create<CostState & CostActions>()(
           error: null,
 
           // Core tracking actions
-          trackAPICall: async (call) => {
-            try {
+          trackAPICall: withErrorBoundary(async (call) => {
+            // Input validation
+            const validationErrors = validateAPICall(call);
+            if (validationErrors.length > 0) {
+              const error = new Error(`Invalid API call data: ${validationErrors.join(', ')}`);
               set((state) => {
-                state.isLoading = true;
-                state.error = null;
+                state.error = error.message;
               });
+              throw error;
+            }
 
-              const trackedCall = await get().tracker.trackAPICall(call);
+            // Check if tracker is available
+            const tracker = get().tracker;
+            if (!tracker) {
+              const error = new Error(VALIDATION_ERRORS.TRACKER_UNAVAILABLE);
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            set((state) => {
+              state.isLoading = true;
+              state.error = null;
+            });
+
+            try {
+              const trackedCall = await tracker.trackAPICall(call);
               
               set((state) => {
                 state.apiCalls = state.tracker.getAPICalls();
@@ -150,7 +221,7 @@ export const useCostStore = create<CostState & CostActions>()(
 
               // Refresh analytics if tracking is enabled
               if (get().config.realTimeTracking) {
-                get().refreshAnalytics();
+                await get().refreshAnalytics();
               }
 
               return trackedCall;
@@ -161,64 +232,145 @@ export const useCostStore = create<CostState & CostActions>()(
               });
               throw error;
             }
-          },
+          }, 'Failed to track API call'),
 
           estimateCost: (prompt, model, context) => {
             return get().tracker.estimateCost(prompt, model, context);
           },
 
           // Budget management
-          createBudget: (budget) => {
-            const newBudget = get().tracker.createBudget(budget);
+          createBudget: withErrorBoundary((budget) => {
+            // Input validation
+            const validationErrors = validateBudget(budget);
+            if (validationErrors.length > 0) {
+              const error = new Error(`Invalid budget data: ${validationErrors.join(', ')}`);
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            const tracker = get().tracker;
+            if (!tracker) {
+              const error = new Error(VALIDATION_ERRORS.TRACKER_UNAVAILABLE);
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            const newBudget = tracker.createBudget(budget);
             
             set((state) => {
               state.budgets = state.tracker.getBudgets();
               state.lastUpdated = new Date();
+              state.error = null;
             });
             
             return newBudget;
-          },
+          }, 'Failed to create budget'),
 
-          updateBudget: (budgetId, updates) => {
-            const updated = get().tracker.updateBudget(budgetId, updates);
+          updateBudget: withErrorBoundary((budgetId, updates) => {
+            // Input validation
+            if (!budgetId || typeof budgetId !== 'string') {
+              const error = new Error('Invalid budget ID');
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            const validationErrors = validateBudget(updates);
+            if (validationErrors.length > 0) {
+              const error = new Error(`Invalid budget update data: ${validationErrors.join(', ')}`);
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            const tracker = get().tracker;
+            if (!tracker) {
+              const error = new Error(VALIDATION_ERRORS.TRACKER_UNAVAILABLE);
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            const updated = tracker.updateBudget(budgetId, updates);
             
             if (updated) {
               set((state) => {
                 state.budgets = state.tracker.getBudgets();
                 state.lastUpdated = new Date();
+                state.error = null;
               });
               return true;
+            } else {
+              const error = new Error(VALIDATION_ERRORS.BUDGET_NOT_FOUND);
+              set((state) => {
+                state.error = error.message;
+              });
+              return false;
             }
-            
-            return false;
-          },
+          }, 'Failed to update budget'),
 
-          deleteBudget: (budgetId) => {
+          deleteBudget: withErrorBoundary((budgetId) => {
+            // Input validation
+            if (!budgetId || typeof budgetId !== 'string') {
+              const error = new Error('Invalid budget ID');
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            const budgetExists = get().budgets.some(b => b.id === budgetId);
+            if (!budgetExists) {
+              const error = new Error(VALIDATION_ERRORS.BUDGET_NOT_FOUND);
+              set((state) => {
+                state.error = error.message;
+              });
+              return false;
+            }
+
             set((state) => {
               const index = state.budgets.findIndex(b => b.id === budgetId);
               if (index !== -1) {
                 state.budgets.splice(index, 1);
                 state.lastUpdated = new Date();
-                return;
+                state.error = null;
               }
             });
             
-            return get().budgets.some(b => b.id === budgetId);
-          },
+            return true;
+          }, 'Failed to delete budget'),
 
-          getBudgetStatus: (budgetId) => {
+          getBudgetStatus: withErrorBoundary((budgetId) => {
+            // Input validation
+            if (!budgetId || typeof budgetId !== 'string') {
+              return null;
+            }
+
             const budget = get().budgets.find(b => b.id === budgetId);
             if (!budget) return null;
 
-            const percentage = (budget.currentUsage / budget.limit) * 100;
-            const remaining = budget.limit - budget.currentUsage;
+            // Validate budget data integrity
+            if (typeof budget.currentUsage !== 'number' || typeof budget.limit !== 'number' || budget.limit <= 0) {
+              console.warn(`Invalid budget data for budget ${budgetId}`);
+              return null;
+            }
+
+            const percentage = Math.min((budget.currentUsage / budget.limit) * 100, 100);
+            const remaining = Math.max(budget.limit - budget.currentUsage, 0);
             
             let status: 'safe' | 'warning' | 'danger' = 'safe';
             if (percentage >= 95) status = 'danger';
             else if (percentage >= 80) status = 'warning';
 
             return { percentage, remaining, status };
-          },
+          }, 'Failed to get budget status'),
 
           // Analytics and reporting
           refreshAnalytics: async () => {
@@ -290,11 +442,22 @@ export const useCostStore = create<CostState & CostActions>()(
           },
 
           // Filters and views
-          setSelectedPeriod: (period) => {
+          setSelectedPeriod: withErrorBoundary((period) => {
+            // Validate period
+            const validPeriods: CostPeriod[] = ['hour', 'day', 'week', 'month', 'quarter', 'year'];
+            if (!validPeriods.includes(period)) {
+              const error = new Error(VALIDATION_ERRORS.INVALID_PERIOD);
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
             set((state) => {
               state.selectedPeriod = period;
+              state.error = null;
             });
-          },
+          }, 'Failed to set selected period'),
 
           setSelectedGranularity: (granularity) => {
             set((state) => {
@@ -302,11 +465,25 @@ export const useCostStore = create<CostState & CostActions>()(
             });
           },
 
-          setFilterModel: (model) => {
+          setFilterModel: withErrorBoundary((model) => {
+            // Validate model if not 'all'
+            if (model !== 'all') {
+              // Note: This would need to be updated based on actual AIModel type validation
+              // For now, we'll do basic validation
+              if (!model || typeof model !== 'string') {
+                const error = new Error(VALIDATION_ERRORS.INVALID_MODEL);
+                set((state) => {
+                  state.error = error.message;
+                });
+                throw error;
+              }
+            }
+
             set((state) => {
               state.filterModel = model;
+              state.error = null;
             });
-          },
+          }, 'Failed to set filter model'),
 
           setFilterService: (service) => {
             set((state) => {
@@ -324,14 +501,43 @@ export const useCostStore = create<CostState & CostActions>()(
           },
 
           // Data management
-          importData: async (data) => {
-            try {
+          importData: withErrorBoundary(async (data) => {
+            // Input validation
+            if (!data || typeof data !== 'string') {
+              const error = new Error('Invalid import data: data must be a non-empty string');
               set((state) => {
-                state.isLoading = true;
-                state.error = null;
+                state.error = error.message;
               });
+              throw error;
+            }
 
-              get().tracker.importData(data);
+            // Validate JSON format
+            try {
+              JSON.parse(data);
+            } catch {
+              const error = new Error('Invalid import data: data must be valid JSON');
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            const tracker = get().tracker;
+            if (!tracker) {
+              const error = new Error(VALIDATION_ERRORS.TRACKER_UNAVAILABLE);
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
+            set((state) => {
+              state.isLoading = true;
+              state.error = null;
+            });
+
+            try {
+              tracker.importData(data);
               
               set((state) => {
                 state.apiCalls = state.tracker.getAPICalls();
@@ -350,22 +556,42 @@ export const useCostStore = create<CostState & CostActions>()(
                 state.error = error instanceof Error ? error.message : 'Failed to import data';
                 state.isLoading = false;
               });
-              return false;
+              throw error;
             }
-          },
+          }, 'Failed to import data'),
 
-          clearData: (olderThan) => {
+          clearData: withErrorBoundary((olderThan) => {
+            // Input validation
+            if (olderThan && !(olderThan instanceof Date)) {
+              const error = new Error('Invalid date: olderThan must be a Date object');
+              set((state) => {
+                state.error = error.message;
+              });
+              throw error;
+            }
+
             set((state) => {
               if (olderThan) {
+                const initialCallCount = state.apiCalls.length;
+                const initialEventCount = state.events.length;
+                
                 state.apiCalls = state.apiCalls.filter(call => call.timestamp >= olderThan);
                 state.events = state.events.filter(event => event.timestamp >= olderThan);
+                
+                console.log(`Cleared ${initialCallCount - state.apiCalls.length} API calls and ${initialEventCount - state.events.length} events older than ${olderThan.toISOString()}`);
               } else {
+                const clearedCalls = state.apiCalls.length;
+                const clearedEvents = state.events.length;
+                
                 state.apiCalls = [];
                 state.events = [];
+                
+                console.log(`Cleared all data: ${clearedCalls} API calls and ${clearedEvents} events`);
               }
               state.lastUpdated = new Date();
+              state.error = null;
             });
-          },
+          }, 'Failed to clear data'),
 
           // Event handling
           subscribeToEvents: (callback) => {

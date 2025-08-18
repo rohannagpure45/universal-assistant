@@ -4,6 +4,7 @@
  */
 
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { beforeEach, afterEach, jest, expect } from '@jest/globals';
 import { 
   TestAuthStateManager, 
   TestDatabaseStateManager,
@@ -102,11 +103,11 @@ export const compareStoreSnapshots = (
     details['auth.user'] = { before: before.auth.user, after: after.auth.user };
   }
 
-  if (before.auth.isAuthenticated !== after.auth.isAuthenticated) {
+  if (Boolean(before.auth.user) !== Boolean(after.auth.user)) {
     changed.push('auth.isAuthenticated');
     details['auth.isAuthenticated'] = { 
-      before: before.auth.isAuthenticated, 
-      after: after.auth.isAuthenticated 
+      before: Boolean(before.auth.user), 
+      after: Boolean(after.auth.user) 
     };
   }
 
@@ -402,7 +403,7 @@ export const expectStoreState = {
     if (expected === null) {
       expect(user).toBeNull();
     } else {
-      expect(user).toMatchObject(expected);
+      expect(user).toMatchObject(expected as unknown as Record<string, unknown>);
     }
   },
 

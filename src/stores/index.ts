@@ -4,8 +4,29 @@ export * from './meetingStore';
 export * from './appStore';
 
 // ============ HOOK EXPORTS ============
-export * from './hooks/useMeetingHooks';
-export * from './hooks/useAppHooks';
+// Export specific hooks to avoid naming conflicts
+export { 
+  useMeetingActions,
+  useMeetingState,
+  useTranscript,
+  useFilteredTranscript,
+  useParticipants,
+  useRealtimeSync,
+  useRecording,
+  useMeetingErrorsHook,
+  useMeetingSearch
+} from './hooks/useMeetingHooks';
+
+export {
+  useAudioDevicesHook,
+  useAudioSettingsHook,
+  useTheme,
+  useUISettingsHook,
+  useNotifications,
+  usePerformanceMonitor,
+  useFeatureFlagsHook,
+  useErrorHandler
+} from './hooks/useAppHooks';
 
 // ============ EVENT SYSTEM ============
 export * from './eventListeners';
@@ -101,15 +122,15 @@ export const subscribeToStoreChanges = (
   const { useAppStore } = require('./appStore');
   
   const unsubscribeAuth = useAuthStore.subscribe(
-    (state, previousState) => callback('auth', state, previousState)
+    (state: any, previousState: any) => callback('auth', state, previousState)
   );
   
   const unsubscribeMeeting = useMeetingStore.subscribe(
-    (state, previousState) => callback('meeting', state, previousState)
+    (state: any, previousState: any) => callback('meeting', state, previousState)
   );
   
   const unsubscribeApp = useAppStore.subscribe(
-    (state, previousState) => callback('app', state, previousState)
+    (state: any, previousState: any) => callback('app', state, previousState)
   );
   
   return () => {

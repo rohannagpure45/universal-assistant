@@ -49,17 +49,15 @@ export const useAuth = () => {
           defaultModel: preferences.ai.defaultModel,
           temperature: preferences.ai.temperature,
           maxTokens: preferences.ai.maxTokens,
-          enableAutoResponse: preferences.ai.enableAutoResponse,
         });
       }
       
       // Sync TTS settings
       if (preferences.tts) {
         appStore.updateTTSSettings({
-          voiceId: preferences.tts.voiceId,
+          voiceId: preferences.tts.voice,
           speed: preferences.tts.speed,
           volume: preferences.tts.volume,
-          enabled: preferences.tts.enabled,
         });
       }
       
@@ -68,7 +66,7 @@ export const useAuth = () => {
         appStore.updateUISettings({
           theme: preferences.ui.theme,
           language: preferences.ui.language,
-          compact: preferences.ui.compact,
+          fontSize: preferences.ui.fontSize > 16 ? 'large' : preferences.ui.fontSize < 14 ? 'small' : 'medium',
         });
       }
     }
@@ -130,16 +128,14 @@ export const useAuth = () => {
           defaultModel: preferences.ai.defaultModel,
           temperature: preferences.ai.temperature,
           maxTokens: preferences.ai.maxTokens,
-          enableAutoResponse: preferences.ai.enableAutoResponse,
         });
       }
       
       if (preferences.tts) {
         appStore.updateTTSSettings({
-          voiceId: preferences.tts.voiceId,
+          voiceId: preferences.tts.voice,
           speed: preferences.tts.speed,
           volume: preferences.tts.volume,
-          enabled: preferences.tts.enabled,
         });
       }
       
@@ -147,7 +143,7 @@ export const useAuth = () => {
         appStore.updateUISettings({
           theme: preferences.ui.theme,
           language: preferences.ui.language,
-          compact: preferences.ui.compact,
+          fontSize: preferences.ui.fontSize > 16 ? 'large' : preferences.ui.fontSize < 14 ? 'small' : 'medium',
         });
       }
     }
@@ -203,24 +199,22 @@ export const useAuth = () => {
             defaultModel: preferences.ai.defaultModel,
             temperature: preferences.ai.temperature,
             maxTokens: preferences.ai.maxTokens,
-            enableAutoResponse: preferences.ai.enableAutoResponse,
-          });
+            });
         }
         
         if (preferences.tts) {
           appStore.updateTTSSettings({
-            voiceId: preferences.tts.voiceId,
+            voiceId: preferences.tts.voice,
             speed: preferences.tts.speed,
             volume: preferences.tts.volume,
-            enabled: preferences.tts.enabled,
-          });
+            });
         }
         
         if (preferences.ui) {
           appStore.updateUISettings({
             theme: preferences.ui.theme,
             language: preferences.ui.language,
-            compact: preferences.ui.compact,
+            fontSize: preferences.ui.fontSize > 16 ? 'large' : preferences.ui.fontSize < 14 ? 'small' : 'medium',
           });
         }
       }

@@ -9,9 +9,10 @@
 // Main store export
 export * from '../meetingStore';
 
-// Specialized hooks for different concerns
-export * from './hooks/useMeetingCore';
-export * from './hooks/useMeetingTranscript';
-export * from './hooks/useMeetingParticipants';
-export * from './hooks/useMeetingRecording';
-export * from './hooks/useMeetingSearch';
+// Specialized hooks are not exported here to avoid naming conflicts
+// They would need to be renamed if exported together with the main store
+// export * from './hooks/useMeetingCore';
+// export * from './hooks/useMeetingTranscript';
+// export * from './hooks/useMeetingParticipants';
+// export * from './hooks/useMeetingRecording';
+// export * from './hooks/useMeetingSearch';

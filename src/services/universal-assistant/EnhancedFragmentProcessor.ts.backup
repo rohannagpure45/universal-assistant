@@ -1,18 +1,15 @@
-import { FragmentProcessor, ProcessResult, FragmentBuffer, FragmentProcessorConfig, IntentClassification, EntityExtraction, SentimentAnalysis as BaseSentimentAnalysis, TopicAnalysis as BaseTopicAnalysis, CoherenceMetrics as BaseCoherenceMetrics, ComplexityAnalysis, UrgencyLevel, ActionItem as BaseActionItem } from './FragmentProcessor';
+import { FragmentProcessor, ProcessResult, FragmentBuffer, FragmentProcessorConfig } from './FragmentProcessor';
 import { FragmentDetector, FragmentAnalysis } from './FragmentDetector';
 import { nanoid } from 'nanoid';
 
-// Type aliases for imported types
-type SentimentAnalysis = BaseSentimentAnalysis;
-type CoherenceMetrics = BaseCoherenceMetrics;
-type ActionItem = BaseActionItem;// Enhanced semantic analysis interfaces
+// Enhanced semantic analysis interfaces
 export interface SemanticAnalysis {
-  intent: IntentClassification;
+  intent: IntentType;
   entities: ExtractedEntity[];
   sentiment: SentimentAnalysis;
   topics: TopicAnalysis[];
   coherence: CoherenceMetrics;
-  complexity: ComplexityAnalysis;
+  complexity: ComplexityMetrics;
   urgency: UrgencyLevel;
   actionItems: ActionItem[];
   confidence: number;
@@ -56,6 +53,13 @@ export type EntityType =
   | 'emotion'
   | 'technology';
 
+export interface SentimentAnalysis {
+  polarity: number; // -1 to 1
+  subjectivity: number; // 0 to 1
+  emotion: EmotionType;
+  intensity: number; // 0 to 1
+  confidence: number;
+}
 
 export type EmotionType = 
   | 'joy'
@@ -88,9 +92,33 @@ export type TopicCategory =
   | 'planning'
   | 'review';
 
+export interface CoherenceMetrics {
+  overallCoherence: number;
+  logicalFlow: number;
+  topicalConsistency: number;
+  referentialCohesion: number;
+  temporalCoherence: number;
+}
 
+export interface ComplexityMetrics {
+  lexicalDiversity: number;
+  syntacticComplexity: number;
+  conceptualDepth: number;
+  informationDensity: number;
+  readabilityScore: number;
+}
 
+export type UrgencyLevel = 'low' | 'normal' | 'high' | 'critical';
 
+export interface ActionItem {
+  id: string;
+  action: string;
+  assignee?: string;
+  deadline?: string;
+  priority: UrgencyLevel;
+  confidence: number;
+  dependencies?: string[];
+}
 
 export interface EnhancedProcessResult extends ProcessResult {
   semanticAnalysis?: SemanticAnalysis;
@@ -148,7 +176,7 @@ export interface ConversationContext {
  */
 export class EnhancedFragmentProcessor extends FragmentProcessor {
   private enhancedConfig: EnhancedFragmentProcessorConfig;
-  private enhancedSemanticCache: Map<string, SemanticCache> = new Map();
+  private semanticCache: Map<string, SemanticCache> = new Map();
   private conversationContext: Map<string, ConversationContext> = new Map();
   private topicModelingKeywords: Set<string> = new Set();
   private entityPatterns: Map<EntityType, RegExp[]> = new Map();
@@ -174,17 +202,14 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
       minFragmentsForAggregation: 2,
       maxBufferSize: 10,
       confidenceThreshold: 0.6,
-      enableSemanticAnalysis: true,
-      semanticAnalysisDepth: 'standard',
-      enableEmotionDetection: true,
-      enableActionItemExtraction: true,
-      contextWindow: 5,
       
       // Enhanced config
+      enableSemanticAnalysis: true,
       enableIntentDetection: true,
       enableEntityExtraction: true,
       enableSentimentAnalysis: true,
       enableTopicModeling: true,
+      enableActionItemExtraction: true,
       semanticCacheSize: 500,
       contextWindowSize: 20,
       minConfidenceThreshold: 0.7,
@@ -256,7 +281,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     }
     
     // Perform semantic analysis
-    const semanticAnalysis = this.performEnhancedSemanticAnalysis(text, speakerId, context);
+    const semanticAnalysis = this.performSemanticAnalysis(text, speakerId, context);
     
     // Update conversation context
     this.updateConversationContext(speakerId, text, timestamp, semanticAnalysis);
@@ -288,7 +313,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     };
     
     // Adjust shouldRespond based on semantic analysis
-    if (semanticAnalysis.intent.category === 'question' || semanticAnalysis.urgency === 'high') {
+    if (semanticAnalysis.intent === 'question' || semanticAnalysis.urgency === 'high') {
       enhancedResult.shouldRespond = true;
     }
     
@@ -298,14 +323,14 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
   /**
    * Perform comprehensive semantic analysis
    */
-  private performEnhancedSemanticAnalysis(
+  private performSemanticAnalysis(
     text: string, 
     speakerId: string, 
     context?: any
   ): SemanticAnalysis {
     // Check cache first
     const textHash = this.generateTextHash(text);
-    const cached = this.enhancedSemanticCache.get(textHash);
+    const cached = this.semanticCache.get(textHash);
     
     if (cached && Date.now() - cached.timestamp < 300000) { // 5 minutes cache
       cached.accessCount++;
@@ -315,14 +340,14 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     
     // Perform analysis
     const analysis: SemanticAnalysis = {
-      intent: this.enhancedDetectIntent(text),
-      entities: this.enhancedExtractEntities(text),
-      sentiment: this.enhancedAnalyzeSentiment(text),
-      topics: this.enhancedAnalyzeTopics(text),
-      coherence: this.enhancedAnalyzeCoherence(text, speakerId),
-      complexity: this.enhancedAnalyzeComplexity(text),
-      urgency: this.enhancedDetectUrgency(text),
-      actionItems: this.enhancedExtractActionItems(text),
+      intent: this.detectIntent(text),
+      entities: this.extractEntities(text),
+      sentiment: this.analyzeSentiment(text),
+      topics: this.analyzeTopics(text),
+      coherence: this.analyzeCoherence(text, speakerId),
+      complexity: this.analyzeComplexity(text),
+      urgency: this.detectUrgency(text),
+      actionItems: this.extractActionItems(text),
       confidence: 0.8, // Will be calculated based on sub-analyses
     };
     
@@ -340,102 +365,62 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
   /**
    * Detect intent from text
    */
-  private enhancedDetectIntent(text: string): IntentClassification {
+  private detectIntent(text: string): IntentType {
     const lowerText = text.toLowerCase().trim();
     
     // Question patterns
     if (lowerText.includes('?') || 
         /^(what|why|how|when|where|who|which|can|could|would|should|is|are|do|does|did|will)\b/.test(lowerText)) {
-      return {
-        primary: 'information_seeking',
-        confidence: 0.9,
-        category: 'question'
-      };
+      return 'question';
     }
     
     // Request patterns
     if (/\b(please|can you|could you|would you|help|assist|need|want)\b/.test(lowerText)) {
-      return {
-        primary: 'action_request',
-        confidence: 0.85,
-        category: 'command'
-      };
+      return 'request';
     }
     
     // Greeting patterns
     if (/\b(hello|hi|hey|good morning|good afternoon|good evening)\b/.test(lowerText)) {
-      return {
-        primary: 'greeting',
-        confidence: 0.9,
-        category: 'greeting'
-      };
+      return 'greeting';
     }
     
     // Instruction patterns
     if (/^(let's|we should|we need to|make sure|ensure|implement|create|build)\b/.test(lowerText)) {
-      return {
-        primary: 'instruction',
-        confidence: 0.8,
-        category: 'command'
-      };
+      return 'instruction';
     }
     
     // Agreement patterns
     if (/\b(yes|agree|correct|exactly|absolutely|definitely|sounds good)\b/.test(lowerText)) {
-      return {
-        primary: 'agreement',
-        confidence: 0.8,
-        category: 'statement'
-      };
+      return 'agreement';
     }
     
     // Disagreement patterns
     if (/\b(no|disagree|wrong|incorrect|not sure|don't think)\b/.test(lowerText)) {
-      return {
-        primary: 'disagreement',
-        confidence: 0.8,
-        category: 'statement'
-      };
+      return 'disagreement';
     }
     
     // Complaint patterns
     if (/\b(problem|issue|wrong|broken|not working|frustrated|annoyed)\b/.test(lowerText)) {
-      return {
-        primary: 'complaint',
-        confidence: 0.8,
-        category: 'statement'
-      };
+      return 'complaint';
     }
     
     // Compliment patterns
     if (/\b(great|excellent|amazing|wonderful|good job|well done)\b/.test(lowerText)) {
-      return {
-        primary: 'compliment',
-        confidence: 0.8,
-        category: 'statement'
-      };
+      return 'compliment';
     }
     
     // Information giving (default for statements)
     if (lowerText.length > 10 && !lowerText.includes('?')) {
-      return {
-        primary: 'information_sharing',
-        confidence: 0.6,
-        category: 'statement'
-      };
+      return 'information';
     }
     
-    return {
-      primary: 'other',
-      confidence: 0.5,
-      category: 'statement'
-    };
+    return 'other';
   }
 
   /**
    * Extract entities from text
    */
-  private enhancedExtractEntities(text: string): ExtractedEntity[] {
+  private extractEntities(text: string): ExtractedEntity[] {
     const entities: ExtractedEntity[] = [];
     
     if (!this.enhancedConfig.enableEntityExtraction) {
@@ -443,7 +428,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     }
     
     // Extract using regex patterns
-    for (const [entityType, patterns] of Array.from(this.entityPatterns.entries())) {
+    for (const [entityType, patterns] of this.entityPatterns.entries()) {
       for (const pattern of patterns) {
         let match;
         pattern.lastIndex = 0; // Reset regex
@@ -479,12 +464,14 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
   /**
    * Analyze sentiment
    */
-    private enhancedAnalyzeSentiment(text: string): SentimentAnalysis {
+  private analyzeSentiment(text: string): SentimentAnalysis {
     if (!this.enhancedConfig.enableSentimentAnalysis) {
       return {
-        polarity: 'neutral',
+        polarity: 0,
+        subjectivity: 0.5,
+        emotion: 'neutral',
         intensity: 0.5,
-        emotions: {}
+        confidence: 0.5,
       };
     }
     
@@ -501,47 +488,33 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
       }
     }
     
-    const numericPolarity = polarityCount > 0 ? totalPolarity / polarityCount : 0;
+    const polarity = polarityCount > 0 ? totalPolarity / polarityCount : 0;
     
-    // Convert numeric polarity to categorical
-    let polarity: 'positive' | 'negative' | 'neutral' = 'neutral';
-    if (numericPolarity > 0.2) {
-      polarity = 'positive';
-    } else if (numericPolarity < -0.2) {
-      polarity = 'negative';
-    }
+    // Determine emotion
+    let emotion: EmotionType = 'neutral';
+    if (polarity > 0.5) emotion = 'joy';
+    else if (polarity < -0.5) emotion = 'anger';
+    else if (polarity > 0.2) emotion = 'surprise';
+    else if (polarity < -0.2) emotion = 'sadness';
     
-    // Build emotions record
-    const emotions: Record<string, number> = {};
-    
-    // Check for specific emotional indicators and build emotions record
-    const emotionPatterns = {
-      joy: /\b(happy|joyful|excited|amazing|fantastic|wonderful|great|excellent)\b/,
-      anger: /\b(angry|frustrated|annoyed|mad|furious)\b/,
-      sadness: /\b(sad|disappointed|upset|depressed|down)\b/,
-      fear: /\b(afraid|scared|worried|anxious|nervous)\b/,
-      surprise: /\b(surprised|shocked|amazed|astonished)\b/,
-      disgust: /\b(disgusted|disgusting|awful|terrible|horrible)\b/
-    };
-    
-    for (const [emotionType, pattern] of Object.entries(emotionPatterns)) {
-      const matches = (text.toLowerCase().match(pattern) || []).length;
-      if (matches > 0) {
-        emotions[emotionType] = Math.min(matches / words.length * 10, 1); // Scale to 0-1
-      }
-    }
+    // Check for specific emotional indicators
+    if (/\b(excited|amazing|fantastic)\b/.test(text.toLowerCase())) emotion = 'excitement';
+    if (/\b(frustrated|annoyed|angry)\b/.test(text.toLowerCase())) emotion = 'frustration';
+    if (/\b(confused|not sure|unclear)\b/.test(text.toLowerCase())) emotion = 'confusion';
     
     return {
-      polarity,
-      intensity: Math.abs(numericPolarity),
-      emotions
+      polarity: Math.max(-1, Math.min(1, polarity)),
+      subjectivity: polarityCount > 0 ? 0.8 : 0.2,
+      emotion,
+      intensity: Math.abs(polarity),
+      confidence: polarityCount > 0 ? 0.8 : 0.3,
     };
   }
 
   /**
    * Analyze topics in text
    */
-  private enhancedAnalyzeTopics(text: string): TopicAnalysis[] {
+  private analyzeTopics(text: string): TopicAnalysis[] {
     if (!this.enhancedConfig.enableTopicModeling) {
       return [];
     }
@@ -565,7 +538,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     }
     
     // Create topic analyses
-    for (const topic of Array.from(foundTopics)) {
+    for (const topic of foundTopics) {
       const relevance = (topicKeywords[topic]?.length || 0) / words.length;
       
       let category: TopicCategory = 'technical';
@@ -588,74 +561,91 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
   /**
    * Analyze text coherence
    */
-    private enhancedAnalyzeCoherence(text: string, speakerId: string): CoherenceMetrics {
+  private analyzeCoherence(text: string, speakerId: string): CoherenceMetrics {
     const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
     const words = text.split(/\s+/).filter(w => w.length > 0);
     
-    // Sentence flow (simplified - based on conjunctions and transitions)
+    // Overall coherence based on text structure
+    const overallCoherence = sentences.length > 0 ? Math.min(1, sentences.length / 3) : 0;
+    
+    // Logical flow (simplified - based on conjunctions and transitions)
     const transitionWords = ['however', 'therefore', 'because', 'although', 'furthermore', 'moreover'];
     const transitionCount = transitionWords.reduce((count, word) => 
       count + (text.toLowerCase().includes(word) ? 1 : 0), 0);
-    const sentenceFlow = sentences.length > 0 ? Math.min(1, transitionCount / sentences.length) : 0;
+    const logicalFlow = Math.min(1, transitionCount / sentences.length);
     
-    // Topic consistency (simplified - based on topic keyword repetition)
+    // Topical consistency (simplified - based on topic keyword repetition)
     const uniqueWords = new Set(words.map(w => w.toLowerCase()));
-    const topicConsistency = uniqueWords.size > 0 ? 1 - (uniqueWords.size / words.length) : 0;
+    const topicalConsistency = uniqueWords.size > 0 ? 1 - (uniqueWords.size / words.length) : 0;
     
-    // Semantic cohesion (simplified - based on pronouns and references)
+    // Referential cohesion (simplified - based on pronouns and references)
     const references = ['this', 'that', 'it', 'they', 'them', 'which', 'what'];
     const referenceCount = references.reduce((count, ref) => 
       count + (text.toLowerCase().includes(ref) ? 1 : 0), 0);
-    const semanticCohesion = sentences.length > 0 ? Math.min(1, referenceCount / sentences.length) : 0;
+    const referentialCohesion = Math.min(1, referenceCount / sentences.length);
     
-    // Overall score
-    const overallScore = (sentenceFlow + topicConsistency + semanticCohesion) / 3;
+    // Temporal coherence (simplified - based on time indicators)
+    const timeIndicators = ['then', 'next', 'after', 'before', 'finally', 'first', 'second'];
+    const timeCount = timeIndicators.reduce((count, indicator) => 
+      count + (text.toLowerCase().includes(indicator) ? 1 : 0), 0);
+    const temporalCoherence = Math.min(1, timeCount / sentences.length);
     
     return {
-      sentenceFlow,
-      topicConsistency,
-      semanticCohesion,
-      overallScore,
+      overallCoherence,
+      logicalFlow,
+      topicalConsistency,
+      referentialCohesion,
+      temporalCoherence,
     };
   }
 
   /**
    * Analyze text complexity
    */
-    private enhancedAnalyzeComplexity(text: string): ComplexityAnalysis {
+  private analyzeComplexity(text: string): ComplexityMetrics {
     const words = text.split(/\s+/).filter(w => w.length > 0);
     const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
     const uniqueWords = new Set(words.map(w => w.toLowerCase()));
     
+    // Lexical diversity (Type-Token Ratio)
+    const lexicalDiversity = words.length > 0 ? uniqueWords.size / words.length : 0;
+    
     // Syntactic complexity (average sentence length)
     const avgSentenceLength = sentences.length > 0 ? words.length / sentences.length : 0;
-    const syntactic = Math.min(1, avgSentenceLength / 20); // Normalize to 0-1
+    const syntacticComplexity = Math.min(1, avgSentenceLength / 20); // Normalize to 0-1
     
-    // Semantic complexity (based on abstract words and technical terms)
+    // Conceptual depth (simplified - based on abstract words and technical terms)
     const abstractWords = ['concept', 'idea', 'theory', 'principle', 'strategy', 'approach'];
     const abstractCount = abstractWords.reduce((count, word) => 
       count + (text.toLowerCase().includes(word) ? 1 : 0), 0);
-    const semantic = Math.min(1, abstractCount / Math.max(sentences.length, 1));
+    const conceptualDepth = Math.min(1, abstractCount / sentences.length);
     
-    // Vocabulary complexity (word length and diversity)
-    const avgWordLength = words.reduce((sum, word) => sum + word.length, 0) / Math.max(words.length, 1);
-    const vocabulary = Math.min(1, avgWordLength / 8); // Normalize to 0-1
+    // Information density (content words vs total words)
+    const contentWords = words.filter(word => 
+      word.length > 3 && !['this', 'that', 'with', 'have', 'will', 'from'].includes(word.toLowerCase())
+    );
+    const informationDensity = words.length > 0 ? contentWords.length / words.length : 0;
     
-    // Overall complexity
-    const overall = (syntactic + semantic + vocabulary) / 3;
+    // Readability score (simplified Flesch-like formula)
+    const avgWordsPerSentence = sentences.length > 0 ? words.length / sentences.length : 0;
+    const avgSyllablesPerWord = 1.5; // Simplified assumption
+    const readabilityScore = Math.max(0, Math.min(1, 
+      (206.835 - 1.015 * avgWordsPerSentence - 84.6 * avgSyllablesPerWord) / 100
+    ));
     
     return {
-      syntactic,
-      semantic,
-      vocabulary,
-      overall
+      lexicalDiversity,
+      syntacticComplexity,
+      conceptualDepth,
+      informationDensity,
+      readabilityScore,
     };
   }
 
   /**
    * Detect urgency level
    */
-  private enhancedDetectUrgency(text: string): UrgencyLevel {
+  private detectUrgency(text: string): UrgencyLevel {
     const lowerText = text.toLowerCase();
     
     // Critical urgency indicators
@@ -684,7 +674,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
   /**
    * Extract action items from text
    */
-    private enhancedExtractActionItems(text: string): ActionItem[] {
+  private extractActionItems(text: string): ActionItem[] {
     if (!this.enhancedConfig.enableActionItemExtraction) {
       return [];
     }
@@ -696,27 +686,17 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
       const trimmed = sentence.trim().toLowerCase();
       
       // Look for action verbs
-      for (const verb of Array.from(this.actionVerbs)) {
+      for (const verb of this.actionVerbs) {
         if (trimmed.includes(verb)) {
           // Check if it's actually an action item
           if (/\b(need to|should|must|will|going to|plan to)\b/.test(trimmed) ||
               /\b(let's|we should|can you|please)\b/.test(trimmed)) {
             
-            // Determine action type based on content
-            let actionType: 'task' | 'reminder' | 'decision' | 'follow_up' = 'task';
-            if (/\b(remind|remember|don't forget)\b/.test(trimmed)) {
-              actionType = 'reminder';
-            } else if (/\b(decide|choose|determine)\b/.test(trimmed)) {
-              actionType = 'decision';
-            } else if (/\b(follow up|check back|get back)\b/.test(trimmed)) {
-              actionType = 'follow_up';
-            }
-            
             actionItems.push({
-              text: sentence.trim(),
-              type: actionType,
+              id: nanoid(),
+              action: sentence.trim(),
+              priority: this.detectUrgency(sentence),
               confidence: 0.7,
-              dueContext: this.enhancedExtractDueContext(sentence)
             });
             break; // Only one action item per sentence
           }
@@ -744,10 +724,10 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     let totalConfidence = 0;
     
     // Intent confidence (based on pattern matching strength)
-    totalConfidence += weights.intent * (analysis.intent.primary !== 'other' ? 0.8 : 0.3);
+    totalConfidence += weights.intent * (analysis.intent !== 'other' ? 0.8 : 0.3);
     
     // Sentiment confidence
-    totalConfidence += weights.sentiment * analysis.sentiment.intensity;
+    totalConfidence += weights.sentiment * analysis.sentiment.confidence;
     
     // Entity confidence
     const avgEntityConfidence = analysis.entities.length > 0 ? 
@@ -760,10 +740,10 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     totalConfidence += weights.topics * avgTopicRelevance;
     
     // Coherence confidence
-    totalConfidence += weights.coherence * analysis.coherence.overallScore;
+    totalConfidence += weights.coherence * analysis.coherence.overallCoherence;
     
     // Complexity confidence (normalized)
-    totalConfidence += weights.complexity * analysis.complexity.overall;
+    totalConfidence += weights.complexity * analysis.complexity.readabilityScore;
     
     // Urgency confidence
     totalConfidence += weights.urgency * (analysis.urgency !== 'normal' ? 0.8 : 0.6);
@@ -786,11 +766,11 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
 
   private cacheSemanticAnalysis(textHash: string, analysis: SemanticAnalysis): void {
     // Clean cache if it's getting too large
-    if (this.enhancedSemanticCache.size >= this.enhancedConfig.semanticCacheSize) {
+    if (this.semanticCache.size >= this.enhancedConfig.semanticCacheSize) {
       this.cleanupSemanticCache();
     }
     
-    this.enhancedSemanticCache.set(textHash, {
+    this.semanticCache.set(textHash, {
       textHash,
       analysis,
       timestamp: Date.now(),
@@ -799,23 +779,23 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
   }
 
   private cleanupSemanticCache(): void {
-    const entries = Array.from(this.enhancedSemanticCache.entries());
+    const entries = Array.from(this.semanticCache.entries());
     const cutoffTime = Date.now() - 3600000; // 1 hour
     
     // Remove old entries
     entries.forEach(([hash, cache]) => {
       if (cache.timestamp < cutoffTime) {
-        this.enhancedSemanticCache.delete(hash);
+        this.semanticCache.delete(hash);
       }
     });
     
     // If still too large, remove least accessed entries
-    if (this.enhancedSemanticCache.size >= this.enhancedConfig.semanticCacheSize) {
+    if (this.semanticCache.size >= this.enhancedConfig.semanticCacheSize) {
       const sortedEntries = entries.sort((a, b) => a[1].accessCount - b[1].accessCount);
       const toRemove = sortedEntries.slice(0, Math.floor(this.enhancedConfig.semanticCacheSize * 0.3));
       
       toRemove.forEach(([hash]) => {
-        this.enhancedSemanticCache.delete(hash);
+        this.semanticCache.delete(hash);
       });
     }
     
@@ -873,7 +853,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     }
     
     // Calculate relevance based on topic overlap and semantic similarity
-    const currentTopics = this.enhancedAnalyzeTopics(text).map(t => t.topic);
+    const currentTopics = this.analyzeTopics(text).map(t => t.topic);
     const overlapCount = currentTopics.filter(topic => 
       context.activeTopics.has(topic)
     ).length;
@@ -899,19 +879,15 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     // Analyze speaking patterns
     const patterns: string[] = [];
     const avgComplexity = recentUtterances.reduce((sum, u) => 
-      sum + (u.semanticAnalysis?.complexity.vocabulary || 0), 0) / recentUtterances.length;
+      sum + (u.semanticAnalysis?.complexity.lexicalDiversity || 0), 0) / recentUtterances.length;
     
     if (avgComplexity > 0.7) patterns.push('uses complex vocabulary');
     if (avgComplexity < 0.3) patterns.push('uses simple language');
     
     // Determine emotional state
-    // Determine emotional state from sentiment polarity
-    const latestSentiment = recentUtterances[recentUtterances.length - 1]?.semanticAnalysis?.sentiment;
-    let emotionalState: EmotionType = 'neutral';
-    if (latestSentiment) {
-      if (latestSentiment.polarity === 'positive') emotionalState = 'joy';
-      else if (latestSentiment.polarity === 'negative') emotionalState = 'sadness';
-    }    
+    const emotions = recentUtterances.map(u => u.semanticAnalysis?.sentiment.emotion || 'neutral');
+    const emotionalState = emotions[emotions.length - 1] as EmotionType;
+    
     // Calculate engagement level
     const avgUrgency = recentUtterances.reduce((sum, u) => {
       const urgency = u.semanticAnalysis?.urgency || 'normal';
@@ -929,20 +905,20 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
     const suggestions: string[] = [];
     
     // Based on intent
-    switch (analysis.intent.category) {
+    switch (analysis.intent) {
       case 'question':
         suggestions.push('Provide a direct answer');
         suggestions.push('Ask for clarification if needed');
         break;
-      case 'command':
+      case 'request':
         suggestions.push('Acknowledge the request');
         suggestions.push('Confirm feasibility and timeline');
         break;
-      case 'statement':
+      case 'complaint':
         suggestions.push('Acknowledge the concern');
         suggestions.push('Propose a solution');
         break;
-      case 'greeting':
+      case 'information':
         suggestions.push('Summarize key points');
         suggestions.push('Ask follow-up questions');
         break;
@@ -984,7 +960,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
       }
     }
     
-    return Array.from(new Set(relatedTopics)).slice(0, 5);
+    return [...new Set(relatedTopics)].slice(0, 5);
   }
 
   private updateSemanticMetrics(processingTime: number): void {
@@ -1001,7 +977,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
   getSemanticMetrics() {
     return {
       ...this.semanticMetrics,
-      cacheSize: this.enhancedSemanticCache.size,
+      cacheSize: this.semanticCache.size,
       cacheHitRate: this.semanticMetrics.totalAnalyses > 0 ? 
         this.semanticMetrics.cacheHits / this.semanticMetrics.totalAnalyses : 0,
       contextSize: this.conversationContext.size,
@@ -1026,7 +1002,7 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
    * Clear all semantic caches and context
    */
   clearSemanticData(): void {
-    this.enhancedSemanticCache.clear();
+    this.semanticCache.clear();
     this.conversationContext.clear();
     this.semanticMetrics = {
       totalAnalyses: 0,
@@ -1035,23 +1011,6 @@ export class EnhancedFragmentProcessor extends FragmentProcessor {
       accuracyScore: 0,
       lastCleanup: Date.now(),
     };
-  }
-
-  private enhancedExtractDueContext(actionText: string): string | undefined {
-    const timePatterns = [
-      /\b(by|before|until)\s+([^.]+)/i,
-      /\b(today|tomorrow|next week|this week)/i,
-      /\b(\d{1,2}:\d{2}(?:\s?[ap]m)?)/i
-    ];
-    
-    for (const pattern of timePatterns) {
-      const match = actionText.match(pattern);
-      if (match) {
-        return match[0];
-      }
-    }
-    
-    return undefined;
   }
 }
 

@@ -44,17 +44,30 @@ export const useMeetingActions = () => {
     if (!user) return null;
 
     return startMeeting({
+      id: `meeting-${Date.now()}`,
       hostId: user.uid,
+      createdBy: user.uid,
       title,
       type,
+      status: 'active' as const,
+      endTime: undefined,
+      duration: 0,
+      recording: undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
       participants: [{
+        id: user.uid,
         userId: user.uid,
-        userName: user.displayName,
+        userName: user.displayName || 'Unknown',
+        displayName: user.displayName || 'Unknown',
+        email: user.email || '',
         voiceProfileId: 'default',
+        role: 'host' as const,
         joinTime: new Date(),
+        joinedAt: new Date(),
         speakingTime: 0,
+        isActive: true,
       }],
-      transcript: [],
       notes: [],
       keywords: [],
       appliedRules: [],
@@ -446,7 +459,7 @@ export const useRecording = () => {
 /**
  * Hook for managing meeting-related errors with auto-clearing
  */
-export const useMeetingErrors = () => {
+export const useMeetingErrorsHook = () => {
   const {
     meetingError,
     transcriptError,

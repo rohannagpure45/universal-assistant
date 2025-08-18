@@ -3,9 +3,10 @@
  * Provides mocks and utilities for testing Firebase authentication and Firestore
  */
 
+import { jest } from '@jest/globals';
 import { User as FirebaseUser } from 'firebase/auth';
 import { DocumentSnapshot, QuerySnapshot } from 'firebase/firestore';
-import { User, UserPreferences, Meeting, TranscriptEntry, SpeakerProfile, CustomRule } from '@/types';
+import { User, UserPreferences, Meeting, TranscriptEntry, SpeakerProfile, CustomRule, MeetingType } from '@/types';
 
 // Mock Firebase Auth
 export const createMockFirebaseUser = (overrides: Partial<FirebaseUser> = {}): FirebaseUser => ({
@@ -13,6 +14,8 @@ export const createMockFirebaseUser = (overrides: Partial<FirebaseUser> = {}): F
   email: 'test@example.com',
   displayName: 'Test User',
   photoURL: 'https://example.com/avatar.jpg',
+  phoneNumber: null,
+  providerId: 'password',
   emailVerified: true,
   isAnonymous: false,
   metadata: {
@@ -22,9 +25,9 @@ export const createMockFirebaseUser = (overrides: Partial<FirebaseUser> = {}): F
   providerData: [],
   refreshToken: 'mock-refresh-token',
   tenantId: null,
-  delete: jest.fn().mockResolvedValue(undefined),
-  getIdToken: jest.fn().mockResolvedValue('mock-id-token'),
-  getIdTokenResult: jest.fn().mockResolvedValue({
+  delete: (jest.fn() as any).mockResolvedValue(undefined),
+  getIdToken: (jest.fn() as any).mockResolvedValue('mock-id-token'),
+  getIdTokenResult: (jest.fn() as any).mockResolvedValue({
     token: 'mock-id-token',
     authTime: new Date().toISOString(),
     issuedAtTime: new Date().toISOString(),
@@ -32,8 +35,8 @@ export const createMockFirebaseUser = (overrides: Partial<FirebaseUser> = {}): F
     signInProvider: 'password',
     claims: {},
   }),
-  reload: jest.fn().mockResolvedValue(undefined),
-  toJSON: jest.fn().mockReturnValue({}),
+  reload: (jest.fn() as any).mockResolvedValue(undefined),
+  toJSON: (jest.fn() as any).mockReturnValue({}),
   ...overrides,
 });
 
@@ -46,6 +49,22 @@ export const createMockUser = (overrides: Partial<User> = {}): User => {
     autoTranscribe: true,
     saveTranscripts: true,
     theme: 'system',
+    language: 'en',
+    notifications: {
+      emailNotifications: true,
+      pushNotifications: true,
+      desktopNotifications: true,
+    },
+    privacy: {
+      dataRetention: 30,
+      allowAnalytics: true,
+      shareImprovement: true,
+    },
+    accessibility: {
+      highContrast: false,
+      largeText: false,
+      keyboardNavigation: false,
+    },
   };
 
   return {
@@ -62,17 +81,26 @@ export const createMockUser = (overrides: Partial<User> = {}): User => {
 
 // Mock Meeting
 export const createMockMeeting = (overrides: Partial<Meeting> = {}): Meeting => ({
+  id: 'test-meeting-123',
   meetingId: 'test-meeting-123',
   hostId: 'test-user-123',
+  createdBy: 'test-user-123',
   title: 'Test Meeting',
-  type: 'brainstorming',
+  description: 'A test meeting for brainstorming',
+  type: MeetingType.BRAINSTORMING,
   participants: [
     {
+      id: 'test-user-123',
       userId: 'test-user-123',
       userName: 'Test User',
+      displayName: 'Test User',
+      email: 'test@example.com',
       voiceProfileId: 'voice-profile-123',
+      role: 'host' as const,
       joinTime: new Date(),
+      joinedAt: new Date(),
       speakingTime: 300,
+      isActive: true,
     },
   ],
   transcript: [],
@@ -81,19 +109,43 @@ export const createMockMeeting = (overrides: Partial<Meeting> = {}): Meeting => 
   appliedRules: ['rule-1', 'rule-2'],
   startTime: new Date(),
   endTime: undefined,
+  startedAt: undefined,
+  endedAt: undefined,
+  scheduledFor: undefined,
+  status: 'active' as const,
+  duration: undefined,
+  recording: undefined,
+  settings: undefined,
+  metadata: undefined,
+  summary: undefined,
+  actionItems: undefined,
+  createdAt: new Date(),
+  updatedAt: new Date(),
   ...overrides,
 });
 
 // Mock Transcript Entry
 export const createMockTranscriptEntry = (overrides: Partial<TranscriptEntry> = {}): TranscriptEntry => ({
   id: 'transcript-123',
+  meetingId: 'test-meeting-123',
+  content: 'This is a test transcript entry.',
   speaker: 'Test User',
   speakerId: 'test-user-123',
+  speakerName: 'Test User',
   text: 'This is a test transcript entry.',
   timestamp: new Date(),
+  duration: 1.5,
   confidence: 0.95,
+  language: 'en',
   isFragment: false,
   isComplete: true,
+  isProcessed: true,
+  metadata: {
+    volume: 0.8,
+    pace: 120,
+    sentiment: 'neutral',
+    keywords: ['test', 'transcript'],
+  },
   ...overrides,
 });
 
@@ -115,7 +167,7 @@ export const createMockCustomRule = (overrides: Partial<CustomRule> = {}): Custo
   userId: 'test-user-123',
   name: 'Test Rule',
   description: 'A test custom rule',
-  meetingTypes: ['brainstorming'],
+  meetingTypes: [MeetingType.BRAINSTORMING],
   conditions: [
     {
       type: 'keyword',
@@ -143,8 +195,8 @@ export const createMockDocumentSnapshot = <T>(
   exists = true
 ): Partial<DocumentSnapshot> => ({
   id,
-  exists: () => exists,
-  data: () => data,
+  exists: (() => exists) as any,
+  data: (() => data) as any,
   get: (field: string) => data ? (data as any)[field] : undefined,
   ref: {
     id,
@@ -211,7 +263,7 @@ export const setupFirebaseTestEnvironment = () => {
   jest.clearAllMocks();
 
   // Setup default mock implementations
-  mockFirestore.collection.mockImplementation((path: string) => ({
+  (mockFirestore.collection as any).mockImplementation((path: string) => ({
     path,
     doc: (id?: string) => ({
       id: id || 'auto-generated-id',
@@ -220,7 +272,7 @@ export const setupFirebaseTestEnvironment = () => {
     }),
   }));
 
-  mockFirestore.doc.mockImplementation((path: string, id?: string) => ({
+  (mockFirestore.doc as any).mockImplementation((path: string, id?: string) => ({
     id: id || 'auto-generated-id',
     path: path,
     collection: mockFirestore.collection,
@@ -235,11 +287,11 @@ export const setupFirebaseTestEnvironment = () => {
     set: jest.fn(),
     update: jest.fn(),
     delete: jest.fn(),
-    commit: jest.fn().mockResolvedValue(undefined),
+    commit: (jest.fn() as any).mockResolvedValue(undefined),
   });
 
   // Setup Auth mocks
-  mockFirebaseAuth.onAuthStateChanged.mockImplementation((callback) => {
+  (mockFirebaseAuth.onAuthStateChanged as any).mockImplementation((callback: any) => {
     // Simulate auth state change
     setTimeout(() => callback(mockFirebaseAuth.currentUser), 0);
     return jest.fn(); // Unsubscribe function

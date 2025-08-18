@@ -3,9 +3,9 @@ import {
   UniversalAssistantCoordinator, 
   createUniversalAssistantCoordinator,
   UniversalAssistantConfig,
-  CoordinatorState,
-  SpeakerProfile 
+  CoordinatorState
 } from '@/services/universal-assistant/UniversalAssistantCoordinator';
+import { SpeakerProfile } from '@/types';
 import { useMeetingStore } from '@/stores/meetingStore';
 import { useAppStore } from '@/stores/appStore';
 
@@ -87,7 +87,7 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
   // Initialize coordinator on mount
   useEffect(() => {
     try {
-      const coordinator = createUniversalAssistantCoordinator(config, meetingStore, appStore);
+      const coordinator = createUniversalAssistantCoordinator(config, meetingStore as any, appStore as any);
       coordinatorRef.current = coordinator;
 
       // Subscribe to state changes
@@ -280,7 +280,7 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
     isPlaying: state.isPlaying,
     isProcessing: state.isProcessing,
     transcript: state.transcript,
-    speakers: state.speakers,
+    speakers: state.speakers as any,
     currentSpeaker: state.currentSpeaker,
     
     // Actions
@@ -326,6 +326,5 @@ export function useDevelopmentUniversalAssistant(): UseUniversalAssistantReturn 
 export type { 
   UniversalAssistantConfig, 
   CoordinatorState, 
-  SpeakerProfile,
-  UseUniversalAssistantOptions 
+  SpeakerProfile
 };

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyIdToken } from '@/lib/firebase/admin';
-import { databaseService } from '@/services/firebase/DatabaseService';
+import { DatabaseService } from '@/services/firebase/DatabaseService';
 import { Meeting, MeetingType } from '@/types';
 
 // Request interfaces
@@ -66,8 +66,8 @@ function validateCreateMeetingInput(
   }
 
   const validTypes: MeetingType[] = [
-    'general', 'standup', 'planning', 'retrospective', 
-    'one-on-one', 'interview', 'client', 'presentation'
+    MeetingType.GENERAL, MeetingType.STANDUP, MeetingType.PLANNING, MeetingType.RETROSPECTIVE, 
+    MeetingType.ONE_ON_ONE, MeetingType.INTERVIEW, MeetingType.CLIENT_MEETING, MeetingType.PRESENTATION
   ];
   
   if (!validTypes.includes(type)) {
@@ -121,8 +121,8 @@ function validateGetMeetingsQuery(query: GetMeetingsQuery): { isValid: boolean; 
 
   if (query.type) {
     const validTypes: MeetingType[] = [
-      'general', 'standup', 'planning', 'retrospective', 
-      'one-on-one', 'interview', 'client', 'presentation'
+      MeetingType.GENERAL, MeetingType.STANDUP, MeetingType.PLANNING, MeetingType.RETROSPECTIVE, 
+      MeetingType.ONE_ON_ONE, MeetingType.INTERVIEW, MeetingType.CLIENT_MEETING, MeetingType.PRESENTATION
     ];
     if (!validTypes.includes(query.type)) {
       return { isValid: false, error: 'Invalid meeting type filter' };
@@ -204,44 +204,50 @@ export async function POST(request: NextRequest) {
     }
 
     // Create meeting object
-    const now = new Date().toISOString();
-    const meetingData: Omit<Meeting, 'id'> = {
+    const now = new Date();
+    const meetingData = {
+      meetingId: '',
       title: title.trim(),
       type,
-      description: description?.trim() || null,
+      description: description?.trim() || undefined,
+      hostId: userId,
       createdBy: userId,
       createdAt: now,
       updatedAt: now,
-      scheduledFor: scheduledFor || null,
-      startedAt: null,
-      endedAt: null,
+      scheduledFor: scheduledFor ? new Date(scheduledFor) : undefined,
+      startedAt: undefined,
+      endedAt: undefined,
       status: scheduledFor ? 'scheduled' : 'active',
-      participants: participants || [userId],
+      participants: [],
       transcript: [],
-      summary: null,
+      summary: undefined,
       actionItems: [],
+      keywords: [],
+      notes: [],
+      appliedRules: [],
       settings: {
+        isPublic: false,
+        allowRecording: settings?.recordAudio ?? false,
         autoTranscribe: settings?.autoTranscribe ?? true,
-        speakerIdentification: settings?.speakerIdentification ?? true,
-        aiAssistance: settings?.aiAssistance ?? true,
-        recordAudio: settings?.recordAudio ?? false,
+        language: 'en',
+        maxParticipants: 100,
       },
       metadata: {
-        duration: null,
-        participantCount: (participants?.length || 1),
-        transcriptWordCount: 0,
-        aiResponseCount: 0,
+        totalWords: 0,
+        totalSpeakers: 0,
+        averageWPM: 0,
+        topics: [],
       },
     };
 
     try {
       // Create meeting in database
-      const meeting = await databaseService.createMeeting(userId, meetingData);
+      const meeting = await DatabaseService.createMeeting(meetingData as any);
 
       return NextResponse.json({
         success: true,
-        meeting,
-      } as CreateMeetingResponse);
+        meeting: meeting as any,
+      });
 
     } catch (dbError) {
       console.error('Database error creating meeting:', dbError);
@@ -298,7 +304,7 @@ export async function GET(request: NextRequest) {
 
     try {
       // Get meetings from database
-      const result = await databaseService.getMeetingsForUser(userId, {
+      const result = await (DatabaseService as any).getMeetingsForUser(userId, {
         limit,
         offset,
         type: query.type,

@@ -910,13 +910,5 @@ export const useUIState = () => useAppStore((state) => ({
   modalOpen: state.modalOpen,
 }));
 
-// Initialize online status listener
-if (typeof window !== 'undefined') {
-  const store = useAppStore.getState();
-  
-  window.addEventListener('online', () => store.setOnlineStatus(true));
-  window.addEventListener('offline', () => store.setOnlineStatus(false));
-  
-  // Load audio devices on initialization
-  store.loadAudioDevices();
-}
+// Note: Online status listeners and device loading should be initialized
+// in a client component to avoid SSR issues

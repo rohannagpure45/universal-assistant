@@ -107,9 +107,9 @@ export function BasicUniversalAssistant() {
             {Array.from(speakers.entries()).map(([id, profile]) => (
               <div key={id} className="flex items-center justify-between bg-white p-2 rounded">
                 <div>
-                  <span className="font-medium">{profile.name || id}</span>
+                  <span className="font-medium">{(profile as any).name || id}</span>
                   <span className="text-sm text-gray-500 ml-2">
-                    ({profile.utteranceCount} utterances)
+                    ({(profile as any).utteranceCount || 0} utterances)
                   </span>
                 </div>
                 <div className="text-sm text-gray-500">

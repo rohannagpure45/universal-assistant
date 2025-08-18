@@ -206,7 +206,7 @@ export class EnhancedInputGatekeeper {
    */
   getGatingStats(): {
     currentState: GatingState;
-    processingStats: typeof this.processingStats;
+    processingStats: any;
     speakerStats: Record<string, {
       contextItems: number;
       gatedItems: number;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authService } from '@/services/firebase/AuthService';
-import { databaseService } from '@/services/firebase/DatabaseService';
+import { DatabaseService } from '@/services/firebase/DatabaseService';
 
 // Request interface
 export interface SignUpRequest {
@@ -93,40 +93,53 @@ async function createUserProfile(uid: string, userData: any) {
   const userProfile = {
     uid,
     email: userData.email,
-    displayName: userData.displayName || null,
+    displayName: userData.displayName || 'User',
     photoURL: userData.photoURL || null,
-    emailVerified: userData.emailVerified,
-    createdAt: now,
-    lastLoginAt: now,
-    lastActiveAt: now,
     preferences: {
-      theme: 'system',
+      defaultModel: 'gpt-4o' as const,
+      ttsVoice: 'alloy',
+      ttsSpeed: 1.0,
+      autoTranscribe: true,
+      saveTranscripts: true,
+      theme: 'system' as const,
+      language: 'en',
       notifications: {
-        email: true,
-        push: true,
-        meetingReminders: true,
-        transcriptionComplete: true,
+        emailNotifications: true,
+        pushNotifications: true,
+        desktopNotifications: true,
       },
-      audio: {
-        noiseSuppression: true,
-        echoCancellation: true,
-        autoGainControl: true,
+      privacy: {
+        dataRetention: 30,
+        allowAnalytics: true,
+        shareImprovement: true,
       },
-    },
-    settings: {
+      accessibility: {
+        highContrast: false,
+        largeText: false,
+        keyboardNavigation: true,
+      },
+      ai: {
+        defaultModel: 'gpt-4o' as const,
+        temperature: 0.7,
+        maxTokens: 2000,
+        enableFallback: true,
+      },
+      tts: {
+        voice: 'alloy',
+        speed: 1.0,
+        pitch: 1.0,
+        volume: 0.8,
+      },
       ui: {
-        sidebarCollapsed: false,
+        theme: 'system' as const,
+        language: 'en',
+        fontSize: 14,
         compactMode: false,
-      },
-      meeting: {
-        autoTranscribe: true,
-        speakerIdentification: true,
-        aiAssistance: true,
       },
     },
   };
 
-  await databaseService.createUser(uid, userProfile);
+  await DatabaseService.createUser(userProfile);
   return userProfile;
 }
 
@@ -147,14 +160,15 @@ export async function POST(request: NextRequest) {
 
     try {
       // Create user account
-      const userCredential = await authService.createUserWithEmailAndPassword(
-        email.trim(),
-        password
-      );
+      const result = await authService.signUp({
+        email: email.trim(),
+        password,
+        displayName: displayName || 'User'
+      });
 
-      if (!userCredential.user) {
+      if (result.error || !result.user) {
         return NextResponse.json(
-          { success: false, error: 'Account creation failed' },
+          { success: false, error: result.error?.message || 'Account creation failed' },
           { status: 500 }
         );
       }
@@ -162,7 +176,7 @@ export async function POST(request: NextRequest) {
       // Update user profile with display name if provided
       if (displayName && displayName.trim()) {
         try {
-          await authService.updateProfile({
+          await authService.updateUserProfile({
             displayName: displayName.trim(),
           });
         } catch (profileError) {
@@ -172,35 +186,25 @@ export async function POST(request: NextRequest) {
 
       // Create user profile in database
       try {
-        await createUserProfile(userCredential.user.uid, {
-          email: userCredential.user.email,
+        await createUserProfile(result.user.uid, {
+          email: result.user.email,
           displayName: displayName?.trim() || null,
-          photoURL: userCredential.user.photoURL,
-          emailVerified: userCredential.user.emailVerified,
+          photoURL: result.user.photoURL,
+          emailVerified: result.user.emailVerified,
         });
       } catch (dbError) {
         console.error('Failed to create user profile in database:', dbError);
         // Note: We could decide to rollback the user creation here if database creation fails
       }
 
-      // Send verification email
-      try {
-        await authService.sendEmailVerification();
-      } catch (emailError) {
-        console.warn('Failed to send verification email:', emailError);
-        // Continue with signup even if email verification fails
-      }
-
-      // Get user ID token
-      const token = await userCredential.user.getIdToken();
+      // Email verification would be handled by Firebase Auth automatically
 
       // Format user data
-      const userData = formatUserData(userCredential.user);
+      const userData = formatUserData(result.user);
 
       return NextResponse.json({
         success: true,
         user: userData,
-        token,
       } as SignUpResponse);
 
     } catch (authError: any) {

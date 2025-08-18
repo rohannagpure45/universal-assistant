@@ -44,6 +44,39 @@ service cloud.firestore {
           (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
            request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participants);
       }
+      
+      // Transcripts subcollection
+      match /transcripts/{transcriptId} {
+        allow read: if isAuthenticated() &&
+          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
+           request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participants);
+        allow write: if isAuthenticated() &&
+          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
+           request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participants);
+        
+        // Transcript entries nested collection
+        match /entries/{entryId} {
+          allow read, write: if isAuthenticated() &&
+            (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
+             request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participants);
+        }
+      }
+      
+      // Speakers subcollection
+      match /speakers/{speakerId} {
+        allow read, write: if isAuthenticated() &&
+          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
+           request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participants);
+      }
+      
+      // Analytics subcollection for meetings
+      match /analytics/{analyticsId} {
+        allow read: if isAuthenticated() &&
+          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
+           request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participants);
+        allow write: if isAuthenticated() &&
+          get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid;
+      }
     }
     
     // Audio clips collection
@@ -71,6 +104,25 @@ service cloud.firestore {
       allow read: if isAuthenticated() && 
         resource.data.userId == request.auth.uid;
       allow write: if isAuthenticated();
+    }
+    
+    // TTS cache collection
+    match /ttsCache/{cacheId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // Daily analytics for admin dashboards
+    match /dailyAnalytics/{date} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // System configuration
+    match /systemConfig/{configType} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

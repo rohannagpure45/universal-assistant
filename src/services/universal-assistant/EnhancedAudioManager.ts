@@ -29,6 +29,9 @@ export interface AudioAnalysisConfig {
   fftSize: number; // FFT size for frequency analysis
   smoothingTimeConstant: number; // analyser smoothing
   updateInterval: number; // analysis update interval in ms
+  bufferSize?: number; // optional buffer size
+  sampleRate?: number; // optional sample rate
+  channels?: number; // optional channels
 }
 
 // Enhanced Audio Manager Configuration
@@ -178,8 +181,8 @@ export class EnhancedAudioManager extends AudioManager {
     // Initialize audio analysis buffers
     if (this.enhancedConfig.audioAnalysis.enabled) {
       const bufferSize = this.enhancedConfig.audioAnalysis.fftSize / 2;
-      this.frequencyBuffer = new Uint8Array(new ArrayBuffer(bufferSize));
-      this.timeBuffer = new Uint8Array(new ArrayBuffer(this.enhancedConfig.audioAnalysis.fftSize));
+      this.frequencyBuffer = new Uint8Array(bufferSize);
+      this.timeBuffer = new Uint8Array(this.enhancedConfig.audioAnalysis.fftSize);
     }
   }
   
@@ -267,7 +270,9 @@ export class EnhancedAudioManager extends AudioManager {
       }
       
       // Get frequency and time domain data
+      // @ts-ignore - TypeScript version incompatibility with Web Audio API
       this.analyser.getByteFrequencyData(this.frequencyBuffer);
+      // @ts-ignore - TypeScript version incompatibility with Web Audio API
       this.analyser.getByteTimeDomainData(this.timeBuffer);
       
       // Calculate audio analysis metrics

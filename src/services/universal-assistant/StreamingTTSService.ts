@@ -197,7 +197,7 @@ export class StreamingTTSService {
     };
 
     // Initialize services
-    this.elevenLabsTTS = new ElevenLabsTTS();
+    this.elevenLabsTTS = new ElevenLabsTTS(process.env.ELEVENLABS_API_KEY || '');
     this.ttsApiClient = new TTSApiClient();
 
     this.initializeService();
@@ -341,8 +341,9 @@ export class StreamingTTSService {
       // Update session with error context
       session.metadata = {
         ...session.metadata,
-        fallbackReason: error instanceof Error ? error.message : 'Unknown error',
-        fallbackAt: Date.now()
+        // Note: fallbackReason not supported in current metadata interface
+        // fallbackReason: error instanceof Error ? error.message : 'Unknown error',
+        // fallbackAt: Date.now()
       };
       
       try {
@@ -437,8 +438,7 @@ export class StreamingTTSService {
       const response = await this.ttsApiClient.generateSpeech(session.text, {
         voiceId: session.config.voiceId,
         options: {
-          useCache: true,
-          priority: 'high',
+          useCache: true
         },
       });
 

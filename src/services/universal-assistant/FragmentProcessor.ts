@@ -481,7 +481,9 @@ export class FragmentProcessor {
     // Maintain cache size
     if (this.semanticCache.size > 100) {
       const oldestKey = this.semanticCache.keys().next().value;
-      this.semanticCache.delete(oldestKey);
+      if (oldestKey) {
+        this.semanticCache.delete(oldestKey);
+      }
     }
 
     return analysis;
@@ -775,11 +777,12 @@ export class FragmentProcessor {
     actionPatterns.forEach(({ pattern, type }) => {
       let match;
       while ((match = pattern.exec(text)) !== null) {
+        const dueContext = this.extractDueContext(match[0]);
         actionItems.push({
           text: match[2].trim(),
           type,
           confidence: 0.7,
-          dueContext: this.extractDueContext(match[0])
+          ...(dueContext && { dueContext })
         });
       }
     });

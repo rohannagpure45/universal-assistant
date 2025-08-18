@@ -338,9 +338,9 @@ export class GatekeeperMetrics {
   }
 
   /**
-   * Gets speaker-specific metrics
+   * Gets all speaker-specific metrics
    */
-  getSpeakerMetrics(): SpeakerMetrics[] {
+  getAllSpeakerMetrics(): SpeakerMetrics[] {
     return Array.from(this.speakerMetrics.values());
   }
 
@@ -393,7 +393,7 @@ export class GatekeeperMetrics {
     return {
       timestamp: Date.now(),
       performance: this.getPerformanceMetrics(),
-      speakers: this.getSpeakerMetrics(),
+      speakers: this.getAllSpeakerMetrics(),
       system: this.getSystemMetrics() || {} as SystemMetrics,
       alerts: this.getAlerts(),
     };

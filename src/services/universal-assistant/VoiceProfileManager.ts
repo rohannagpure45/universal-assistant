@@ -215,6 +215,12 @@ export class VoiceProfileManager {
    * Initialize Web Audio API for voice analysis
    */
   private async initializeAudioContext(): Promise<void> {
+    // Only initialize audio context on client-side
+    if (typeof window === 'undefined') {
+      console.log('VoiceProfileManager: Skipping audio context initialization (server-side)');
+      return;
+    }
+    
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       console.log('VoiceProfileManager: Audio context initialized');
@@ -240,8 +246,8 @@ export class VoiceProfileManager {
     
     for (const profile of basicProfiles) {
       if (!this.isEnhancedProfile(profile)) {
-        const enhancedProfile = await this.upgradeToEnhancedProfile(profile);
-        this.profiles.set(profile.speakerId, enhancedProfile);
+        const enhancedProfile = await this.upgradeToEnhancedProfile(profile as SpeakerProfile);
+        this.profiles.set((profile as any).speakerId || (profile as any).id, enhancedProfile);
       }
     }
     
@@ -263,6 +269,7 @@ export class VoiceProfileManager {
   private async upgradeToEnhancedProfile(basicProfile: SpeakerProfile): Promise<EnhancedSpeakerProfile> {
     const enhancedProfile: EnhancedSpeakerProfile = {
       ...basicProfile,
+      userName: basicProfile.userName || 'Unknown',
       speakerEmbedding: this.generateRandomEmbedding(this.config.speakerEmbeddingSize),
       emotionalEmbedding: this.generateRandomEmbedding(this.config.emotionalEmbeddingSize),
       linguisticEmbedding: this.generateRandomEmbedding(this.config.linguisticEmbeddingSize),
@@ -1129,6 +1136,11 @@ export class VoiceProfileManager {
   }
 
   private startMetricsCollection(): void {
+    // Only start metrics collection on client-side
+    if (typeof window === 'undefined') {
+      return;
+    }
+    
     this.metricsTimer = setInterval(() => {
       this.updateMetrics();
     }, 30000); // Update every 30 seconds

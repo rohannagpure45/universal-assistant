@@ -4,6 +4,7 @@
  */
 
 import '@testing-library/jest-dom';
+import { jest, beforeEach, afterEach } from '@jest/globals';
 import { setupFirebaseTestEnvironment } from './firebase-test-utils';
 
 // Node.js polyfills for browser APIs
@@ -89,7 +90,7 @@ jest.mock('firebase/storage', () => ({
 jest.mock('firebase/analytics', () => ({
   getAnalytics: jest.fn(() => ({ app: { name: 'mock-app' } })),
   logEvent: jest.fn(),
-  isSupported: jest.fn().mockResolvedValue(false),
+  isSupported: (jest.fn() as any).mockResolvedValue(false),
 }));
 
 // Mock Firebase Admin SDK
@@ -152,7 +153,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 // Mock MediaRecorder
-global.MediaRecorder = jest.fn().mockImplementation(() => ({
+const MediaRecorderMock = jest.fn().mockImplementation(() => ({
   start: jest.fn(),
   stop: jest.fn(),
   pause: jest.fn(),
@@ -163,11 +164,14 @@ global.MediaRecorder = jest.fn().mockImplementation(() => ({
   state: 'inactive',
 }));
 
+(MediaRecorderMock as any).isTypeSupported = jest.fn(() => true);
+global.MediaRecorder = MediaRecorderMock as any;
+
 // Mock navigator.mediaDevices
 Object.defineProperty(navigator, 'mediaDevices', {
   writable: true,
   value: {
-    getUserMedia: jest.fn().mockResolvedValue({
+    getUserMedia: (jest.fn() as any).mockResolvedValue({
       getTracks: () => [
         {
           stop: jest.fn(),
@@ -176,14 +180,14 @@ Object.defineProperty(navigator, 'mediaDevices', {
         },
       ],
     }),
-    enumerateDevices: jest.fn().mockResolvedValue([
+    enumerateDevices: (jest.fn() as any).mockResolvedValue([
       { deviceId: 'default', kind: 'audioinput', label: 'Default Microphone' },
     ]),
   },
 });
 
 // Mock AudioContext
-global.AudioContext = jest.fn().mockImplementation(() => ({
+global.AudioContext = (jest.fn() as any).mockImplementation(() => ({
   createAnalyser: jest.fn(() => ({
     connect: jest.fn(),
     disconnect: jest.fn(),
@@ -202,8 +206,8 @@ global.AudioContext = jest.fn().mockImplementation(() => ({
 }));
 
 // Mock window.Audio
-global.Audio = jest.fn().mockImplementation(() => ({
-  play: jest.fn().mockResolvedValue(undefined),
+global.Audio = (jest.fn() as any).mockImplementation(() => ({
+  play: (jest.fn() as any).mockResolvedValue(undefined),
   pause: jest.fn(),
   load: jest.fn(),
   addEventListener: jest.fn(),
@@ -217,11 +221,11 @@ global.Audio = jest.fn().mockImplementation(() => ({
 }));
 
 // Mock Blob and URL
-global.Blob = jest.fn().mockImplementation((parts, options) => ({
+global.Blob = (jest.fn() as any).mockImplementation((parts: any, options: any) => ({
   size: 1024,
   type: options?.type || 'application/octet-stream',
-  arrayBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(1024)),
-  text: jest.fn().mockResolvedValue('mock text'),
+  arrayBuffer: (jest.fn() as any).mockResolvedValue(new ArrayBuffer(1024)),
+  text: (jest.fn() as any).mockResolvedValue('mock text'),
   stream: jest.fn(),
   slice: jest.fn(),
 }));
@@ -234,7 +238,7 @@ global.URL = {
 // Mock crypto for UUID generation
 Object.defineProperty(global, 'crypto', {
   value: {
-    getRandomValues: jest.fn((arr) => {
+    getRandomValues: jest.fn((arr: any) => {
       for (let i = 0; i < arr.length; i++) {
         arr[i] = Math.floor(Math.random() * 256);
       }
@@ -242,13 +246,18 @@ Object.defineProperty(global, 'crypto', {
     }),
     randomUUID: jest.fn(() => '12345678-1234-1234-1234-123456789abc'),
     subtle: {
-      digest: jest.fn().mockResolvedValue(new ArrayBuffer(32)),
+      digest: (jest.fn() as any).mockResolvedValue(new ArrayBuffer(32)),
     },
   },
 });
 
 // Mock environment variables
-process.env.NODE_ENV = 'test';
+Object.defineProperty(process.env, 'NODE_ENV', {
+  value: 'test',
+  writable: false,
+  enumerable: true,
+  configurable: true,
+});
 process.env.NEXT_PUBLIC_FIREBASE_API_KEY = 'mock-api-key';
 process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN = 'mock-project.firebaseapp.com';
 process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = 'mock-project';

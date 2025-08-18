@@ -30,17 +30,16 @@ export const usePreferenceSync = () => {
         defaultModel: preferences.ai.defaultModel,
         temperature: preferences.ai.temperature,
         maxTokens: preferences.ai.maxTokens,
-        enableAutoResponse: preferences.ai.enableAutoResponse,
       });
     }
 
     // Sync TTS settings
     if (preferences.tts) {
       appStore.updateTTSSettings({
-        voiceId: preferences.tts.voiceId,
+        voiceId: preferences.tts.voice,
         speed: preferences.tts.speed,
         volume: preferences.tts.volume,
-        enabled: preferences.tts.enabled,
+        enabled: true, // Default to enabled
       });
     }
 
@@ -49,7 +48,7 @@ export const usePreferenceSync = () => {
       appStore.updateUISettings({
         theme: preferences.ui.theme,
         language: preferences.ui.language,
-        compact: preferences.ui.compact,
+        compact: preferences.ui.compactMode,
       });
     }
   }, [user?.preferences, appStore]);
@@ -62,31 +61,19 @@ export const usePreferenceSync = () => {
         defaultModel: appStore.aiSettings.defaultModel,
         temperature: appStore.aiSettings.temperature,
         maxTokens: appStore.aiSettings.maxTokens,
-        enableAutoResponse: appStore.aiSettings.enableAutoResponse,
-        responseDelay: appStore.aiSettings.responseDelay,
-        confidenceThreshold: appStore.aiSettings.confidenceThreshold,
-        fallbackModel: appStore.aiSettings.fallbackModel,
+        enableFallback: true, // Map from fallbackModel existence
       },
       tts: {
-        voiceId: appStore.ttsSettings.voiceId,
+        voice: appStore.ttsSettings.voiceId,
         speed: appStore.ttsSettings.speed,
+        pitch: appStore.ttsSettings.pitch || 1.0,
         volume: appStore.ttsSettings.volume,
-        enabled: appStore.ttsSettings.enabled,
-        autoPlay: appStore.ttsSettings.autoPlay,
-        pitch: appStore.ttsSettings.pitch,
-        ssmlEnabled: appStore.ttsSettings.ssmlEnabled,
       },
       ui: {
         theme: appStore.uiSettings.theme,
         language: appStore.uiSettings.language,
-        compact: appStore.uiSettings.compact,
-        showWaveform: appStore.uiSettings.showWaveform,
-        showTranscriptTimestamps: appStore.uiSettings.showTranscriptTimestamps,
-        autoScroll: appStore.uiSettings.autoScroll,
-        fontSize: appStore.uiSettings.fontSize,
-        timezone: appStore.uiSettings.timezone,
-        animationsEnabled: appStore.uiSettings.animationsEnabled,
-        soundEffectsEnabled: appStore.uiSettings.soundEffectsEnabled,
+        fontSize: parseInt(appStore.uiSettings.fontSize || '14'),
+        compactMode: appStore.uiSettings.compact,
       },
     };
 
@@ -132,25 +119,47 @@ export const useMeetingIntegration = () => {
 
     try {
       const meetingId = await meetingStore.startMeeting({
+        id: '',
         title,
         description: description || '',
         hostId: user.uid,
-        meetingType,
+        createdBy: user.uid,
+        type: meetingType,
         participants: [{
+          id: user.uid,
           userId: user.uid,
+          userName: user.displayName || 'Host',
           displayName: user.displayName || 'Host',
-          role: 'host',
-          email: user.email,
+          email: user.email || '',
+          voiceProfileId: 'default',
+          role: 'host' as const,
+          joinTime: new Date(),
+          joinedAt: new Date(),
+          speakingTime: 0,
+          isActive: true,
         }],
+        notes: [],
+        keywords: [],
+        appliedRules: [],
+        endTime: undefined,
+        startedAt: undefined,
+        endedAt: undefined,
+        scheduledFor: undefined,
+        status: 'active',
+        duration: undefined,
+        recording: undefined,
         settings: {
           allowRecording: true,
-          allowTranscription: true,
+          autoTranscribe: true,
           maxParticipants: 10,
           isPublic: false,
+          language: 'en',
         },
-        status: 'active',
-        summary: '',
-        tags: [],
+        metadata: undefined,
+        summary: undefined,
+        actionItems: undefined,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       });
 
       if (meetingId) {

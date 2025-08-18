@@ -30,12 +30,21 @@ export class TTSCacheManager {
   private readonly bucketPath = 'tts-cache';
   private readonly expirationDays = 7;
 
+  // Helper function to ensure adminStorage is initialized
+  private ensureAdminStorage(): import('firebase-admin/storage').Storage {
+    const storage = adminStorage();
+    if (!storage) {
+      throw new Error('Firebase Admin Storage not initialized');
+    }
+    return storage;
+  }
+
   /**
    * Get comprehensive cache statistics
    */
   async getCacheStats(): Promise<CacheStats> {
     try {
-      const [files] = await adminStorage.bucket().getFiles({
+      const [files] = await this.ensureAdminStorage().bucket().getFiles({
         prefix: this.bucketPath,
       });
 
@@ -59,8 +68,8 @@ export class TTSCacheManager {
       for (const file of files) {
         try {
           const [metadata] = await file.getMetadata();
-          const created = new Date(metadata.timeCreated);
-          const size = parseInt(metadata.size || '0');
+          const created = new Date(metadata.timeCreated || Date.now());
+          const size = parseInt(String(metadata.size || '0'));
           const expired = (now.getTime() - created.getTime()) > expirationMs;
 
           totalSize += size;
@@ -117,7 +126,7 @@ export class TTSCacheManager {
         sortOrder = 'desc',
       } = options;
 
-      const [files] = await adminStorage.bucket().getFiles({
+      const [files] = await this.ensureAdminStorage().bucket().getFiles({
         prefix: this.bucketPath,
         maxResults: limit * 2, // Get more to account for filtering
       });
@@ -129,8 +138,8 @@ export class TTSCacheManager {
       for (const file of files) {
         try {
           const [metadata] = await file.getMetadata();
-          const created = new Date(metadata.timeCreated);
-          const size = parseInt(metadata.size || '0');
+          const created = new Date(metadata.timeCreated || Date.now());
+          const size = parseInt(String(metadata.size || '0'));
           const expired = (now.getTime() - created.getTime()) > expirationMs;
 
           if (!includeExpired && expired) {
@@ -199,7 +208,7 @@ export class TTSCacheManager {
         const batch = expiredFiles.slice(i, i + batchSize);
         const deletePromises = batch.map(async (file) => {
           try {
-            const firebaseFile = adminStorage.bucket().file(file.name);
+            const firebaseFile = this.ensureAdminStorage().bucket().file(file.name);
             await firebaseFile.delete();
             deletedCount++;
             freedSpace += file.size;
@@ -231,7 +240,7 @@ export class TTSCacheManager {
     for (const cacheKey of cacheKeys) {
       try {
         const fileName = `${this.bucketPath}/${cacheKey}.mp3`;
-        const file = adminStorage.bucket().file(fileName);
+        const file = this.ensureAdminStorage().bucket().file(fileName);
         
         const [exists] = await file.exists();
         if (exists) {
@@ -272,7 +281,7 @@ export class TTSCacheManager {
         const batch = files.slice(i, i + batchSize);
         const deletePromises = batch.map(async (file) => {
           try {
-            const firebaseFile = adminStorage.bucket().file(file.name);
+            const firebaseFile = this.ensureAdminStorage().bucket().file(file.name);
             await firebaseFile.delete();
             deletedCount++;
             freedSpace += file.size;
@@ -330,7 +339,7 @@ export class TTSCacheManager {
         }
 
         try {
-          const firebaseFile = adminStorage.bucket().file(file.name);
+          const firebaseFile = this.ensureAdminStorage().bucket().file(file.name);
           await firebaseFile.delete();
           
           currentSize -= file.size;

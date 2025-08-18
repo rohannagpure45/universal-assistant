@@ -14,7 +14,7 @@ import {
 /**
  * Hook for managing audio devices with automatic refresh
  */
-export const useAudioDevices = (autoRefresh: boolean = true) => {
+export const useAudioDevicesHook = (autoRefresh: boolean = true) => {
   const {
     availableDevices,
     isLoadingDevices,
@@ -106,7 +106,7 @@ export const useAudioDevices = (autoRefresh: boolean = true) => {
 /**
  * Hook for audio settings with validation and presets
  */
-export const useAudioSettings = () => {
+export const useAudioSettingsHook = () => {
   const {
     audioSettings,
     updateAudioSettings,
@@ -269,7 +269,7 @@ export const useTheme = () => {
 /**
  * Hook for UI settings with accessibility considerations
  */
-export const useUISettings = () => {
+export const useUISettingsHook = () => {
   const {
     uiSettings,
     accessibilitySettings,
@@ -542,7 +542,7 @@ export const usePerformanceMonitor = (enabledReporting = true) => {
 /**
  * Hook for managing feature flags with caching
  */
-export const useFeatureFlags = () => {
+export const useFeatureFlagsHook = () => {
   const {
     featureFlags,
     setFeatureFlag,

@@ -486,13 +486,19 @@ export class UniversalAssistantCoordinator {
     // Add transcript entry to meeting store if available
     if (this.meetingStore && text.trim()) {
       const transcriptEntry: Omit<TranscriptEntry, 'id'> = {
+        meetingId: this.meetingStore.getState().currentMeeting?.id || '',
+        content: text.trim(),
         speaker: speakerId || 'unknown', // Speaker name/display text
         speakerId: speakerId || 'unknown', // Unique speaker identifier
+        speakerName: speakerId || 'unknown',
         text: text.trim(),
         timestamp: new Date(),
+        duration: 0,
         confidence: 0.8, // Default confidence
+        language: 'en-US',
         isFragment: false,
         isComplete: true,
+        isProcessed: false,
       };
       
       try {

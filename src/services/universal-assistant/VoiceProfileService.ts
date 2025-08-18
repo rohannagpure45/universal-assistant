@@ -29,6 +29,15 @@ export interface VoiceProfile {
 export class VoiceProfileService {
   private profileCache: Map<string, VoiceProfile> = new Map();
 
+  // Helper function to ensure adminDb is initialized
+  private ensureAdminDb(): import('firebase-admin/firestore').Firestore {
+    const db = adminDb();
+    if (!db) {
+      throw new Error('Firebase Admin Database not initialized');
+    }
+    return db;
+  }
+
   async createProfile(
     userId: string,
     profileData: Omit<VoiceProfile, 'id' | 'createdAt' | 'updatedAt'>
@@ -41,7 +50,7 @@ export class VoiceProfileService {
     };
 
     // Save to Firestore
-    await adminDb
+    await this.ensureAdminDb()
       .collection('users')
       .doc(userId)
       .collection('voiceProfiles')
@@ -59,7 +68,7 @@ export class VoiceProfileService {
     }
 
     // Fetch from Firestore
-    const doc = await adminDb
+    const doc = await this.ensureAdminDb()
       .collection('users')
       .doc(userId)
       .collection('voiceProfiles')
@@ -76,7 +85,7 @@ export class VoiceProfileService {
   }
 
   async getUserProfiles(userId: string): Promise<VoiceProfile[]> {
-    const snapshot = await adminDb
+    const snapshot = await this.ensureAdminDb()
       .collection('users')
       .doc(userId)
       .collection('voiceProfiles')
@@ -96,7 +105,7 @@ export class VoiceProfileService {
       updatedAt: new Date(),
     };
 
-    await adminDb
+    await this.ensureAdminDb()
       .collection('users')
       .doc(userId)
       .collection('voiceProfiles')
@@ -111,7 +120,7 @@ export class VoiceProfileService {
   }
 
   async deleteProfile(userId: string, profileId: string): Promise<void> {
-    await adminDb
+    await this.ensureAdminDb()
       .collection('users')
       .doc(userId)
       .collection('voiceProfiles')
@@ -124,11 +133,11 @@ export class VoiceProfileService {
   async setDefaultProfile(userId: string, profileId: string): Promise<void> {
     // First, unset any existing default
     const profiles = await this.getUserProfiles(userId);
-    const batch = adminDb.batch();
+    const batch = this.ensureAdminDb().batch();
 
     for (const profile of profiles) {
       if (profile.isDefault) {
-        const ref = adminDb
+        const ref = this.ensureAdminDb()
           .collection('users')
           .doc(userId)
           .collection('voiceProfiles')
@@ -138,7 +147,7 @@ export class VoiceProfileService {
     }
 
     // Set new default
-    const ref = adminDb
+    const ref = this.ensureAdminDb()
       .collection('users')
       .doc(userId)
       .collection('voiceProfiles')
@@ -154,8 +163,13 @@ export class VoiceProfileService {
     audioFile: Buffer,
     mimeType: string
   ): Promise<string> {
+    const storage = adminStorage();
+    if (!storage) {
+      throw new Error('Firebase Admin Storage not initialized');
+    }
+
     const fileName = `voice-samples/${userId}/${profileId}/sample.${mimeType.split('/')[1]}`;
-    const file = adminStorage.bucket().file(fileName);
+    const file = storage.bucket().file(fileName);
 
     await file.save(audioFile, {
       metadata: {

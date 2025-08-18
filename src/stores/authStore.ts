@@ -2,14 +2,17 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { User, UserPreferences } from '@/types';
-import { authService, SignUpData, SignInData, AuthError } from '@/services/firebase/AuthService';
+import { authService, SignUpData, SignInData, LocalAuthError } from '@/services/firebase/AuthService';
+
+// Store the auth unsubscribe function outside the store
+let authUnsubscribe: (() => void) | null = null;
 
 export interface AuthState {
   // State
   user: User | null;
   isLoading: boolean;
   isInitialized: boolean;
-  error: AuthError | null;
+  error: LocalAuthError | null;
   
   // Loading states for specific operations
   isSigningIn: boolean;
@@ -38,13 +41,14 @@ export interface AuthActions {
   
   // State management
   setUser: (user: User | null) => void;
-  setError: (error: AuthError | null) => void;
+  setError: (error: LocalAuthError | null) => void;
   clearError: () => void;
   setInitialized: (initialized: boolean) => void;
   
   // Utility actions
   refreshUser: () => Promise<void>;
   initialize: () => void;
+  initializeAuth: () => Promise<void>;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -76,7 +80,7 @@ export const useAuthStore = create<AuthStore>()(
           
           if (result.error) {
             set((state) => {
-              state.error = result.error;
+              state.error = result.error || null;
               state.isSigningUp = false;
             });
             return false;
@@ -94,7 +98,7 @@ export const useAuthStore = create<AuthStore>()(
             state.error = {
               code: 'auth/unknown',
               message: 'An unexpected error occurred',
-              name: 'AuthError',
+              name: 'LocalAuthError',
             };
             state.isSigningUp = false;
           });
@@ -113,7 +117,7 @@ export const useAuthStore = create<AuthStore>()(
           
           if (result.error) {
             set((state) => {
-              state.error = result.error;
+              state.error = result.error || null;
               state.isSigningIn = false;
             });
             return false;
@@ -131,7 +135,7 @@ export const useAuthStore = create<AuthStore>()(
             state.error = {
               code: 'auth/unknown',
               message: 'An unexpected error occurred',
-              name: 'AuthError',
+              name: 'LocalAuthError',
             };
             state.isSigningIn = false;
           });
@@ -150,7 +154,7 @@ export const useAuthStore = create<AuthStore>()(
           
           if (result.error) {
             set((state) => {
-              state.error = result.error;
+              state.error = result.error || null;
               state.isSigningIn = false;
             });
             return false;
@@ -168,7 +172,7 @@ export const useAuthStore = create<AuthStore>()(
             state.error = {
               code: 'auth/unknown',
               message: 'An unexpected error occurred',
-              name: 'AuthError',
+              name: 'LocalAuthError',
             };
             state.isSigningIn = false;
           });
@@ -187,7 +191,7 @@ export const useAuthStore = create<AuthStore>()(
           
           if (result.error) {
             set((state) => {
-              state.error = result.error;
+              state.error = result.error || null;
               state.isSigningOut = false;
             });
             return false;
@@ -205,7 +209,7 @@ export const useAuthStore = create<AuthStore>()(
             state.error = {
               code: 'auth/unknown',
               message: 'An unexpected error occurred',
-              name: 'AuthError',
+              name: 'LocalAuthError',
             };
             state.isSigningOut = false;
           });
@@ -224,7 +228,7 @@ export const useAuthStore = create<AuthStore>()(
           
           if (result.error) {
             set((state) => {
-              state.error = result.error;
+              state.error = result.error || null;
               state.isResettingPassword = false;
             });
             return false;
@@ -241,7 +245,7 @@ export const useAuthStore = create<AuthStore>()(
             state.error = {
               code: 'auth/unknown',
               message: 'An unexpected error occurred',
-              name: 'AuthError',
+              name: 'LocalAuthError',
             };
             state.isResettingPassword = false;
           });
@@ -260,7 +264,7 @@ export const useAuthStore = create<AuthStore>()(
           
           if (result.error) {
             set((state) => {
-              state.error = result.error;
+              state.error = result.error || null;
               state.isUpdatingPassword = false;
             });
             return false;
@@ -277,7 +281,7 @@ export const useAuthStore = create<AuthStore>()(
             state.error = {
               code: 'auth/unknown',
               message: 'An unexpected error occurred',
-              name: 'AuthError',
+              name: 'LocalAuthError',
             };
             state.isUpdatingPassword = false;
           });
@@ -296,7 +300,7 @@ export const useAuthStore = create<AuthStore>()(
           
           if (result.error) {
             set((state) => {
-              state.error = result.error;
+              state.error = result.error || null;
               state.isUpdatingProfile = false;
             });
             return false;
@@ -314,7 +318,7 @@ export const useAuthStore = create<AuthStore>()(
             state.error = {
               code: 'auth/unknown',
               message: 'An unexpected error occurred',
-              name: 'AuthError',
+              name: 'LocalAuthError',
             };
             state.isUpdatingProfile = false;
           });
@@ -329,7 +333,7 @@ export const useAuthStore = create<AuthStore>()(
         });
       },
 
-      setError: (error: AuthError | null) => {
+      setError: (error: LocalAuthError | null) => {
         set((state) => {
           state.error = error;
         });
@@ -370,7 +374,31 @@ export const useAuthStore = create<AuthStore>()(
         });
 
         // Store unsubscribe function for cleanup if needed
-        (get() as any).unsubscribe = unsubscribe;
+        // We'll store it in a closure variable outside the store
+        authUnsubscribe = unsubscribe;
+      },
+
+      initializeAuth: async () => {
+        try {
+          set((state) => {
+            state.isLoading = true;
+          });
+          
+          // Initialize auth service - this will trigger the auth state listener
+          get().initialize();
+          
+        } catch (error) {
+          console.error('Auth initialization failed:', error);
+          set((state) => {
+            state.error = {
+              code: 'auth/initialization-failed',
+              message: 'Failed to initialize authentication',
+              name: 'LocalAuthError',
+            };
+            state.isLoading = false;
+            state.isInitialized = true;
+          });
+        }
       },
     }))
   )
@@ -406,6 +434,7 @@ export const useAuth = () => {
     clearError: store.clearError,
     refreshUser: store.refreshUser,
     initialize: store.initialize,
+    initializeAuth: store.initializeAuth,
   };
 };
 
@@ -421,7 +450,5 @@ export const useAuthLoading = () => useAuthStore((state) => ({
   isUpdatingPassword: state.isUpdatingPassword,
 }));
 
-// Initialize auth store on module load
-if (typeof window !== 'undefined') {
-  useAuthStore.getState().initialize();
-}
+// Note: Auth store should be initialized in AuthProvider component
+// to avoid issues during SSR

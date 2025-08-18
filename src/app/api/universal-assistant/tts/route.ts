@@ -53,8 +53,14 @@ function generateCacheKey(text: string, voiceId: string, modelId: string, voiceS
 // Helper function to check if cached audio exists
 async function getCachedAudio(cacheKey: string): Promise<string | null> {
   try {
+    const storage = adminStorage();
+    if (!storage) {
+      console.error('Firebase Admin Storage not initialized');
+      return null;
+    }
+
     const fileName = `${CACHE_CONFIG.bucketPath}/${cacheKey}.mp3`;
-    const file = adminStorage.bucket().file(fileName);
+    const file = storage.bucket().file(fileName);
     
     const [exists] = await file.exists();
     if (!exists) {
@@ -63,7 +69,7 @@ async function getCachedAudio(cacheKey: string): Promise<string | null> {
 
     // Check if file is within expiration period
     const [metadata] = await file.getMetadata();
-    const createdTime = new Date(metadata.timeCreated);
+    const createdTime = new Date(metadata.timeCreated || new Date());
     const expirationTime = new Date(createdTime.getTime() + (CACHE_CONFIG.expirationDays * 24 * 60 * 60 * 1000));
     
     if (new Date() > expirationTime) {
@@ -88,8 +94,13 @@ async function getCachedAudio(cacheKey: string): Promise<string | null> {
 // Helper function to cache generated audio
 async function cacheAudio(cacheKey: string, audioBuffer: ArrayBuffer): Promise<string> {
   try {
+    const storage = adminStorage();
+    if (!storage) {
+      throw new Error('Firebase Admin Storage not initialized');
+    }
+
     const fileName = `${CACHE_CONFIG.bucketPath}/${cacheKey}.mp3`;
-    const file = adminStorage.bucket().file(fileName);
+    const file = storage.bucket().file(fileName);
     
     // Save audio to Firebase Storage
     await file.save(Buffer.from(audioBuffer), {
@@ -138,9 +149,9 @@ async function processVoiceSettings(
       if (profile) {
         finalVoiceId = profile.voiceId || finalVoiceId;
         voiceSettings = {
-          stability: profile.voiceSettings.stability,
-          similarityBoost: profile.voiceSettings.similarityBoost,
-          speed: profile.voiceSettings.speed,
+          stability: (profile as any).voiceSettings?.stability || 0.5,
+          similarityBoost: (profile as any).voiceSettings?.similarityBoost || 0.7,
+          speed: (profile as any).voiceSettings?.speed || 1.0,
         };
       }
     } catch (error) {
@@ -176,7 +187,13 @@ function validateTextInput(text: string): { isValid: boolean; error?: string } {
 // Helper function to clean up expired cache files
 async function cleanupExpiredCache(): Promise<void> {
   try {
-    const [files] = await adminStorage.bucket().getFiles({
+    const storage = adminStorage();
+    if (!storage) {
+      console.error('Firebase Admin Storage not initialized');
+      return;
+    }
+
+    const [files] = await storage.bucket().getFiles({
       prefix: CACHE_CONFIG.bucketPath,
       maxResults: 100,
     });
@@ -187,7 +204,7 @@ async function cleanupExpiredCache(): Promise<void> {
     for (const file of files) {
       try {
         const [metadata] = await file.getMetadata();
-        const createdTime = new Date(metadata.timeCreated);
+        const createdTime = new Date(metadata.timeCreated || new Date());
         const expirationTime = new Date(createdTime.getTime() + (CACHE_CONFIG.expirationDays * 24 * 60 * 60 * 1000));
         
         if (now > expirationTime) {

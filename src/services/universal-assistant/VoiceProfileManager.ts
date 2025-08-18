@@ -215,6 +215,12 @@ export class VoiceProfileManager {
    * Initialize Web Audio API for voice analysis
    */
   private async initializeAudioContext(): Promise<void> {
+    // Only initialize audio context on client-side
+    if (typeof window === 'undefined') {
+      console.log('VoiceProfileManager: Skipping audio context initialization (server-side)');
+      return;
+    }
+    
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       console.log('VoiceProfileManager: Audio context initialized');
@@ -1130,6 +1136,11 @@ export class VoiceProfileManager {
   }
 
   private startMetricsCollection(): void {
+    // Only start metrics collection on client-side
+    if (typeof window === 'undefined') {
+      return;
+    }
+    
     this.metricsTimer = setInterval(() => {
       this.updateMetrics();
     }, 30000); // Update every 30 seconds

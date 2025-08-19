@@ -380,7 +380,7 @@ export const validateCostBudget = (budget: CostBudget): string[] => {
 // Test data generators for stress testing
 export const generateLargeAPICallDataset = (size: number): APICall[] => {
   const calls: APICall[] = [];
-  const models: AIModel[] = ['gpt-4o-mini', 'gpt-4o', 'claude-3-5-sonnet', 'claude-3-5-haiku'];
+  const models: AIModel[] = ['gpt-4o-mini', 'gpt-4o', 'claude-3-5-sonnet', 'claude-3-5-opus'];
   const services = ['openai', 'anthropic'];
   const operations = ['chat_completion', 'embeddings'];
   

@@ -41,29 +41,50 @@ const DashboardCard: React.FC<DashboardCardProps> = ({
   trend,
   className = '',
 }) => {
+  const [isVisible, setIsVisible] = React.useState(false);
+  
+  React.useEffect(() => {
+    const timer = setTimeout(() => setIsVisible(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
+  
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 ${className}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+    <div className={`group relative bg-white dark:bg-gray-800 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700 p-4 sm:p-6 card-hover overflow-hidden ${className}`}>
+      {/* Subtle gradient overlay on hover */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-900/10 dark:to-purple-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      
+      <div className="relative flex items-center justify-between">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
             {title}
           </p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+          <p className={`text-fluid-2xl font-bold text-gray-900 dark:text-white transition-all duration-700 ${isVisible ? 'animate-counter' : 'opacity-0'}`}>
             {value}
           </p>
           {trend && (
-            <div className={`flex items-center mt-2 text-sm ${
+            <div className={`flex items-center mt-2 text-sm transition-colors duration-200 ${
               trend.isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
             }`}>
-              <TrendingUp className={`w-4 h-4 mr-1 ${!trend.isPositive ? 'rotate-180' : ''}`} />
-              <span>{Math.abs(trend.value)}% from last week</span>
+              <TrendingUp className={`w-4 h-4 mr-1 transition-transform duration-200 group-hover:scale-110 ${
+                !trend.isPositive ? 'rotate-180' : ''
+              }`} />
+              <span className="font-medium">{Math.abs(trend.value)}% from last week</span>
             </div>
           )}
         </div>
-        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-          <Icon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+        <div className="relative p-3 bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-900/30 dark:to-blue-800/20 rounded-xl group-hover:scale-105 transition-transform duration-200">
+          <Icon className="w-6 h-6 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors duration-200" />
+          {/* Subtle glow effect */}
+          <div className="absolute inset-0 rounded-xl bg-blue-400 opacity-0 group-hover:opacity-20 blur-xl transition-opacity duration-300" />
         </div>
       </div>
+      
+      {/* Active meeting special indicator */}
+      {className.includes('ring-2') && (
+        <div className="absolute top-2 right-2">
+          <div className="w-3 h-3 bg-red-500 rounded-full pulse-soft" />
+        </div>
+      )}
     </div>
   );
 };
@@ -81,42 +102,45 @@ interface RecentMeetingProps {
 
 const RecentMeetingCard: React.FC<RecentMeetingProps> = ({ meeting }) => {
   const statusColors = {
-    completed: 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400',
-    'in-progress': 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400',
-    scheduled: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+    completed: 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 dark:from-green-900/20 dark:to-emerald-900/20 dark:text-green-400',
+    'in-progress': 'bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 dark:from-blue-900/20 dark:to-indigo-900/20 dark:text-blue-400',
+    scheduled: 'bg-gradient-to-r from-gray-100 to-slate-100 text-gray-800 dark:from-gray-700 dark:to-slate-700 dark:text-gray-300',
   };
 
   const statusIcons = {
     completed: <StopCircle className="w-4 h-4" />,
-    'in-progress': <PlayCircle className="w-4 h-4" />,
+    'in-progress': <PlayCircle className="w-4 h-4 pulse-soft" />,
     scheduled: <PauseCircle className="w-4 h-4" />,
   };
 
   return (
-    <div className="p-4 sm:p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-      <div className="flex items-center justify-between">
+    <div className="group p-4 border border-gray-200 dark:border-gray-700 rounded-xl card-hover bg-white dark:bg-gray-800 relative overflow-hidden">
+      {/* Subtle gradient overlay on hover */}
+      <div className="absolute inset-0 bg-gradient-to-r from-gray-50/50 to-blue-50/50 dark:from-gray-800/50 dark:to-blue-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      
+      <div className="relative flex items-center justify-between">
         <div className="flex-1">
-          <h4 className="font-medium text-gray-900 dark:text-white">
+          <h4 className="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-200">
             {meeting.title}
           </h4>
-          <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500 dark:text-gray-400">
-            <div className="flex items-center">
-              <Calendar className="w-4 h-4 mr-1" />
+          <div className="flex items-center space-x-4 mt-3 text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex items-center group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
+              <Calendar className="w-4 h-4 mr-1.5" />
               {meeting.date}
             </div>
-            <div className="flex items-center">
-              <Clock className="w-4 h-4 mr-1" />
+            <div className="flex items-center group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
+              <Clock className="w-4 h-4 mr-1.5" />
               {meeting.duration}
             </div>
-            <div className="flex items-center">
-              <Users className="w-4 h-4 mr-1" />
+            <div className="flex items-center group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
+              <Users className="w-4 h-4 mr-1.5" />
               {meeting.participants}
             </div>
           </div>
         </div>
-        <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColors[meeting.status]}`}>
+        <div className={`flex items-center px-3 py-1.5 rounded-full text-xs font-medium shadow-soft group-hover:scale-105 transition-transform duration-200 ${statusColors[meeting.status]}`}>
           {statusIcons[meeting.status]}
-          <span className="ml-1 capitalize">{meeting.status.replace('-', ' ')}</span>
+          <span className="ml-1.5 capitalize">{meeting.status.replace('-', ' ')}</span>
         </div>
       </div>
     </div>
@@ -162,26 +186,26 @@ const QuickActions: React.FC = () => {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700 p-6 card-hover">
+      <h3 className="text-fluid-lg font-semibold text-gray-900 dark:text-white mb-6">
         Quick Actions
       </h3>
-      <div className="space-y-3">
+      <div className="space-y-4">
         <button
           onClick={handleStartMeeting}
-          className="w-full flex items-center justify-center px-4 py-3 min-h-[48px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          className="group w-full flex items-center justify-center px-4 py-3 min-h-[52px] bg-gradient-primary text-white rounded-xl shadow-glow button-press hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           aria-label="Start a new meeting session"
         >
-          <Mic className="w-5 h-5 mr-2" />
-          Start New Meeting
+          <Mic className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform duration-200" />
+          <span className="font-semibold">Start New Meeting</span>
         </button>
-        <button className="w-full flex items-center justify-center px-4 py-3 min-h-[48px] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-          <Plus className="w-5 h-5 mr-2" />
-          Schedule Meeting
+        <button className="group w-full flex items-center justify-center px-4 py-3 min-h-[52px] border-2 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl button-press hover:bg-gradient-to-r hover:from-gray-50 hover:to-blue-50 dark:hover:from-gray-700 dark:hover:to-gray-600 hover:border-blue-300 dark:hover:border-blue-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+          <Plus className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform duration-200" />
+          <span className="font-medium">Schedule Meeting</span>
         </button>
-        <button className="w-full flex items-center justify-center px-4 py-3 min-h-[48px] border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-          <BarChart3 className="w-5 h-5 mr-2" />
-          View Analytics
+        <button className="group w-full flex items-center justify-center px-4 py-3 min-h-[52px] border-2 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl button-press hover:bg-gradient-to-r hover:from-gray-50 hover:to-purple-50 dark:hover:from-gray-700 dark:hover:to-gray-600 hover:border-purple-300 dark:hover:border-purple-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+          <BarChart3 className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform duration-200" />
+          <span className="font-medium">View Analytics</span>
         </button>
       </div>
     </div>
@@ -291,30 +315,37 @@ export default function DashboardPage() {
         </div>
 
         {/* Cost Summary Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="group bg-white dark:bg-gray-800 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700 p-6 card-hover relative overflow-hidden">
+          {/* Gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-green-50/30 to-emerald-50/30 dark:from-green-900/10 dark:to-emerald-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          
+          <div className="relative flex items-center justify-between mb-6">
+            <h3 className="text-fluid-lg font-semibold text-gray-900 dark:text-white">
               Cost Summary
             </h3>
-            <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
+            <div className="p-2 bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 rounded-xl group-hover:scale-105 transition-transform duration-200">
+              <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Total Cost</p>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">
+          
+          <div className="relative grid grid-cols-2 gap-6">
+            <div className="group/item">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Total Cost</p>
+              <p className="text-fluid-xl font-bold text-gray-900 dark:text-white group-hover/item:text-green-600 dark:group-hover/item:text-green-400 transition-colors duration-200">
                 ${costSummary.totalCost.toFixed(3)}
               </p>
             </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">API Calls</p>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">
+            <div className="group/item">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">API Calls</p>
+              <p className="text-fluid-xl font-bold text-gray-900 dark:text-white group-hover/item:text-blue-600 dark:group-hover/item:text-blue-400 transition-colors duration-200">
                 {costSummary.totalCalls.toLocaleString()}
               </p>
             </div>
           </div>
+          
           {costSummary.activeBudgets > 0 && (
-            <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-              <p className="text-sm text-yellow-700 dark:text-yellow-400">
+            <div className="relative mt-4 p-3 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
+              <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
                 {costSummary.activeBudgets} budget(s) need attention
               </p>
             </div>
@@ -324,13 +355,13 @@ export default function DashboardPage() {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Recent Meetings */}
-          <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700 p-6 card-hover">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <h3 className="text-fluid-lg font-semibold text-gray-900 dark:text-white">
                 Recent Meetings
               </h3>
-              <button className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 p-1">
-                View All
+              <button className="group text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 px-3 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-200">
+                <span className="group-hover:underline">View All</span>
               </button>
             </div>
             <div className="space-y-4">
@@ -345,25 +376,27 @@ export default function DashboardPage() {
             <QuickActions />
             
             {/* Today's Schedule */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            <div className="group bg-white dark:bg-gray-800 rounded-xl shadow-soft border border-gray-200 dark:border-gray-700 p-6 card-hover relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-50/30 to-pink-50/30 dark:from-purple-900/10 dark:to-pink-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              
+              <h3 className="relative text-fluid-lg font-semibold text-gray-900 dark:text-white mb-6">
                 Today's Schedule
               </h3>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3 text-sm">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                  <span className="text-gray-600 dark:text-gray-400">2:00 PM</span>
-                  <span className="text-gray-900 dark:text-white">Team Sync</span>
+              <div className="relative space-y-4">
+                <div className="group/item flex items-center space-x-4 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors duration-200">
+                  <div className="w-3 h-3 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full pulse-soft" />
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400 min-w-[60px]">2:00 PM</span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white group-hover/item:text-blue-600 dark:group-hover/item:text-blue-400 transition-colors duration-200">Team Sync</span>
                 </div>
-                <div className="flex items-center space-x-3 text-sm">
-                  <div className="w-2 h-2 bg-green-500 rounded-full" />
-                  <span className="text-gray-600 dark:text-gray-400">4:30 PM</span>
-                  <span className="text-gray-900 dark:text-white">Client Call</span>
+                <div className="group/item flex items-center space-x-4 p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors duration-200">
+                  <div className="w-3 h-3 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full" />
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400 min-w-[60px]">4:30 PM</span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white group-hover/item:text-green-600 dark:group-hover/item:text-green-400 transition-colors duration-200">Client Call</span>
                 </div>
-                <div className="flex items-center space-x-3 text-sm">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full" />
-                  <span className="text-gray-600 dark:text-gray-400">6:00 PM</span>
-                  <span className="text-gray-900 dark:text-white">Planning Session</span>
+                <div className="group/item flex items-center space-x-4 p-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors duration-200">
+                  <div className="w-3 h-3 bg-gradient-to-r from-purple-400 to-pink-500 rounded-full" />
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400 min-w-[60px]">6:00 PM</span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white group-hover/item:text-purple-600 dark:group-hover/item:text-purple-400 transition-colors duration-200">Planning Session</span>
                 </div>
               </div>
             </div>

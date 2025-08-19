@@ -637,13 +637,13 @@ export class PerformanceMonitor {
       },
       resources: {
         memory: {
-          used: this.getHeapUsed(),
-          available: this.getHeapTotal() - this.getHeapUsed(),
-          percentage: (this.getHeapUsed() / this.getHeapTotal()) * 100
+          used: process.memoryUsage().heapUsed,
+          available: process.memoryUsage().heapTotal - process.memoryUsage().heapUsed,
+          percentage: (process.memoryUsage().heapUsed / process.memoryUsage().heapTotal) * 100
         },
         cpu: {
           usage: 0,
-          cores: this.getSystemCores()
+          cores: require('os').cpus().length
         },
         network: {
           bytesIn: 0,
@@ -955,6 +955,17 @@ export class PerformanceMonitor {
           timeEstimate: '1-2 weeks',
           resources: [],
           risks: ['Potential quality reduction', 'May affect accuracy']
+        },
+        actionItems: [
+          'Profile current latency bottlenecks',
+          'Implement response caching',
+          'Optimize database queries',
+          'Consider using faster AI models'
+        ],
+        measurability: {
+          beforeMetrics: ['Current average latency', 'P95 latency'],
+          afterMetrics: ['Reduced average latency', 'Improved P95'],
+          successCriteria: [`Average latency < ${this.targetLatency}ms`]
         }
       });
     }
@@ -979,6 +990,16 @@ export class PerformanceMonitor {
           timeEstimate: '2-3 days',
           resources: [],
           risks: ['May require service restarts']
+        },
+        actionItems: [
+          'Analyze request patterns',
+          'Implement request queuing',
+          'Add load balancing'
+        ],
+        measurability: {
+          beforeMetrics: ['Current target achievement rate'],
+          afterMetrics: ['Improved target achievement rate'],
+          successCriteria: ['80% requests meet target']
         }
       });
     }
@@ -1004,6 +1025,17 @@ export class PerformanceMonitor {
           timeEstimate: '2-4 weeks',
           resources: [],
           risks: ['System instability', 'Service degradation']
+        },
+        actionItems: [
+          'Analyze error logs',
+          'Implement retry logic',
+          'Add circuit breakers',
+          'Improve error handling'
+        ],
+        measurability: {
+          beforeMetrics: ['Current error rate'],
+          afterMetrics: ['Reduced error rate'],
+          successCriteria: ['Error rate < 5%']
         }
       });
     }
@@ -1114,6 +1146,17 @@ export class PerformanceMonitor {
             timeEstimate: '1 week',
             resources: [],
             risks: ['Potential quality reduction']
+          },
+          actionItems: [
+            'Profile latency bottlenecks',
+            'Implement response caching',
+            'Consider faster AI models',
+            'Optimize database queries'
+          ],
+          measurability: {
+            beforeMetrics: ['Current latency score'],
+            afterMetrics: ['Improved latency score'],
+            successCriteria: ['Latency score > 70']
           }
         });
       }
@@ -1145,13 +1188,14 @@ export class PerformanceMonitor {
   }
 
   public getActiveAlerts(): PerformanceAlert[] {
-    return Array.from(this.activeAlerts.values()).filter(alert => !alert.acknowledged);
+    return Array.from(this.activeAlerts.values());
   }
 
   public acknowledgeAlert(alertId: string): boolean {
     const alert = this.activeAlerts.get(alertId);
     if (alert) {
-      alert.acknowledged = true;
+      // Remove the alert from active alerts when acknowledged
+      this.activeAlerts.delete(alertId);
       return true;
     }
     return false;
@@ -1475,13 +1519,13 @@ export class EnhancedPerformanceMonitor extends PerformanceMonitor {
       },
       resources: {
         memory: {
-          used: this.getHeapUsed(),
-          available: this.getHeapTotal() - this.getHeapUsed(),
-          percentage: (this.getHeapUsed() / this.getHeapTotal()) * 100
+          used: process.memoryUsage().heapUsed,
+          available: process.memoryUsage().heapTotal - process.memoryUsage().heapUsed,
+          percentage: (process.memoryUsage().heapUsed / process.memoryUsage().heapTotal) * 100
         },
         cpu: {
           usage: 0,
-          cores: this.getSystemCores()
+          cores: require('os').cpus().length
         },
         network: {
           bytesIn: 0,

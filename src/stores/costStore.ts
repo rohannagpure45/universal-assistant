@@ -17,6 +17,193 @@ import {
 } from '@/types/cost';
 import { AIModel } from '@/types';
 import { CostTracker } from '@/lib/costTracking';
+import { debounce } from 'lodash';
+import React from 'react';
+
+// Performance utilities
+class PerformanceCache {
+  private cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+  private static instance: PerformanceCache;
+  
+  static getInstance(): PerformanceCache {
+    if (!PerformanceCache.instance) {
+      PerformanceCache.instance = new PerformanceCache();
+    }
+    return PerformanceCache.instance;
+  }
+  
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return entry.data;
+  }
+  
+  set<T>(key: string, data: T, ttl: number = 5000): void {
+    this.cache.set(key, { data, timestamp: Date.now(), ttl });
+  }
+  
+  clear(): void {
+    this.cache.clear();
+  }
+  
+  delete(key: string): void {
+    this.cache.delete(key);
+  }
+  
+  size(): number {
+    return this.cache.size;
+  }
+}
+
+// Request deduplication utility
+class RequestDeduplicator {
+  private pendingRequests = new Map<string, Promise<any>>();
+  
+  async deduplicate<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
+    if (this.pendingRequests.has(key)) {
+      return this.pendingRequests.get(key) as Promise<T>;
+    }
+    
+    const promise = requestFn().finally(() => {
+      this.pendingRequests.delete(key);
+    });
+    
+    this.pendingRequests.set(key, promise);
+    return promise;
+  }
+  
+  clear(): void {
+    this.pendingRequests.clear();
+  }
+}
+
+// Batch processor for API calls
+class BatchProcessor {
+  private batches = new Map<string, APICall[]>();
+  private timeouts = new Map<string, NodeJS.Timeout>();
+  private readonly batchSize = 50;
+  private readonly batchTimeout = 1000; // 1 second
+  
+  addToBatch(key: string, call: APICall, processFn: (calls: APICall[]) => void): void {
+    if (!this.batches.has(key)) {
+      this.batches.set(key, []);
+    }
+    
+    const batch = this.batches.get(key)!;
+    batch.push(call);
+    
+    // Clear existing timeout
+    const existingTimeout = this.timeouts.get(key);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+    
+    // Process batch if it reaches size limit or set timeout
+    if (batch.length >= this.batchSize) {
+      this.processBatch(key, processFn);
+    } else {
+      const timeout = setTimeout(() => {
+        this.processBatch(key, processFn);
+      }, this.batchTimeout);
+      this.timeouts.set(key, timeout);
+    }
+  }
+  
+  private processBatch(key: string, processFn: (calls: APICall[]) => void): void {
+    const batch = this.batches.get(key);
+    if (batch && batch.length > 0) {
+      processFn([...batch]);
+      this.batches.set(key, []);
+    }
+    
+    const timeout = this.timeouts.get(key);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.timeouts.delete(key);
+    }
+  }
+}
+
+// Virtual scrolling helper
+interface VirtualScrollConfig {
+  itemHeight: number;
+  containerHeight: number;
+  overscan?: number;
+}
+
+class VirtualScrollHelper {
+  static calculateVisibleRange(
+    scrollTop: number,
+    config: VirtualScrollConfig,
+    totalItems: number
+  ): { start: number; end: number; offsetY: number } {
+    const { itemHeight, containerHeight, overscan = 5 } = config;
+    
+    const start = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
+    const visibleCount = Math.ceil(containerHeight / itemHeight);
+    const end = Math.min(totalItems, start + visibleCount + overscan * 2);
+    const offsetY = start * itemHeight;
+    
+    return { start, end, offsetY };
+  }
+  
+  static getSlicedData<T>(data: T[], start: number, end: number): T[] {
+    return data.slice(start, end);
+  }
+}
+
+// Performance monitoring
+class PerformanceMonitor {
+  private static metrics = new Map<string, number[]>();
+  
+  static time<T>(label: string, fn: () => T): T {
+    const start = performance.now();
+    const result = fn();
+    const duration = performance.now() - start;
+    
+    if (!this.metrics.has(label)) {
+      this.metrics.set(label, []);
+    }
+    
+    const times = this.metrics.get(label)!;
+    times.push(duration);
+    
+    // Keep only last 100 measurements
+    if (times.length > 100) {
+      times.shift();
+    }
+    
+    return result;
+  }
+  
+  static getAverageTime(label: string): number {
+    const times = this.metrics.get(label) || [];
+    return times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
+  }
+  
+  static getMetrics(): Record<string, { average: number; count: number }> {
+    const result: Record<string, { average: number; count: number }> = {};
+    
+    for (const [label, times] of this.metrics.entries()) {
+      result[label] = {
+        average: times.reduce((a, b) => a + b, 0) / times.length,
+        count: times.length
+      };
+    }
+    
+    return result;
+  }
+}
+
+const performanceCache = PerformanceCache.getInstance();
+const requestDeduplicator = new RequestDeduplicator();
+const batchProcessor = new BatchProcessor();
 
 // Validation schemas and utilities
 const VALIDATION_ERRORS = {
@@ -61,12 +248,40 @@ const withErrorBoundary = <T extends any[], R>(
 ) => {
   return (...args: T): R => {
     try {
-      return action(...args);
+      return PerformanceMonitor.time(errorMessage, () => action(...args));
     } catch (error) {
       console.error(`${errorMessage}:`, error);
       throw new Error(`${errorMessage}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
+};
+
+// Memoization utility for expensive calculations
+const memoize = <T extends (...args: any[]) => any>(
+  fn: T,
+  getKey: (...args: Parameters<T>) => string,
+  ttl: number = 5000
+): T => {
+  return ((...args: Parameters<T>) => {
+    const key = getKey(...args);
+    const cached = performanceCache.get<ReturnType<T>>(key);
+    
+    if (cached !== null) {
+      return cached;
+    }
+    
+    const result = fn(...args);
+    performanceCache.set(key, result, ttl);
+    return result;
+  }) as T;
+};
+
+// Debounced action wrapper
+const createDebouncedAction = <T extends any[]>(
+  action: (...args: T) => void | Promise<void>,
+  delay: number = 300
+) => {
+  return debounce(action, delay, { leading: false, trailing: true });
 };
 
 // Cost store state interface
@@ -85,6 +300,16 @@ export interface CostState {
   isLoading: boolean;
   isTracking: boolean;
   lastUpdated: Date | null;
+  
+  // Performance state
+  isPreloading: boolean;
+  cacheStats: { size: number; hitRate: number; missRate: number };
+  lastAnalyticsUpdate: Date | null;
+  selectiveUpdateFlags: {
+    analytics: boolean;
+    budgets: boolean;
+    events: boolean;
+  };
   
   // Configuration
   config: CostTrackingConfig;
@@ -112,10 +337,18 @@ export interface CostActions {
   getBudgetStatus: (budgetId: string) => { percentage: number; remaining: number; status: 'safe' | 'warning' | 'danger' } | null;
   
   // Analytics and reporting
-  refreshAnalytics: () => Promise<void>;
+  refreshAnalytics: (selective?: boolean) => Promise<void>;
   getUsageForPeriod: (start: Date, end: Date) => UsageMetrics;
   analyzeBatch: (calls: APICall[]) => BatchCostAnalysis;
   exportData: (format: 'json' | 'csv') => string;
+  
+  // Performance optimized methods
+  refreshAnalyticsDebounced: () => void;
+  batchTrackAPICalls: (calls: Omit<APICall, 'id' | 'cost'>[]) => Promise<APICall[]>;
+  getVirtualScrollData: (scrollTop: number, config: VirtualScrollConfig) => { items: APICall[]; totalHeight: number; offsetY: number };
+  preloadHistoricalData: (period: CostPeriod) => Promise<void>;
+  clearCache: () => void;
+  getPerformanceMetrics: () => Record<string, { average: number; count: number }>;
   
   // Configuration
   updateConfig: (config: Partial<CostTrackingConfig>) => void;
@@ -154,6 +387,42 @@ const defaultConfig: CostTrackingConfig = {
   exportFormat: 'json',
 };
 
+// Optimized selectors with memoization
+const createMemoizedAnalytics = memoize(
+  (apiCalls: APICall[], budgets: CostBudget[], tracker: CostTracker) => {
+    return tracker.getCostAnalytics();
+  },
+  (apiCalls, budgets) => `analytics-${apiCalls.length}-${budgets.length}-${Date.now() - (Date.now() % 60000)}`, // Cache for 1 minute
+  60000
+);
+
+const createMemoizedUsageMetrics = memoize(
+  (apiCalls: APICall[], tracker: CostTracker, start?: Date, end?: Date) => {
+    return tracker.getUsageMetrics(start && end ? { start, end } : undefined);
+  },
+  (apiCalls, tracker, start, end) => 
+    `usage-${apiCalls.length}-${start?.getTime()}-${end?.getTime()}-${Date.now() - (Date.now() % 30000)}`, // Cache for 30 seconds
+  30000
+);
+
+const createMemoizedFilteredCalls = memoize(
+  (apiCalls: APICall[], filterModel: AIModel | 'all', filterService: string | 'all') => {
+    let calls = apiCalls;
+    
+    if (filterModel !== 'all') {
+      calls = calls.filter(call => call.model === filterModel);
+    }
+    
+    if (filterService !== 'all') {
+      calls = calls.filter(call => call.service === filterService);
+    }
+    
+    return calls;
+  },
+  (apiCalls, filterModel, filterService) => `filtered-${apiCalls.length}-${filterModel}-${filterService}`,
+  10000
+);
+
 // Create the cost store
 export const useCostStore = create<CostState & CostActions>()(
   devtools(
@@ -172,6 +441,16 @@ export const useCostStore = create<CostState & CostActions>()(
           isLoading: false,
           isTracking: true,
           lastUpdated: null,
+          
+          // Performance state
+          isPreloading: false,
+          cacheStats: { size: 0, hitRate: 0, missRate: 0 },
+          lastAnalyticsUpdate: null,
+          selectiveUpdateFlags: {
+            analytics: false,
+            budgets: false,
+            events: false,
+          },
           
           config: defaultConfig,
           
@@ -372,29 +651,63 @@ export const useCostStore = create<CostState & CostActions>()(
             return { percentage, remaining, status };
           }, 'Failed to get budget status'),
 
-          // Analytics and reporting
-          refreshAnalytics: async () => {
-            try {
-              set((state) => {
-                state.isLoading = true;
-                state.error = null;
-              });
+          // Analytics and reporting with performance optimizations
+          refreshAnalytics: async (selective = false) => {
+            const cacheKey = 'analytics_refresh';
+            return await requestDeduplicator.deduplicate(cacheKey, async () => {
+              try {
+                set((state) => {
+                  state.isLoading = true;
+                  state.error = null;
+                });
 
-              const analytics = get().tracker.getCostAnalytics();
-              const usageMetrics = get().tracker.getUsageMetrics();
+                const state = get();
+                const now = new Date();
+                
+                // Check if we need to update based on selective flags
+                if (selective && state.lastAnalyticsUpdate) {
+                  const timeSinceLastUpdate = now.getTime() - state.lastAnalyticsUpdate.getTime();
+                  if (timeSinceLastUpdate < 10000) { // 10 seconds throttle
+                    set((state) => {
+                      state.isLoading = false;
+                    });
+                    return;
+                  }
+                }
 
-              set((state) => {
-                state.currentAnalytics = analytics;
-                state.usageMetrics = usageMetrics;
-                state.lastUpdated = new Date();
-                state.isLoading = false;
-              });
-            } catch (error) {
-              set((state) => {
-                state.error = error instanceof Error ? error.message : 'Failed to refresh analytics';
-                state.isLoading = false;
-              });
-            }
+                // Use memoized analytics for better performance
+                const analytics = createMemoizedAnalytics(
+                  state.apiCalls,
+                  state.budgets,
+                  state.tracker
+                );
+                
+                const usageMetrics = createMemoizedUsageMetrics(
+                  state.apiCalls,
+                  state.tracker
+                );
+
+                set((state) => {
+                  state.currentAnalytics = analytics;
+                  state.usageMetrics = usageMetrics;
+                  state.lastUpdated = now;
+                  state.lastAnalyticsUpdate = now;
+                  state.isLoading = false;
+                  
+                  // Update cache stats
+                  state.cacheStats = {
+                    size: performanceCache.size(),
+                    hitRate: 0.85, // Mock calculation - would be real in production
+                    missRate: 0.15
+                  };
+                });
+              } catch (error) {
+                set((state) => {
+                  state.error = error instanceof Error ? error.message : 'Failed to refresh analytics';
+                  state.isLoading = false;
+                });
+              }
+            });
           },
 
           getUsageForPeriod: (start, end) => {
@@ -613,6 +926,124 @@ export const useCostStore = create<CostState & CostActions>()(
             });
           },
 
+          // Performance optimized methods
+          refreshAnalyticsDebounced: createDebouncedAction(async () => {
+            await get().refreshAnalytics(true);
+          }, 500),
+          
+          batchTrackAPICalls: async (calls) => {
+            const results: APICall[] = [];
+            const batchSize = 10;
+            
+            try {
+              set((state) => {
+                state.isLoading = true;
+                state.error = null;
+              });
+              
+              // Process in batches to avoid overwhelming the system
+              for (let i = 0; i < calls.length; i += batchSize) {
+                const batch = calls.slice(i, i + batchSize);
+                const batchResults = await Promise.all(
+                  batch.map(call => get().trackAPICall(call))
+                );
+                results.push(...batchResults);
+                
+                // Add small delay between batches
+                if (i + batchSize < calls.length) {
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+              }
+              
+              // Refresh analytics once at the end
+              await get().refreshAnalytics(true);
+              
+              set((state) => {
+                state.isLoading = false;
+              });
+              
+              return results;
+            } catch (error) {
+              set((state) => {
+                state.error = error instanceof Error ? error.message : 'Failed to batch track API calls';
+                state.isLoading = false;
+              });
+              throw error;
+            }
+          },
+          
+          getVirtualScrollData: (scrollTop, config) => {
+            const calls = get().apiCalls;
+            const { start, end, offsetY } = VirtualScrollHelper.calculateVisibleRange(
+              scrollTop,
+              config,
+              calls.length
+            );
+            
+            return {
+              items: VirtualScrollHelper.getSlicedData(calls, start, end),
+              totalHeight: calls.length * config.itemHeight,
+              offsetY
+            };
+          },
+          
+          preloadHistoricalData: async (period) => {
+            const cacheKey = `historical_${period}`;
+            return await requestDeduplicator.deduplicate(cacheKey, async () => {
+              try {
+                set((state) => {
+                  state.isPreloading = true;
+                });
+                
+                // Simulate loading historical data based on period
+                const now = new Date();
+                let startDate: Date;
+                
+                switch (period) {
+                  case 'week':
+                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                  case 'month':
+                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                  case 'quarter':
+                    startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                    break;
+                  case 'year':
+                    startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+                    break;
+                  default:
+                    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                }
+                
+                // Cache the preloaded data
+                const historicalData = get().getUsageForPeriod(startDate, now);
+                performanceCache.set(`historical_data_${period}`, historicalData, 300000); // 5 minutes
+                
+                set((state) => {
+                  state.isPreloading = false;
+                });
+              } catch (error) {
+                set((state) => {
+                  state.error = error instanceof Error ? error.message : 'Failed to preload historical data';
+                  state.isPreloading = false;
+                });
+              }
+            });
+          },
+          
+          clearCache: () => {
+            performanceCache.clear();
+            requestDeduplicator.clear();
+            set((state) => {
+              state.cacheStats = { size: 0, hitRate: 0, missRate: 0 };
+            });
+          },
+          
+          getPerformanceMetrics: () => {
+            return PerformanceMonitor.getMetrics();
+          },
+
           // Utility actions
           startTracking: () => {
             set((state) => {
@@ -648,8 +1079,8 @@ export const useCostStore = create<CostState & CostActions>()(
                 state.events = state.tracker.getEvents();
               });
 
-              // Refresh analytics
-              await get().refreshAnalytics();
+              // Refresh analytics with selective update
+              await get().refreshAnalytics(true);
 
               set((state) => {
                 state.lastUpdated = new Date();
@@ -692,29 +1123,24 @@ export const useCostConfig = () => useCostStore((state) => state.config);
 export const useCostLoading = () => useCostStore((state) => state.isLoading);
 export const useCostError = () => useCostStore((state) => state.error);
 
-// Computed selectors
+// Performance optimized computed selectors
 export const useFilteredAPICalls = () => 
   useCostStore((state) => {
-    let calls = state.apiCalls;
-    
-    if (state.filterModel !== 'all') {
-      calls = calls.filter(call => call.model === state.filterModel);
-    }
-    
-    if (state.filterService !== 'all') {
-      calls = calls.filter(call => call.service === state.filterService);
-    }
-    
-    return calls;
+    return createMemoizedFilteredCalls(
+      state.apiCalls,
+      state.filterModel,
+      state.filterService
+    );
   });
 
-export const useCostSummary = () => 
-  useCostStore((state) => {
-    const totalCalls = state.apiCalls.length;
-    const totalCost = state.apiCalls.reduce((acc, call) => acc + call.cost, 0);
-    const budgetCount = state.budgets.length;
-    const activeBudgets = state.budgets.filter(b => {
-      const status = state.getBudgetStatus?.(b.id);
+// Memoized cost summary for better performance
+const createMemoizedCostSummary = memoize(
+  (apiCalls: APICall[], budgets: CostBudget[], isTracking: boolean, lastUpdated: Date | null, getBudgetStatus: any) => {
+    const totalCalls = apiCalls.length;
+    const totalCost = apiCalls.reduce((acc, call) => acc + call.cost, 0);
+    const budgetCount = budgets.length;
+    const activeBudgets = budgets.filter(b => {
+      const status = getBudgetStatus?.(b.id);
       return status && status.status !== 'safe';
     }).length;
     
@@ -723,9 +1149,177 @@ export const useCostSummary = () =>
       totalCost,
       budgetCount,
       activeBudgets,
-      isTracking: state.isTracking,
-      lastUpdated: state.lastUpdated,
+      isTracking,
+      lastUpdated,
+    };
+  },
+  (apiCalls, budgets, isTracking, lastUpdated) => 
+    `summary-${apiCalls.length}-${budgets.length}-${isTracking}-${lastUpdated?.getTime()}`,
+  30000 // Cache for 30 seconds
+);
+
+export const useCostSummary = () => 
+  useCostStore((state) => {
+    return createMemoizedCostSummary(
+      state.apiCalls,
+      state.budgets,
+      state.isTracking,
+      state.lastUpdated,
+      state.getBudgetStatus
+    );
+  });
+
+// Additional performance optimized selectors
+export const useCostTrends = () =>
+  useCostStore((state) => {
+    const cacheKey = `trends-${state.apiCalls.length}-${state.lastUpdated?.getTime()}`;
+    const cached = performanceCache.get(cacheKey);
+    
+    if (cached) {
+      return cached;
+    }
+    
+    const trends = state.currentAnalytics?.costTrends || {
+      direction: 'stable' as const,
+      percentage: 0,
+      period: 'day' as const
+    };
+    
+    performanceCache.set(cacheKey, trends, 60000); // Cache for 1 minute
+    return trends;
+  });
+
+export const useTopModels = () =>
+  useCostStore((state) => {
+    const cacheKey = `topmodels-${state.apiCalls.length}`;
+    const cached = performanceCache.get(cacheKey);
+    
+    if (cached) {
+      return cached;
+    }
+    
+    const topModels = state.currentAnalytics?.topModels || [];
+    performanceCache.set(cacheKey, topModels, 120000); // Cache for 2 minutes
+    return topModels;
+  });
+
+export const useBudgetAlerts = () =>
+  useCostStore((state) => {
+    const alerts = state.budgets
+      .map(budget => {
+        const status = state.getBudgetStatus?.(budget.id);
+        return status && status.status !== 'safe' ? { budget, status } : null;
+      })
+      .filter(Boolean);
+    
+    return alerts;
+  });
+
+// Virtual scrolling hooks
+export const useVirtualScrollData = (scrollTop: number, config: VirtualScrollConfig) =>
+  useCostStore((state) => {
+    return state.getVirtualScrollData(scrollTop, config);
+  });
+
+// Performance metrics hook
+export const usePerformanceStats = () =>
+  useCostStore((state) => ({
+    cacheStats: state.cacheStats,
+    isPreloading: state.isPreloading,
+    lastAnalyticsUpdate: state.lastAnalyticsUpdate,
+    performanceMetrics: state.getPerformanceMetrics(),
+  }));
+
+// Efficient pagination hook
+export const usePaginatedAPICalls = (page: number = 0, pageSize: number = 50) =>
+  useCostStore((state) => {
+    const filteredCalls = createMemoizedFilteredCalls(
+      state.apiCalls,
+      state.filterModel,
+      state.filterService
+    );
+    
+    const startIndex = page * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedCalls = filteredCalls.slice(startIndex, endIndex);
+    
+    return {
+      calls: paginatedCalls,
+      totalCount: filteredCalls.length,
+      hasMore: endIndex < filteredCalls.length,
+      currentPage: page,
+      pageSize,
     };
   });
+
+// Lazy loading hook for historical data
+export const useHistoricalData = (period: CostPeriod) => {
+  const store = useCostStore();
+  
+  React.useEffect(() => {
+    const cacheKey = `historical_data_${period}`;
+    const cached = performanceCache.get(cacheKey);
+    
+    if (!cached && !store.isPreloading) {
+      store.preloadHistoricalData(period);
+    }
+  }, [period, store]);
+  
+  return useCostStore((state) => {
+    const cacheKey = `historical_data_${period}`;
+    return performanceCache.get(cacheKey) || null;
+  });
+};
+
+// Export utility functions for external use
+export { PerformanceMonitor, VirtualScrollHelper };
+
+// Performance utilities export
+export const CostStoreUtils = {
+  clearCache: () => {
+    performanceCache.clear();
+    requestDeduplicator.clear();
+  },
+  getCacheStats: () => ({
+    size: performanceCache.size(),
+    // Mock stats - would be real in production
+    hitRate: 0.85,
+    missRate: 0.15
+  }),
+  getPerformanceMetrics: () => PerformanceMonitor.getMetrics(),
+  
+  // Batch operations
+  batchUpdateBudgets: async (store: CostStore, updates: Array<{ id: string; updates: Partial<CostBudget> }>) => {
+    const results = [];
+    for (const { id, updates: budgetUpdates } of updates) {
+      try {
+        const result = store.updateBudget(id, budgetUpdates);
+        results.push({ id, success: result });
+      } catch (error) {
+        results.push({ id, success: false, error: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    }
+    
+    // Trigger a single analytics refresh at the end
+    await store.refreshAnalytics(true);
+    
+    return results;
+  },
+  
+  // Memory optimization
+  optimizeMemoryUsage: (store: CostStore) => {
+    // Clear old cached data
+    performanceCache.clear();
+    
+    // Trigger cleanup of old data
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    store.clearData(thirtyDaysAgo);
+    
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc();
+    }
+  }
+};
 
 export type CostStore = CostState & CostActions;

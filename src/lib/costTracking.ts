@@ -81,9 +81,29 @@ export class CostTracker {
   // Batch operations
   private pendingOperations: (() => void)[] = [];
   private processingBatch = false;
+  
+  // Event subscriptions
+  private eventSubscribers: ((event: CostEvent) => void)[] = [];
+  
+  // Configuration
+  private config = {
+    enablePersistence: true,
+    storageKey: 'universal-assistant-cost-data',
+    autoSave: true,
+    autoSaveInterval: 30000,
+    maxHistorySize: 1000,
+    enableAnalytics: true,
+    enableBudgetAlerts: true,
+    enablePerformanceMonitoring: true
+  };
 
-  constructor(retentionDays: number = 30) {
-    this.retentionDays = retentionDays;
+  constructor(config?: Partial<typeof CostTracker.prototype.config>) {
+    if (config) {
+      this.config = { ...this.config, ...config };
+    }
+    if (config?.retentionPeriod) {
+      this.retentionDays = config.retentionPeriod;
+    }
     this.cleanup();
     
     // Periodic cleanup
@@ -212,7 +232,7 @@ export class CostTracker {
     };
   }
 
-  getCostAnalytics(): CostAnalytics {
+  getAnalytics(period?: CostPeriod): CostAnalytics {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
@@ -796,6 +816,84 @@ export class CostTracker {
     }
     
     this.lastCleanup = Date.now();
+  }
+  
+  // Additional methods for store compatibility
+  subscribeToEvents(callback: (event: CostEvent) => void): () => void {
+    this.eventSubscribers.push(callback);
+    return () => {
+      const index = this.eventSubscribers.indexOf(callback);
+      if (index > -1) {
+        this.eventSubscribers.splice(index, 1);
+      }
+    };
+  }
+  
+  updateConfig(updates: Partial<typeof this.config>): void {
+    this.config = { ...this.config, ...updates };
+  }
+  
+  loadFromStorage(): any {
+    if (!this.config.enablePersistence) return null;
+    
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const data = window.localStorage.getItem(this.config.storageKey);
+        if (data) {
+          const parsed = JSON.parse(data);
+          // Restore data
+          if (parsed.apiCalls) {
+            this.apiCalls = parsed.apiCalls.map((call: any) => ({
+              ...call,
+              timestamp: new Date(call.timestamp)
+            }));
+            // Rebuild indices
+            this.callsIndex.clear();
+            this.apiCalls.forEach(call => this.callsIndex.set(call.id, call));
+          }
+          if (parsed.budgets) {
+            this.budgets = parsed.budgets.map((budget: any) => ({
+              ...budget,
+              createdAt: new Date(budget.createdAt),
+              updatedAt: new Date(budget.updatedAt),
+              startDate: budget.startDate ? new Date(budget.startDate) : undefined,
+              endDate: budget.endDate ? new Date(budget.endDate) : undefined
+            }));
+            // Rebuild indices
+            this.budgetsIndex.clear();
+            this.budgets.forEach(budget => this.budgetsIndex.set(budget.id, budget));
+          }
+          if (parsed.events) {
+            this.events = parsed.events.map((event: any) => ({
+              ...event,
+              timestamp: new Date(event.timestamp)
+            }));
+          }
+          return parsed;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load from storage:', error);
+    }
+    return null;
+  }
+  
+  saveToStorage(): void {
+    if (!this.config.enablePersistence) return;
+    
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const data = {
+          apiCalls: this.apiCalls,
+          budgets: this.budgets,
+          events: this.events,
+          savedAt: new Date().toISOString()
+        };
+        window.localStorage.setItem(this.config.storageKey, JSON.stringify(data));
+      }
+    } catch (error) {
+      console.error('Failed to save to storage:', error);
+    }
   }
 }
 

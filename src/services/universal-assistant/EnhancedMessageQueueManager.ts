@@ -924,5 +924,16 @@ export class EnhancedMessageQueueManager extends MessageQueueManager {
   }
 }
 
-// Export enhanced singleton instance
-export const enhancedMessageQueueManager = new EnhancedMessageQueueManager();
+/**
+ * Factory function to create EnhancedMessageQueueManager instance
+ * Use this instead of the singleton to avoid SSR issues
+ */
+export function createEnhancedMessageQueueManager(): EnhancedMessageQueueManager {
+  return new EnhancedMessageQueueManager();
+}
+
+/**
+ * @deprecated Use createEnhancedMessageQueueManager() factory function instead to avoid SSR issues
+ * This singleton export will be removed in a future version
+ */
+export const enhancedMessageQueueManager = typeof window !== 'undefined' ? new EnhancedMessageQueueManager() : null as any;

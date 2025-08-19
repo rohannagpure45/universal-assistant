@@ -226,5 +226,8 @@ export interface User {
     parameters?: Record<string, any>;
   }
 
+  // Re-export cost tracking types
+  export * from './cost';
+
   // Re-export Firebase-specific types
   export * from './firebase';

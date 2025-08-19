@@ -1,6 +1,6 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { getAnalytics, Analytics } from 'firebase/analytics';
 
@@ -27,7 +27,15 @@ if (!getApps().length) {
 }
 
 auth = getAuth(app);
-db = getFirestore(app);
+// Use long-polling fallback to improve compatibility (e.g., Safari private mode / corporate networks)
+try {
+  db = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  } as any);
+} catch (_e) {
+  // Fallback to default if initializeFirestore already called elsewhere
+  db = getFirestore(app);
+}
 storage = getStorage(app);
 
 // Analytics only in browser

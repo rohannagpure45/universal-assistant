@@ -87,8 +87,8 @@ export class EnhancedDeepgramSTT extends DeepgramSTT {
   private connectionState: ConnectionState;
   private eventListeners: Partial<EnhancedTranscriptionEvents> = {};
   private audioBuffer: AudioBuffer[] = [];
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private enhancedReconnectTimer: NodeJS.Timeout | null = null;
+  private enhancedHeartbeatTimer: NodeJS.Timeout | null = null;
   private metricsTimer: NodeJS.Timeout | null = null;
   private metrics: TranscriptionMetrics;
   private sequenceNumber: number = 0;
@@ -331,13 +331,13 @@ export class EnhancedDeepgramSTT extends DeepgramSTT {
     this.connectionState.reconnectAttempts = 0;
     
     // Clear reconnection timer
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+    if (this.enhancedReconnectTimer) {
+      clearTimeout(this.enhancedReconnectTimer);
+      this.enhancedReconnectTimer = null;
     }
     
     // Start heartbeat
-    this.startHeartbeat();
+    this.startEnhancedHeartbeat();
     
     // Replay buffered audio if this was a reconnection
     if (this.connectionState.totalReconnects > 0 && this.audioBuffer.length > 0) {
@@ -406,7 +406,7 @@ export class EnhancedDeepgramSTT extends DeepgramSTT {
       `EnhancedDeepgramSTT: Scheduling reconnection attempt ${this.connectionState.reconnectAttempts}/${this.connectionConfig.maxReconnectAttempts} in ${delay}ms`
     );
     
-    this.reconnectTimer = setTimeout(async () => {
+    this.enhancedReconnectTimer = setTimeout(async () => {
       try {
         await this.establishConnection(this.enhancedConfig);
       } catch (error) {
@@ -441,12 +441,12 @@ export class EnhancedDeepgramSTT extends DeepgramSTT {
   /**
    * Start heartbeat to monitor connection health
    */
-  private startHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
+  private startEnhancedHeartbeat(): void {
+    if (this.enhancedHeartbeatTimer) {
+      clearInterval(this.enhancedHeartbeatTimer);
     }
     
-    this.heartbeatTimer = setInterval(() => {
+    this.enhancedHeartbeatTimer = setInterval(() => {
       if (this.connectionState.isConnected) {
         this.sendHeartbeat();
       }
@@ -598,14 +598,14 @@ export class EnhancedDeepgramSTT extends DeepgramSTT {
    */
   stopTranscription(): void {
     // Clear all timers
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+    if (this.enhancedReconnectTimer) {
+      clearTimeout(this.enhancedReconnectTimer);
+      this.enhancedReconnectTimer = null;
     }
     
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
+    if (this.enhancedHeartbeatTimer) {
+      clearInterval(this.enhancedHeartbeatTimer);
+      this.enhancedHeartbeatTimer = null;
     }
     
     if (this.metricsTimer) {

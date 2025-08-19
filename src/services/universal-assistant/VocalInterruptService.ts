@@ -1,3 +1,5 @@
+import type { EnhancedMessageQueueManager } from './EnhancedMessageQueueManager';
+import type { StreamingTTSService } from './StreamingTTSService';
 import { enhancedMessageQueueManager } from './EnhancedMessageQueueManager';
 import { streamingTTSService } from './StreamingTTSService';
 import { useAppStore } from '@/stores/appStore';
@@ -430,9 +432,11 @@ export class VocalInterruptService {
 
     // Command execution methods
     private async executeStopPlayback(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
-      enhancedMessageQueueManager.interrupt();
-      streamingTTSService.getActiveSessions().forEach(session => {
-        streamingTTSService.cancelSession(session.sessionId);
+      // Guard against SSR or uninitialized singletons
+      enhancedMessageQueueManager?.interrupt?.();
+      const active = streamingTTSService?.getActiveSessions?.() || [];
+      active.forEach((session: any) => {
+        streamingTTSService?.cancelSession?.(session.sessionId);
       });
 
       return {
@@ -467,9 +471,9 @@ export class VocalInterruptService {
     }
 
     private async executeSkipMessage(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
-      const currentMessage = enhancedMessageQueueManager.getCurrentMessage();
+      const currentMessage = enhancedMessageQueueManager?.getCurrentMessage?.();
       if (currentMessage) {
-        enhancedMessageQueueManager.interrupt();
+        enhancedMessageQueueManager?.interrupt?.();
       }
 
       return {
@@ -482,9 +486,9 @@ export class VocalInterruptService {
     }
 
     private async executeRepeatMessage(command: VoiceCommand, _context: CommandContext): Promise<CommandResult> {
-      const currentMessage = enhancedMessageQueueManager.getCurrentMessage();
+      const currentMessage = enhancedMessageQueueManager?.getCurrentMessage?.();
       if (currentMessage) {
-        enhancedMessageQueueManager.addEnhancedMessage({
+        enhancedMessageQueueManager?.addEnhancedMessage?.({
           text: currentMessage.text,
           type: 'ai',
           priority: Date.now(),
@@ -549,7 +553,13 @@ export class VocalInterruptService {
     }
 
     private getCurrentState(): CommandContext['currentState'] {
-      const queueStatus = enhancedMessageQueueManager.getEnhancedQueueStatus();
+      const queueStatus = enhancedMessageQueueManager?.getEnhancedQueueStatus?.() || {
+        queueSize: 0,
+        activeStreams: 0,
+        processingMessage: null,
+        averageLatency: 0,
+        cacheSize: 0,
+      };
       const appStore = useAppStore.getState();
 
       return {

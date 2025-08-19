@@ -35,7 +35,7 @@ export interface AudioAnalysisConfig {
 }
 
 // Enhanced Audio Manager Configuration
-export interface EnhancedAudioManagerConfig extends AudioManagerConfig {
+export interface EnhancedAudioManagerConfig extends Omit<AudioManagerConfig, 'voiceActivityDetection'> {
   voiceActivityDetection: VoiceActivityConfig;
   silenceDetection: SilenceDetectionConfig;
   audioAnalysis: AudioAnalysisConfig;
@@ -116,6 +116,18 @@ export class EnhancedAudioManager extends AudioManager {
       audioQuality: config?.audioQuality ?? {
         sampleRate: 16000,
         audioBitsPerSecond: 128000,
+      },
+      voiceActivityDetection: {
+        enabled: true,
+        threshold: 0.05,
+        minSilenceDuration: 500,
+        bufferSilentChunks: 5,
+      },
+      chunkBatching: {
+        enabled: true,
+        maxBatchSize: 3,
+        maxBatchDelay: 150,
+        minChunkSize: 500,
       },
     };
     
@@ -605,8 +617,25 @@ export class EnhancedAudioManager extends AudioManager {
   updateEnhancedConfig(config: Partial<EnhancedAudioManagerConfig>): void {
     this.enhancedConfig = { ...this.enhancedConfig, ...config };
     
-    // Update base config
-    this.updateConfig(config);
+    // Update base config - extract only compatible properties
+    const { silenceDetection, audioAnalysis, enablePhase3Features, voiceActivityDetection, ...baseConfig } = config;
+    
+    // Only update if there are compatible base properties or voiceActivityDetection
+    if (Object.keys(baseConfig).length > 0 || voiceActivityDetection) {
+      const compatibleConfig: Partial<AudioManagerConfig> = { ...baseConfig };
+      
+      // Convert enhanced voiceActivityDetection to base format if present
+      if (voiceActivityDetection) {
+        compatibleConfig.voiceActivityDetection = {
+          enabled: voiceActivityDetection.enabled,
+          threshold: voiceActivityDetection.energyThreshold || 0.05,
+          minSilenceDuration: voiceActivityDetection.maxSilenceDuration || 500,
+          bufferSilentChunks: 5,
+        };
+      }
+      
+      this.updateConfig(compatibleConfig);
+    }
     
     // Reinitialize features if needed
     if (this.isRecordingActive() && config.enablePhase3Features !== undefined) {

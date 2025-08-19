@@ -413,8 +413,35 @@ export const useMeetingStore = create<MeetingStore>()(
           try {
             const entryId = await DatabaseService.addTranscriptEntry(meetingId, entry);
 
-            // Optimistic update - the real-time listener will handle the final state
+            // Optimistic update with race-safe de-duplication:
+            // If the realtime listener already inserted this id, update it instead of pushing a duplicate.
             set((state) => {
+              const existingIndex = state.transcript.findIndex(t => t.id === entryId);
+              if (existingIndex !== -1) {
+                state.transcript[existingIndex] = { ...state.transcript[existingIndex], ...entry, id: entryId };
+                return;
+              }
+
+              // Strong duplicate guard: check recent items (last 5 or last 12s) for same speaker + same normalized text
+              const normalize = (s: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+              const nowTs = entry.timestamp instanceof Date ? entry.timestamp.getTime() : new Date(entry.timestamp as any).getTime();
+              const recent = state.transcript.slice(-5);
+              const dupIdx = recent.findIndex(e => {
+                const t = e.timestamp instanceof Date ? e.timestamp.getTime() : new Date(e.timestamp as any).getTime();
+                return e.speakerId === entry.speakerId && Math.abs(nowTs - t) <= 12000 && normalize(e.text) === normalize(entry.text);
+              });
+              if (dupIdx !== -1) {
+                // Update confidence/timestamp on the existing recent entry instead of pushing a new one
+                const absoluteIndex = state.transcript.length - recent.length + dupIdx;
+                state.transcript[absoluteIndex] = {
+                  ...state.transcript[absoluteIndex],
+                  text: state.transcript[absoluteIndex].text.length >= entry.text.length ? state.transcript[absoluteIndex].text : entry.text,
+                  confidence: Math.max(state.transcript[absoluteIndex].confidence ?? 0, entry.confidence ?? 0),
+                  timestamp: entry.timestamp,
+                } as any;
+                return;
+              }
+
               state.transcript.push({ ...entry, id: entryId });
             });
 
@@ -691,6 +718,29 @@ export const useMeetingStore = create<MeetingStore>()(
                           entry => entry.id === change.doc.id
                         );
                         if (existingIndex === -1) {
+                          // UI-level duplicate guard: if the newest entry for the same speaker
+                          // in the last few seconds has identical text (case-insensitive), skip.
+                          const last = state.transcript.length > 0 ? state.transcript[state.transcript.length - 1] : null;
+                          if (last) {
+                            const sameSpeaker = last.speakerId === change.doc.speakerId;
+                            const t1 = last.timestamp instanceof Date ? last.timestamp.getTime() : new Date(last.timestamp as any).getTime();
+                            const t2 = change.doc.timestamp instanceof Date ? change.doc.timestamp.getTime() : new Date(change.doc.timestamp as any).getTime();
+                            const withinWindow = Math.abs(t2 - t1) <= 12000;
+                            const sameText = (last.text || '').trim().toLowerCase() === (change.doc.text || '').trim().toLowerCase();
+                            if (sameSpeaker && withinWindow && sameText) {
+                              break;
+                            }
+                          }
+                          // Also guard by normalized text matching the most recent of the SAME timestamp second
+                          const normalized = (s: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                          const dupIndex = state.transcript.findIndex(e => 
+                            e.speakerId === change.doc.speakerId &&
+                            Math.abs(((e.timestamp as any).getTime ? (e.timestamp as any).getTime() : new Date(e.timestamp as any).getTime()) - ((change.doc.timestamp as any).getTime ? (change.doc.timestamp as any).getTime() : new Date(change.doc.timestamp as any).getTime())) <= 2000 &&
+                            normalized(e.text) === normalized(change.doc.text)
+                          );
+                          if (dupIndex !== -1) {
+                            break;
+                          }
                           state.transcript.push(change.doc);
                         }
                         break;

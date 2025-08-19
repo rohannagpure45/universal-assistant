@@ -2,6 +2,7 @@
 export * from './authStore';
 export * from './meetingStore';
 export * from './appStore';
+export * from './costStore';
 
 // ============ HOOK EXPORTS ============
 // Export specific hooks to avoid naming conflicts
@@ -45,6 +46,7 @@ export type {
   AppError,
   Notification 
 } from './appStore';
+export type { CostStore } from './costStore';
 
 // ============ STORE INTEGRATION UTILITIES ============
 
@@ -55,6 +57,7 @@ export type {
 export const resetAllStores = () => {
   const { resetMeetingState } = require('./meetingStore').useMeetingStore.getState();
   const { resetSettingsToDefault, clearNotifications, clearGlobalErrors } = require('./appStore').useAppStore.getState();
+  const { clearData, resetConfig } = require('./costStore').useCostStore.getState();
   
   // Reset meeting state
   resetMeetingState();
@@ -63,6 +66,10 @@ export const resetAllStores = () => {
   resetSettingsToDefault();
   clearNotifications();
   clearGlobalErrors();
+  
+  // Reset cost tracking
+  clearData();
+  resetConfig();
   
   // Note: AuthStore cleanup is handled by the auth service itself
 };
@@ -85,6 +92,7 @@ export const getStoreHealthStatus = () => {
   const authStore = require('./authStore').useAuthStore.getState();
   const meetingStore = require('./meetingStore').useMeetingStore.getState();
   const appStore = require('./appStore').useAppStore.getState();
+  const costStore = require('./costStore').useCostStore.getState();
   
   return {
     auth: {
@@ -108,6 +116,14 @@ export const getStoreHealthStatus = () => {
       errorCount: appStore.globalErrors.length,
       sidebarOpen: appStore.sidebarOpen,
     },
+    cost: {
+      tracking: costStore.isTracking,
+      apiCallCount: costStore.apiCalls.length,
+      budgetCount: costStore.budgets.length,
+      hasAnalytics: Boolean(costStore.currentAnalytics),
+      hasError: Boolean(costStore.error),
+      lastUpdated: costStore.lastUpdated,
+    },
   };
 };
 
@@ -120,6 +136,7 @@ export const subscribeToStoreChanges = (
   const { useAuthStore } = require('./authStore');
   const { useMeetingStore } = require('./meetingStore');
   const { useAppStore } = require('./appStore');
+  const { useCostStore } = require('./costStore');
   
   const unsubscribeAuth = useAuthStore.subscribe(
     (state: any, previousState: any) => callback('auth', state, previousState)
@@ -133,9 +150,14 @@ export const subscribeToStoreChanges = (
     (state: any, previousState: any) => callback('app', state, previousState)
   );
   
+  const unsubscribeCost = useCostStore.subscribe(
+    (state: any, previousState: any) => callback('cost', state, previousState)
+  );
+  
   return () => {
     unsubscribeAuth();
     unsubscribeMeeting();
     unsubscribeApp();
+    unsubscribeCost();
   };
 };

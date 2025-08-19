@@ -7,6 +7,25 @@
 
 import { LatencyMetrics, PipelineError } from './RealtimeAudioPipeline';
 import { nanoid } from 'nanoid';
+import {
+  PerformanceMetrics,
+  PerformanceTrend,
+  PerformanceScore,
+  PerformanceAlert,
+  PerformanceThreshold,
+  FallbackTracking,
+  ModelPerformanceAnalysis,
+  ResourceMonitoring,
+  PerformanceAnalytics,
+  PerformanceOptimization,
+  CostPerformanceCorrelation,
+  PerformanceMonitoringConfig,
+  PerformancePeriod,
+  TrendDirection,
+  PerformanceRecommendation
+} from '@/types/performance';
+import { AIModel } from '@/types';
+import { APICall, CostBreakdown } from '@/types/cost';
 
 export interface PerformanceReport {
   id: string;
@@ -62,24 +81,7 @@ export interface BottleneckAnalysis {
   suggestedActions: string[];
 }
 
-export interface PerformanceRecommendation {
-  type: 'optimization' | 'scaling' | 'configuration' | 'infrastructure';
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  title: string;
-  description: string;
-  expectedImprovement: number;
-  implementationEffort: 'easy' | 'medium' | 'hard';
-  risks: string[];
-}
-
-export interface PerformanceScore {
-  overall: number; // 0-100
-  latency: number;
-  throughput: number;
-  reliability: number;
-  efficiency: number;
-  grade: 'A' | 'B' | 'C' | 'D' | 'F';
-}
+// Removed local PerformanceScore and PerformanceRecommendation - using imported types from @/types/performance
 
 export interface AlertRule {
   id: string;
@@ -91,16 +93,6 @@ export interface AlertRule {
   enabled: boolean;
 }
 
-export interface PerformanceAlert {
-  id: string;
-  timestamp: number;
-  rule: AlertRule;
-  metrics: LatencyMetrics;
-  severity: 'info' | 'warning' | 'error' | 'critical';
-  message: string;
-  acknowledged: boolean;
-}
-
 export class PerformanceMonitor {
   private metricsHistory: LatencyMetrics[] = [];
   private errorHistory: PipelineError[] = [];
@@ -109,19 +101,372 @@ export class PerformanceMonitor {
   private activeAlerts: Map<string, PerformanceAlert> = new Map();
   private lastAlertTimes: Map<string, number> = new Map();
   
+  // Enhanced monitoring data
+  protected enhancedMetrics: PerformanceMetrics[] = [];
+  private fallbackHistory: FallbackTracking[] = [];
+  private resourceHistory: ResourceMonitoring[] = [];
+  private performanceThresholds: Map<string, PerformanceThreshold> = new Map();
+  private modelAnalytics: Map<AIModel, ModelPerformanceAnalysis> = new Map();
+  private costData: APICall[] = [];
+  private optimizations: Map<string, PerformanceOptimization> = new Map();
+  private trends: Map<string, PerformanceTrend> = new Map();
+  
   // Configuration
   private reportingInterval: number = 60000; // 1 minute
   private maxHistorySize: number = 10000;
   private targetLatency: number = 350;
   private maxLatency: number = 500;
+  private config: PerformanceMonitoringConfig;
+  
+  // Enhanced monitoring state
+  private resourceMonitoringInterval: NodeJS.Timeout | null = null;
+  private trendAnalysisInterval: NodeJS.Timeout | null = null;
+  private fallbackTracker: Map<string, number> = new Map();
+  private performanceScore: PerformanceScore | null = null;
   
   // Monitoring state
   private isMonitoring: boolean = false;
   private reportingTimer: NodeJS.Timeout | null = null;
 
-  constructor(targetLatency: number = 350) {
+  constructor(targetLatency: number = 350, config?: Partial<PerformanceMonitoringConfig>) {
     this.targetLatency = targetLatency;
+    this.config = {
+      enabled: true,
+      metricsCollection: {
+        interval: 5000,
+        retention: 30,
+        detailLevel: 'detailed'
+      },
+      alerting: {
+        enabled: true,
+        channels: ['email'],
+        escalation: {
+          warning: 15,
+          critical: 5
+        }
+      },
+      fallbackTracking: {
+        enabled: true,
+        trackReasons: true,
+        trackImpact: true
+      },
+      resourceMonitoring: {
+        enabled: true,
+        interval: 10000,
+        thresholds: {
+          memoryWarning: 80,
+          memoryCritical: 95,
+          cpuWarning: 80,
+          cpuCritical: 95,
+          storageWarning: 85,
+          storageCritical: 95
+        }
+      },
+      reporting: {
+        dailyReports: true,
+        weeklyReports: true,
+        monthlyReports: true,
+        recipients: []
+      },
+      optimization: {
+        autoOptimization: false,
+        testingEnabled: true,
+        rollbackThreshold: 10
+      },
+      ...config
+    };
+    
     this.initializeDefaultAlertRules();
+    this.initializePerformanceThresholds();
+  }
+
+  /**
+   * Initialize performance thresholds
+   */
+  private initializePerformanceThresholds(): void {
+    this.performanceThresholds.set('latency', {
+      id: 'latency_threshold',
+      name: 'Latency Threshold',
+      metric: 'latency',
+      condition: 'greater_than',
+      value: this.targetLatency,
+      unit: 'ms',
+      severity: 'warning',
+      enabled: true,
+      cooldownMs: 60000,
+      triggerCount: 3,
+      notifications: {
+        email: false,
+        slack: false
+      }
+    });
+    
+    this.performanceThresholds.set('max_latency', {
+      id: 'max_latency_threshold',
+      name: 'Maximum Latency Threshold',
+      metric: 'latency',
+      condition: 'greater_than',
+      value: this.maxLatency,
+      unit: 'ms',
+      severity: 'critical',
+      enabled: true,
+      cooldownMs: 30000,
+      triggerCount: 1,
+      notifications: {
+        email: true,
+        slack: true
+      }
+    });
+    
+    this.performanceThresholds.set('error_rate', {
+      id: 'error_rate_threshold',
+      name: 'Error Rate Threshold',
+      metric: 'error_rate',
+      condition: 'greater_than',
+      value: 0.05,
+      unit: 'percentage',
+      severity: 'warning',
+      enabled: true,
+      cooldownMs: 120000,
+      triggerCount: 5,
+      notifications: {
+        email: false,
+        slack: false
+      }
+    });
+    
+    this.performanceThresholds.set('throughput', {
+      id: 'throughput_threshold',
+      name: 'Throughput Threshold',
+      metric: 'throughput',
+      condition: 'less_than',
+      value: 10,
+      unit: 'requests/second',
+      severity: 'info',
+      enabled: true,
+      cooldownMs: 180000,
+      triggerCount: 10,
+      notifications: {
+        email: false,
+        slack: false
+      }
+    });
+  }
+
+  /**
+   * Check resource thresholds
+   */
+  private checkResourceThresholds(metrics: ResourceMonitoring): void {
+    const thresholds = this.config.resourceMonitoring.thresholds;
+    
+    // Check memory thresholds
+    if (metrics.system.memory.percentage > thresholds.memoryCritical) {
+      this.triggerResourceAlert('critical', 'Memory usage critical', metrics);
+    } else if (metrics.system.memory.percentage > thresholds.memoryWarning) {
+      this.triggerResourceAlert('warning', 'Memory usage high', metrics);
+    }
+    
+    // Check CPU thresholds
+    if (metrics.system.cpu.percentage > thresholds.cpuCritical) {
+      this.triggerResourceAlert('critical', 'CPU usage critical', metrics);
+    } else if (metrics.system.cpu.percentage > thresholds.cpuWarning) {
+      this.triggerResourceAlert('warning', 'CPU usage high', metrics);
+    }
+  }
+
+  /**
+   * Trigger resource alert
+   */
+  private triggerResourceAlert(severity: 'warning' | 'critical', message: string, metrics: ResourceMonitoring): void {
+    const alert: PerformanceAlert = {
+      id: nanoid(),
+      timestamp: Date.now(),
+      type: 'threshold',
+      severity,
+      component: 'resource',
+      title: message,
+      message,
+      metrics: {
+        id: nanoid(),
+        timestamp: metrics.timestamp,
+        latency: {
+          total: 0,
+          stages: {
+            audioCapture: 0,
+            speechToText: 0,
+            textProcessing: 0,
+            aiResponse: 0,
+            textToSpeech: 0,
+            audioPlayback: 0
+          },
+          network: {
+            deepgram: 0,
+            openai: 0,
+            anthropic: 0,
+            elevenlabs: 0
+          }
+        },
+        resources: {
+          memory: {
+            used: metrics.system.memory.used,
+            available: metrics.system.memory.free,
+            percentage: metrics.system.memory.percentage
+          },
+          cpu: {
+            usage: metrics.system.cpu.percentage,
+            cores: metrics.system.cpu.cores
+          },
+          network: {
+            bytesIn: metrics.system.network.bytesReceived,
+            bytesOut: metrics.system.network.bytesSent,
+            bandwidth: 0
+          }
+        },
+        quality: {},
+        context: {
+          modelUsed: 'gpt-4o' as AIModel,
+          fallbackUsed: false,
+          fallbackReason: undefined,
+          retryCount: 0,
+          cacheHit: false
+        }
+      },
+      impact: {
+        affectedUsers: 0,
+        businessImpact: severity === 'critical' ? 'high' : 'medium',
+        estimatedDuration: severity === 'critical' ? '1 hour' : '30 minutes'
+      },
+      resolution: {
+        status: 'new',
+        notes: undefined,
+        resolvedAt: undefined,
+        resolutionTime: undefined
+      }
+    };
+    
+    this.onResourceAlert?.(alert);
+  }
+
+  /**
+   * Record enhanced metrics
+   */
+  public recordEnhancedMetrics(metrics: PerformanceMetrics): void {
+    this.enhancedMetrics.push(metrics);
+    
+    // Maintain history size
+    if (this.enhancedMetrics.length > this.maxHistorySize) {
+      this.enhancedMetrics = this.enhancedMetrics.slice(-this.maxHistorySize);
+    }
+    
+    // Update model analytics
+    if (metrics.context.modelUsed) {
+      this.updateModelAnalytics(metrics.context.modelUsed, metrics);
+    }
+    
+    // Track fallbacks
+    if (metrics.context.fallbackUsed) {
+      this.trackFallback(metrics);
+    }
+  }
+
+  /**
+   * Update model analytics
+   */
+  private updateModelAnalytics(model: AIModel, metrics: PerformanceMetrics): void {
+    const existing = this.modelAnalytics.get(model);
+    
+    if (!existing) {
+      this.modelAnalytics.set(model, {
+        model,
+        period: {
+          start: Date.now() - 3600000,
+          end: Date.now()
+        },
+        usage: {
+          totalRequests: 1,
+          successfulRequests: metrics.context.retryCount === 0 ? 1 : 0,
+          failedRequests: metrics.context.retryCount > 0 ? 1 : 0,
+          fallbackRequests: metrics.context.fallbackUsed ? 1 : 0
+        },
+        performance: {
+          averageLatency: metrics.latency.total,
+          p50Latency: metrics.latency.total,
+          p95Latency: metrics.latency.total,
+          p99Latency: metrics.latency.total,
+          minLatency: metrics.latency.total,
+          maxLatency: metrics.latency.total,
+          reliabilityScore: metrics.context.retryCount === 0 ? 100 : 50,
+          qualityScore: 85
+        },
+        cost: {
+          totalCost: 0,
+          averageCostPerRequest: 0,
+          costPerToken: 0,
+          efficiency: 1
+        },
+        trends: {
+          latencyTrend: 'stable',
+          reliabilityTrend: 'stable',
+          costTrend: 'stable'
+        },
+        recommendations: {
+          continue: true,
+          alternatives: [],
+          optimizations: []
+        }
+      });
+    } else {
+      // Update existing analytics
+      existing.usage.totalRequests++;
+      if (metrics.context.retryCount === 0) {
+        existing.usage.successfulRequests++;
+      } else {
+        existing.usage.failedRequests++;
+      }
+      if (metrics.context.fallbackUsed) {
+        existing.usage.fallbackRequests++;
+      }
+      
+      // Update performance metrics
+      existing.performance.averageLatency = (existing.performance.averageLatency * (existing.usage.totalRequests - 1) + metrics.latency.total) / existing.usage.totalRequests;
+      existing.performance.minLatency = Math.min(existing.performance.minLatency, metrics.latency.total);
+      existing.performance.maxLatency = Math.max(existing.performance.maxLatency, metrics.latency.total);
+      
+      // Update period
+      existing.period.end = Date.now();
+    }
+  }
+
+  /**
+   * Track fallback usage
+   */
+  private trackFallback(metrics: PerformanceMetrics): void {
+    const fallback: FallbackTracking = {
+      id: nanoid(),
+      timestamp: metrics.timestamp,
+      originalModel: metrics.context.modelUsed || 'gpt-4o' as AIModel,
+      fallbackModel: 'gpt-4o-mini' as AIModel,
+      reason: (metrics.context.fallbackReason as any) || 'error',
+      trigger: {
+        errorType: 'unknown',
+        latency: metrics.latency.total
+      },
+      impact: {
+        latencyChange: metrics.latency.total - this.targetLatency,
+        costChange: 0,
+        qualityChange: 0,
+        userExperience: metrics.latency.total > this.maxLatency ? 'degraded' : 'neutral'
+      },
+      success: metrics.context.retryCount === 0,
+      fallbackLatency: metrics.latency.total
+    };
+    
+    this.fallbackHistory.push(fallback);
+    
+    // Maintain history size
+    if (this.fallbackHistory.length > this.maxHistorySize) {
+      this.fallbackHistory = this.fallbackHistory.slice(-this.maxHistorySize);
+    }
   }
 
   /**
@@ -267,14 +612,75 @@ export class PerformanceMonitor {
    * Trigger an alert
    */
   private triggerAlert(rule: AlertRule): void {
+    const latestMetrics = this.metricsHistory[this.metricsHistory.length - 1];
+    
+    // Convert LatencyMetrics to PerformanceMetrics for the alert
+    const performanceMetrics: PerformanceMetrics = {
+      id: nanoid(),
+      timestamp: latestMetrics.timestamp,
+      latency: {
+        total: latestMetrics.totalLatency,
+        stages: {
+          audioCapture: 0,
+          speechToText: latestMetrics.audioToTranscription,
+          textProcessing: latestMetrics.transcriptionToAnalysis,
+          aiResponse: latestMetrics.analysisToResponse,
+          textToSpeech: latestMetrics.responseToAudio,
+          audioPlayback: 0
+        },
+        network: {
+          deepgram: 0,
+          openai: 0,
+          anthropic: 0,
+          elevenlabs: 0
+        }
+      },
+      resources: {
+        memory: {
+          used: process.memoryUsage().heapUsed,
+          available: process.memoryUsage().heapTotal - process.memoryUsage().heapUsed,
+          percentage: (process.memoryUsage().heapUsed / process.memoryUsage().heapTotal) * 100
+        },
+        cpu: {
+          usage: 0,
+          cores: require('os').cpus().length
+        },
+        network: {
+          bytesIn: 0,
+          bytesOut: 0,
+          bandwidth: 0
+        }
+      },
+      quality: {},
+      context: {
+        modelUsed: 'gpt-4o' as AIModel,
+        fallbackUsed: false,
+        fallbackReason: undefined,
+        retryCount: 0,
+        cacheHit: false
+      }
+    };
+
     const alert: PerformanceAlert = {
       id: nanoid(),
       timestamp: Date.now(),
-      rule,
-      metrics: this.metricsHistory[this.metricsHistory.length - 1],
+      type: 'threshold',
       severity: rule.severity,
+      component: 'latency',
+      title: rule.name,
       message: rule.message,
-      acknowledged: false
+      metrics: performanceMetrics,
+      impact: {
+        affectedUsers: 0,
+        businessImpact: rule.severity === 'critical' ? 'high' : rule.severity === 'error' ? 'medium' : 'low',
+        estimatedDuration: '30 minutes'
+      },
+      resolution: {
+        status: 'new',
+        notes: undefined,
+        resolvedAt: undefined,
+        resolutionTime: undefined
+      }
     };
 
     this.activeAlerts.set(alert.id, alert);
@@ -282,6 +688,7 @@ export class PerformanceMonitor {
 
     // Emit alert event (would be connected to notification system)
     this.onAlert?.(alert);
+    this.onPerformanceAlert?.(alert);
   }
 
   /**
@@ -531,26 +938,69 @@ export class PerformanceMonitor {
     // High latency recommendations
     if (stats.mean > this.targetLatency) {
       recommendations.push({
+        id: nanoid(),
         type: 'optimization',
         priority: 'high',
+        category: 'latency',
         title: 'Optimize for Target Latency',
         description: `Average latency (${Math.round(stats.mean)}ms) exceeds target (${this.targetLatency}ms)`,
-        expectedImprovement: stats.mean - this.targetLatency,
-        implementationEffort: 'medium',
-        risks: ['Potential quality reduction', 'May affect accuracy']
+        impact: {
+          latencyImprovement: stats.mean - this.targetLatency,
+          throughputImprovement: 0,
+          costSavings: 0,
+          reliabilityImprovement: 0
+        },
+        implementation: {
+          effort: 'medium',
+          timeEstimate: '1-2 weeks',
+          resources: [],
+          risks: ['Potential quality reduction', 'May affect accuracy']
+        },
+        actionItems: [
+          'Profile current latency bottlenecks',
+          'Implement response caching',
+          'Optimize database queries',
+          'Consider using faster AI models'
+        ],
+        measurability: {
+          beforeMetrics: ['Current average latency', 'P95 latency'],
+          afterMetrics: ['Reduced average latency', 'Improved P95'],
+          successCriteria: [`Average latency < ${this.targetLatency}ms`]
+        }
       });
     }
 
     // Poor target achievement rate
     if (stats.targetAchievementRate < 0.8) {
       recommendations.push({
+        id: nanoid(),
         type: 'configuration',
         priority: 'medium',
+        category: 'throughput',
         title: 'Improve Consistency',
         description: `Only ${Math.round(stats.targetAchievementRate * 100)}% of requests meet target latency`,
-        expectedImprovement: 50,
-        implementationEffort: 'easy',
-        risks: ['May require service restarts']
+        impact: {
+          latencyImprovement: 0,
+          throughputImprovement: 50,
+          costSavings: 0,
+          reliabilityImprovement: 0
+        },
+        implementation: {
+          effort: 'low',
+          timeEstimate: '2-3 days',
+          resources: [],
+          risks: ['May require service restarts']
+        },
+        actionItems: [
+          'Analyze request patterns',
+          'Implement request queuing',
+          'Add load balancing'
+        ],
+        measurability: {
+          beforeMetrics: ['Current target achievement rate'],
+          afterMetrics: ['Improved target achievement rate'],
+          successCriteria: ['80% requests meet target']
+        }
       });
     }
 
@@ -558,13 +1008,35 @@ export class PerformanceMonitor {
     const errorRate = errors.length / metrics.length;
     if (errorRate > 0.05) {
       recommendations.push({
+        id: nanoid(),
         type: 'infrastructure',
         priority: 'critical',
+        category: 'reliability',
         title: 'Address High Error Rate',
         description: `Error rate (${Math.round(errorRate * 100)}%) is too high`,
-        expectedImprovement: 100,
-        implementationEffort: 'hard',
-        risks: ['System instability', 'Service degradation']
+        impact: {
+          latencyImprovement: 0,
+          throughputImprovement: 0,
+          costSavings: 0,
+          reliabilityImprovement: 100
+        },
+        implementation: {
+          effort: 'high',
+          timeEstimate: '2-4 weeks',
+          resources: [],
+          risks: ['System instability', 'Service degradation']
+        },
+        actionItems: [
+          'Analyze error logs',
+          'Implement retry logic',
+          'Add circuit breakers',
+          'Improve error handling'
+        ],
+        measurability: {
+          beforeMetrics: ['Current error rate'],
+          afterMetrics: ['Reduced error rate'],
+          successCriteria: ['Error rate < 5%']
+        }
       });
     }
 
@@ -576,7 +1048,23 @@ export class PerformanceMonitor {
    */
   private calculatePerformanceScore(metrics: LatencyMetrics[], errors: PipelineError[]): PerformanceScore {
     if (metrics.length === 0) {
-      return { overall: 0, latency: 0, throughput: 0, reliability: 0, efficiency: 0, grade: 'F' };
+      return { 
+        overall: 0, 
+        components: {
+          latency: 0,
+          throughput: 0,
+          reliability: 0,
+          efficiency: 0,
+          quality: 0,
+          resourceUsage: 0
+        },
+        grade: 'F',
+        factors: {
+          positive: [],
+          negative: ['No metrics available']
+        },
+        recommendations: []
+      };
     }
 
     const stats = this.calculateLatencyStatistics(metrics);
@@ -594,18 +1082,100 @@ export class PerformanceMonitor {
     // Efficiency score (based on resource utilization - placeholder)
     const efficiency = 80; // Would calculate based on actual resource metrics
     
+    // Quality score (placeholder)
+    const quality = 85;
+    
+    // Resource usage score (placeholder)
+    const resourceUsage = 75;
+    
     // Overall score
-    const overall = (latency * 0.4 + throughput * 0.3 + reliability * 0.2 + efficiency * 0.1);
+    const overall = (
+      latency * 0.3 + 
+      throughput * 0.2 + 
+      reliability * 0.2 + 
+      efficiency * 0.1 + 
+      quality * 0.1 + 
+      resourceUsage * 0.1
+    );
     
     // Grade
-    let grade: 'A' | 'B' | 'C' | 'D' | 'F';
-    if (overall >= 90) grade = 'A';
+    let grade: 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F';
+    if (overall >= 95) grade = 'A+';
+    else if (overall >= 90) grade = 'A';
+    else if (overall >= 85) grade = 'B+';
     else if (overall >= 80) grade = 'B';
+    else if (overall >= 75) grade = 'C+';
     else if (overall >= 70) grade = 'C';
     else if (overall >= 60) grade = 'D';
     else grade = 'F';
 
-    return { overall, latency, throughput, reliability, efficiency, grade };
+    // Determine factors
+    const factors: { positive: string[]; negative: string[] } = {
+      positive: [],
+      negative: []
+    };
+    
+    if (latency >= 80) factors.positive.push('Good latency performance');
+    else factors.negative.push('High latency issues');
+    
+    if (throughput >= 80) factors.positive.push('High throughput achieved');
+    else factors.negative.push('Low throughput');
+    
+    if (reliability >= 90) factors.positive.push('Excellent reliability');
+    else if (reliability < 70) factors.negative.push('Poor reliability');
+    
+    // Generate recommendations if needed
+    const recommendations: PerformanceRecommendation[] = [];
+    if (overall < 80) {
+      if (latency < 70) {
+        recommendations.push({
+          id: nanoid(),
+          type: 'optimization',
+          priority: 'high',
+          category: 'latency',
+          title: 'Optimize Response Latency',
+          description: 'Latency is below target. Consider using faster models or caching.',
+          impact: {
+            latencyImprovement: 30,
+            throughputImprovement: 10,
+            costSavings: 0,
+            reliabilityImprovement: 0
+          },
+          implementation: {
+            effort: 'medium',
+            timeEstimate: '1 week',
+            resources: [],
+            risks: ['Potential quality reduction']
+          },
+          actionItems: [
+            'Profile latency bottlenecks',
+            'Implement response caching',
+            'Consider faster AI models',
+            'Optimize database queries'
+          ],
+          measurability: {
+            beforeMetrics: ['Current latency score'],
+            afterMetrics: ['Improved latency score'],
+            successCriteria: ['Latency score > 70']
+          }
+        });
+      }
+    }
+
+    return { 
+      overall, 
+      components: {
+        latency,
+        throughput,
+        reliability,
+        efficiency,
+        quality,
+        resourceUsage
+      },
+      grade,
+      factors,
+      recommendations
+    };
   }
 
   // Public API methods
@@ -618,13 +1188,14 @@ export class PerformanceMonitor {
   }
 
   public getActiveAlerts(): PerformanceAlert[] {
-    return Array.from(this.activeAlerts.values()).filter(alert => !alert.acknowledged);
+    return Array.from(this.activeAlerts.values());
   }
 
   public acknowledgeAlert(alertId: string): boolean {
     const alert = this.activeAlerts.get(alertId);
     if (alert) {
-      alert.acknowledged = true;
+      // Remove the alert from active alerts when acknowledged
+      this.activeAlerts.delete(alertId);
       return true;
     }
     return false;
@@ -657,9 +1228,364 @@ export class PerformanceMonitor {
     this.activeAlerts.clear();
   }
 
+  /**
+   * Collect system resource metrics
+   */
+  private async collectResourceMetrics(): Promise<void> {
+    try {
+      // Get system metrics (this would integrate with actual system monitoring)
+      const resourceMetrics: ResourceMonitoring = {
+        timestamp: Date.now(),
+        system: {
+          memory: {
+            total: this.getSystemMemoryTotal(),
+            used: this.getSystemMemoryUsed(),
+            free: this.getSystemMemoryFree(),
+            percentage: this.getSystemMemoryPercentage(),
+            swapUsed: this.getSystemSwapUsed()
+          },
+          cpu: {
+            percentage: this.getSystemCpuUsage(),
+            loadAverage: this.getSystemLoadAverage(),
+            cores: this.getSystemCores(),
+            processes: this.getSystemProcesses()
+          },
+          network: {
+            bytesReceived: this.getNetworkBytesReceived(),
+            bytesSent: this.getNetworkBytesSent(),
+            packetsReceived: this.getNetworkPacketsReceived(),
+            packetsSent: this.getNetworkPacketsSent(),
+            connectionsActive: this.getNetworkActiveConnections()
+          },
+          storage: {
+            totalSpace: this.getStorageTotal(),
+            usedSpace: this.getStorageUsed(),
+            freeSpace: this.getStorageFree(),
+            percentage: this.getStoragePercentage()
+          }
+        },
+        application: {
+          heapUsed: this.getHeapUsed(),
+          heapTotal: this.getHeapTotal(),
+          external: this.getHeapExternal(),
+          activeConnections: this.getActiveConnections(),
+          pendingRequests: this.getPendingRequests(),
+          cacheSize: this.getCacheSize(),
+          sessionCount: this.getSessionCount()
+        },
+        thresholds: this.config.resourceMonitoring.thresholds
+      };
+      
+      this.resourceHistory.push(resourceMetrics);
+      
+      // Maintain history size
+      if (this.resourceHistory.length > this.maxHistorySize) {
+        this.resourceHistory = this.resourceHistory.slice(-this.maxHistorySize);
+      }
+      
+      // Check resource thresholds
+      this.checkResourceThresholds(resourceMetrics);
+      
+    } catch (error) {
+      console.error('Failed to collect resource metrics:', error);
+    }
+  }
+  
+  /**
+   * Analyze performance trends
+   */
+  private analyzeTrends(): void {
+    const now = Date.now();
+    const periods: { name: string; duration: number }[] = [
+      { name: 'hourly', duration: 3600000 },
+      { name: 'daily', duration: 86400000 },
+      { name: 'weekly', duration: 604800000 }
+    ];
+    
+    periods.forEach(period => {
+      const startTime = now - period.duration;
+      const periodMetrics = this.enhancedMetrics.filter(m => m.timestamp >= startTime);
+      
+      if (periodMetrics.length > 0) {
+        const trend = this.calculateTrend(periodMetrics, period.name);
+        this.trends.set(period.name, trend);
+      }
+    });
+  }
+  
+  /**
+   * Calculate trend for a specific period
+   */
+  private calculateTrend(metrics: PerformanceMetrics[], period: string): PerformanceTrend {
+    const latencies = metrics.map(m => m.latency.total);
+    const fallbacks = metrics.filter(m => m.context.fallbackUsed);
+    
+    // Calculate latency percentiles
+    const sortedLatencies = [...latencies].sort((a, b) => a - b);
+    const p50 = sortedLatencies[Math.floor(sortedLatencies.length * 0.5)];
+    const p95 = sortedLatencies[Math.floor(sortedLatencies.length * 0.95)];
+    const p99 = sortedLatencies[Math.floor(sortedLatencies.length * 0.99)];
+    
+    const averageLatency = latencies.reduce((sum, l) => sum + l, 0) / latencies.length;
+    const throughput = metrics.length / (metrics[metrics.length - 1].timestamp - metrics[0].timestamp) * 1000;
+    const errorRate = metrics.filter(m => m.context.retryCount > 0).length / metrics.length;
+    const successRate = 1 - errorRate;
+    
+    // Calculate scores
+    const latencyScore = Math.max(0, 100 - (averageLatency - this.targetLatency) / this.targetLatency * 100);
+    const reliabilityScore = successRate * 100;
+    const efficiencyScore = this.calculateEfficiencyScore(metrics);
+    const qualityScore = this.calculateQualityScore(metrics);
+    const overallScore = (latencyScore * 0.3 + reliabilityScore * 0.3 + efficiencyScore * 0.2 + qualityScore * 0.2);
+    
+    // Calculate fallback analysis
+    const fallbacksByReason: Record<string, number> = {};
+    fallbacks.forEach(m => {
+      const reason = m.context.fallbackReason || 'unknown';
+      fallbacksByReason[reason] = (fallbacksByReason[reason] || 0) + 1;
+    });
+    
+    return {
+      period: new Date().toISOString().split('T')[0],
+      metrics: {
+        averageLatency,
+        p50Latency: p50,
+        p95Latency: p95,
+        p99Latency: p99,
+        throughput,
+        errorRate,
+        successRate
+      },
+      scores: {
+        overall: overallScore,
+        latency: latencyScore,
+        reliability: reliabilityScore,
+        efficiency: efficiencyScore,
+        quality: qualityScore
+      },
+      fallbacks: {
+        total: fallbacks.length,
+        byReason: fallbacksByReason,
+        impactOnLatency: this.calculateFallbackLatencyImpact(fallbacks)
+      },
+      comparison: {
+        previousPeriod: this.calculatePeriodComparison(period)
+      }
+    };
+  }
+  
+  // Helper methods for system metrics (would integrate with actual system monitoring)
+  private getSystemMemoryTotal(): number { return process.memoryUsage().heapTotal || 0; }
+  private getSystemMemoryUsed(): number { return process.memoryUsage().heapUsed || 0; }
+  private getSystemMemoryFree(): number { return this.getSystemMemoryTotal() - this.getSystemMemoryUsed(); }
+  private getSystemMemoryPercentage(): number { return (this.getSystemMemoryUsed() / this.getSystemMemoryTotal()) * 100; }
+  private getSystemSwapUsed(): number { return 0; } // Would implement actual swap monitoring
+  private getSystemCpuUsage(): number { return 0; } // Would implement actual CPU monitoring
+  private getSystemLoadAverage(): number[] { return [0, 0, 0]; } // Would implement actual load average
+  private getSystemCores(): number { return require('os').cpus().length; }
+  private getSystemProcesses(): number { return 0; } // Would implement actual process counting
+  private getNetworkBytesReceived(): number { return 0; } // Would implement actual network monitoring
+  private getNetworkBytesSent(): number { return 0; }
+  private getNetworkPacketsReceived(): number { return 0; }
+  private getNetworkPacketsSent(): number { return 0; }
+  private getNetworkActiveConnections(): number { return 0; }
+  private getStorageTotal(): number { return 0; } // Would implement actual storage monitoring
+  private getStorageUsed(): number { return 0; }
+  private getStorageFree(): number { return 0; }
+  private getStoragePercentage(): number { return 0; }
+  private getHeapUsed(): number { return process.memoryUsage().heapUsed; }
+  private getHeapTotal(): number { return process.memoryUsage().heapTotal; }
+  private getHeapExternal(): number { return process.memoryUsage().external; }
+  private getActiveConnections(): number { return 0; } // Would implement actual connection monitoring
+  private getPendingRequests(): number { return 0; }
+  private getCacheSize(): number { return 0; }
+  private getSessionCount(): number { return 0; }
+  
+  private calculateEfficiencyScore(metrics: PerformanceMetrics[]): number {
+    // Combine resource usage efficiency with cache hit rate
+    const cacheHitRate = metrics.filter(m => m.context.cacheHit).length / metrics.length;
+    const resourceEfficiency = 80; // Would calculate based on actual resource usage
+    
+    return (cacheHitRate * 40 + resourceEfficiency * 0.6);
+  }
+  
+  private calculateQualityScore(metrics: PerformanceMetrics[]): number {
+    // Average quality metrics where available
+    const qualityMetrics = metrics.filter(m => m.quality.transcriptionAccuracy !== undefined);
+    if (qualityMetrics.length === 0) return 85; // Default score
+    
+    const avgAccuracy = qualityMetrics.reduce((sum, m) => sum + (m.quality.transcriptionAccuracy || 0), 0) / qualityMetrics.length;
+    const avgRelevance = qualityMetrics.reduce((sum, m) => sum + (m.quality.responseRelevance || 0), 0) / qualityMetrics.length;
+    
+    return (avgAccuracy + avgRelevance) / 2;
+  }
+  
+  private calculateFallbackLatencyImpact(fallbacks: PerformanceMetrics[]): number {
+    if (fallbacks.length === 0) return 0;
+    
+    const fallbackLatencies = fallbacks.map(m => m.latency.total);
+    const allLatencies = this.enhancedMetrics.map(m => m.latency.total);
+    
+    const fallbackAvg = fallbackLatencies.reduce((sum, l) => sum + l, 0) / fallbackLatencies.length;
+    const overallAvg = allLatencies.reduce((sum, l) => sum + l, 0) / allLatencies.length;
+    
+    return fallbackAvg - overallAvg;
+  }
+  
+  private calculatePeriodComparison(period: string): PerformanceTrend['comparison']['previousPeriod'] {
+    // Would compare with previous period data
+    return {
+      latencyChange: 0,
+      throughputChange: 0,
+      errorRateChange: 0,
+      trend: 'stable'
+    };
+  }
+
+  // Enhanced public API methods
+  public getPerformanceScore(): PerformanceScore | null {
+    return this.performanceScore;
+  }
+  
+  public getPerformanceTrends(period?: PerformancePeriod): PerformanceTrend[] {
+    if (period) {
+      const trend = this.trends.get(period);
+      return trend ? [trend] : [];
+    }
+    return Array.from(this.trends.values());
+  }
+  
+  public getModelAnalytics(model?: AIModel): ModelPerformanceAnalysis[] {
+    if (model) {
+      const analysis = this.modelAnalytics.get(model);
+      return analysis ? [analysis] : [];
+    }
+    return Array.from(this.modelAnalytics.values());
+  }
+  
+  public getFallbackHistory(limit?: number): FallbackTracking[] {
+    return limit ? this.fallbackHistory.slice(-limit) : [...this.fallbackHistory];
+  }
+  
+  public getResourceMetrics(limit?: number): ResourceMonitoring[] {
+    return limit ? this.resourceHistory.slice(-limit) : [...this.resourceHistory];
+  }
+
   // Event handlers (would be connected to notification systems)
   public onAlert?: (alert: PerformanceAlert) => void;
   public onReport?: (report: PerformanceReport) => void;
+  public onPerformanceAlert?: (alert: PerformanceAlert) => void;
+  public onResourceAlert?: (alert: PerformanceAlert) => void;
+  public onTrendChange?: (trend: PerformanceTrend) => void;
 }
 
 export const performanceMonitor = new PerformanceMonitor();
+
+// Export enhanced monitor with fallback tracking capabilities
+export class EnhancedPerformanceMonitor extends PerformanceMonitor {
+  constructor(config?: Partial<PerformanceMonitoringConfig>) {
+    super(350, config);
+  }
+  
+  /**
+   * Fallback tracking method for when primary metrics fail
+   */
+  public trackFallbackMetrics(context: {
+    operation: string;
+    startTime: number;
+    endTime: number;
+    success: boolean;
+    error?: string;
+  }): void {
+    const fallbackMetrics: PerformanceMetrics = {
+      id: nanoid(),
+      timestamp: context.endTime,
+      latency: {
+        total: context.endTime - context.startTime,
+        stages: {
+          audioCapture: 0,
+          speechToText: 0,
+          textProcessing: context.endTime - context.startTime,
+          aiResponse: 0,
+          textToSpeech: 0,
+          audioPlayback: 0
+        },
+        network: {
+          deepgram: 0,
+          openai: 0,
+          anthropic: 0,
+          elevenlabs: 0
+        }
+      },
+      resources: {
+        memory: {
+          used: process.memoryUsage().heapUsed,
+          available: process.memoryUsage().heapTotal - process.memoryUsage().heapUsed,
+          percentage: (process.memoryUsage().heapUsed / process.memoryUsage().heapTotal) * 100
+        },
+        cpu: {
+          usage: 0,
+          cores: require('os').cpus().length
+        },
+        network: {
+          bytesIn: 0,
+          bytesOut: 0,
+          bandwidth: 0
+        }
+      },
+      quality: {},
+      context: {
+        modelUsed: 'gpt-4o' as AIModel,
+        fallbackUsed: true,
+        fallbackReason: 'primary_metrics_failed',
+        retryCount: context.success ? 0 : 1,
+        cacheHit: false
+      }
+    };
+    
+    this.recordEnhancedMetrics(fallbackMetrics);
+  }
+  
+  /**
+   * Emergency performance assessment when all monitoring fails
+   */
+  public emergencyPerformanceCheck(): {
+    status: 'healthy' | 'degraded' | 'critical';
+    issues: string[];
+    recommendations: string[];
+  } {
+    const issues: string[] = [];
+    const recommendations: string[] = [];
+    
+    // Basic health checks
+    const memoryUsage = (process.memoryUsage().heapUsed / process.memoryUsage().heapTotal) * 100;
+    if (memoryUsage > 90) {
+      issues.push('High memory usage');
+      recommendations.push('Restart service or clear cache');
+    }
+    
+    // Check if monitoring is working
+    const recentMetrics = this.enhancedMetrics.filter(m => 
+      Date.now() - m.timestamp < 300000 // Last 5 minutes
+    );
+    
+    if (recentMetrics.length === 0) {
+      issues.push('No recent performance data');
+      recommendations.push('Check monitoring system');
+    }
+    
+    // Determine status
+    let status: 'healthy' | 'degraded' | 'critical';
+    if (issues.length === 0) {
+      status = 'healthy';
+    } else if (issues.length <= 2) {
+      status = 'degraded';
+    } else {
+      status = 'critical';
+    }
+    
+    return { status, issues, recommendations };
+  }
+}
+
+export const enhancedPerformanceMonitor = new EnhancedPerformanceMonitor();

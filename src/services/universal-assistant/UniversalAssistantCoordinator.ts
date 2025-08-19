@@ -253,10 +253,9 @@ export class UniversalAssistantCoordinator {
     try {
       const data = JSON.parse(event.data);
 
-      if (data.type === 'Results') {
+      if (data.type === 'Results' && data.is_final) {
         const result = data.channel.alternatives[0];
-
-        if (result?.transcript) {
+        if (result?.transcript && result.transcript.trim()) {
           this.processTranscription(result, data.channel.alternatives[0].words);
         }
       }

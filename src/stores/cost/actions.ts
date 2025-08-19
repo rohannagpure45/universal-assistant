@@ -36,7 +36,7 @@ import {
  */
 export const createTrackingActions: StateCreator<
   CostStore,
-  [],
+  [['zustand/immer', never]],
   [],
   Pick<CostStoreActions, 'trackAPICall' | 'batchTrackAPICalls' | 'recordEvent'>
 > = (set, get) => {
@@ -55,20 +55,22 @@ export const createTrackingActions: StateCreator<
         throw new Error(VALIDATION_ERRORS.TRACKER_UNAVAILABLE);
       }
 
-      set((state) => {
-        state.isLoading = true;
-        state.error = null;
-      });
+      set((state) => ({
+        ...state,
+        isLoading: true,
+        error: null,
+      }));
 
       try {
         const trackedCall = await tracker.trackAPICall(call);
         
-        set((state) => {
-          state.apiCalls = tracker.getAPICalls();
-          state.events = tracker.getEvents();
-          state.lastUpdated = new Date();
-          state.isLoading = false;
-        });
+        set((state) => ({
+          ...state,
+          apiCalls: tracker.getAPICalls(),
+          events: tracker.getEvents(),
+          lastUpdated: new Date(),
+          isLoading: false,
+        }));
 
         // Refresh analytics if real-time tracking is enabled
         if (get().config.realTimeTracking) {
@@ -77,10 +79,11 @@ export const createTrackingActions: StateCreator<
 
         return trackedCall;
       } catch (error) {
-        set((state) => {
-          state.error = error instanceof Error ? error.message : 'Failed to track API call';
-          state.isLoading = false;
-        });
+        set((state) => ({
+          ...state,
+          error: error instanceof Error ? error.message : 'Failed to track API call',
+          isLoading: false,
+        }));
         throw error;
       }
     }, 'Failed to track API call'),
@@ -98,9 +101,10 @@ export const createTrackingActions: StateCreator<
       if (!tracker) return;
 
       tracker.recordEvent(event);
-      set((state) => {
-        state.events = tracker.getEvents();
-      });
+      set((state) => ({
+        ...state,
+        events: tracker.getEvents(),
+      }));
     }
   };
 };
@@ -110,7 +114,7 @@ export const createTrackingActions: StateCreator<
  */
 export const createBudgetActions: StateCreator<
   CostStore,
-  [],
+  [['zustand/immer', never]],
   [],
   Pick<CostStoreActions, 'createBudget' | 'updateBudget' | 'deleteBudget' | 'getBudgetStatus' | 'checkBudgetAlerts'>
 > = (set, get) => ({
@@ -127,11 +131,12 @@ export const createBudgetActions: StateCreator<
 
     const newBudget = tracker.createBudget(budget);
     
-    set((state) => {
-      state.budgets = tracker.getBudgets();
-      state.lastUpdated = new Date();
-      state.error = null;
-    });
+    set((state) => ({
+      ...state,
+      budgets: tracker.getBudgets(),
+      lastUpdated: new Date(),
+      error: null,
+    }));
     
     return newBudget;
   }, 'Failed to create budget'),
@@ -154,11 +159,12 @@ export const createBudgetActions: StateCreator<
     const updated = tracker.updateBudget(budgetId, updates);
     
     if (updated) {
-      set((state) => {
-        state.budgets = tracker.getBudgets();
-        state.lastUpdated = new Date();
-        state.error = null;
-      });
+      set((state) => ({
+        ...state,
+        budgets: tracker.getBudgets(),
+        lastUpdated: new Date(),
+        error: null,
+      }));
       return true;
     }
     
@@ -175,14 +181,12 @@ export const createBudgetActions: StateCreator<
       throw new Error(VALIDATION_ERRORS.BUDGET_NOT_FOUND);
     }
 
-    set((state) => {
-      const index = state.budgets.findIndex(b => b.id === budgetId);
-      if (index !== -1) {
-        state.budgets.splice(index, 1);
-        state.lastUpdated = new Date();
-        state.error = null;
-      }
-    });
+    set((state) => ({
+      ...state,
+      budgets: state.budgets.filter(b => b.id !== budgetId),
+      lastUpdated: new Date(),
+      error: null,
+    }));
     
     return true;
   }, 'Failed to delete budget'),
@@ -200,7 +204,7 @@ export const createBudgetActions: StateCreator<
     
     let status: 'safe' | 'warning' | 'danger' = 'safe';
     if (percentage >= 95) status = 'danger';
-    else if (percentage >= budget.threshold) status = 'warning';
+    else if (percentage >= (budget.alerts.thresholds[1] || 80)) status = 'warning';
 
     return { percentage, remaining, status };
   },
@@ -216,16 +220,16 @@ export const createBudgetActions: StateCreator<
       if (status.status === 'danger') {
         events.push({
           type: 'budget_alert',
-          severity: 'critical',
+          severity: 'error',
           message: `Budget "${budget.name}" is at ${status.percentage.toFixed(1)}% capacity`,
-          metadata: { budgetId: budget.id, percentage: status.percentage }
+          data: budget
         });
       } else if (status.status === 'warning') {
         events.push({
           type: 'budget_alert',
           severity: 'warning',
-          message: `Budget "${budget.name}" has exceeded ${budget.threshold}% threshold`,
-          metadata: { budgetId: budget.id, percentage: status.percentage }
+          message: `Budget "${budget.name}" has exceeded ${budget.alerts.thresholds[1] || 80}% threshold`,
+          data: budget
         });
       }
     });
@@ -239,7 +243,7 @@ export const createBudgetActions: StateCreator<
  */
 export const createAnalyticsActions: StateCreator<
   CostStore,
-  [],
+  [['zustand/immer', never]],
   [],
   Pick<CostStoreActions, 'refreshAnalytics' | 'getAnalytics' | 'getUsageMetrics' | 'generateEstimation' | 'analyzeBatch'>
 > = (set, get) => {
@@ -265,9 +269,13 @@ export const createAnalyticsActions: StateCreator<
       const key = `analytics-${state.selectedPeriod}`;
       
       await deduplicator.dedupe(key, async () => {
-        set((state) => {
-          state.performance.isAnalyticsRefreshing = true;
-        });
+        set((state) => ({
+          ...state,
+          performance: {
+            ...state.performance,
+            isAnalyticsRefreshing: true
+          }
+        }));
 
         try {
           const tracker = get().tracker;
@@ -278,18 +286,26 @@ export const createAnalyticsActions: StateCreator<
           const analytics = tracker.getAnalytics(state.selectedPeriod);
           const metrics = tracker.getUsageMetrics();
 
-          set((state) => {
-            state.analytics = analytics;
-            state.usageMetrics = metrics;
-            state.performance.isAnalyticsRefreshing = false;
-            state.performance.lastAnalyticsUpdate = Date.now();
-            state.lastUpdated = new Date();
-          });
+          set((state) => ({
+            ...state,
+            analytics,
+            usageMetrics: metrics,
+            performance: {
+              ...state.performance,
+              isAnalyticsRefreshing: false,
+              lastAnalyticsUpdate: Date.now(),
+            },
+            lastUpdated: new Date(),
+          }));
         } catch (error) {
-          set((state) => {
-            state.error = error instanceof Error ? error.message : 'Failed to refresh analytics';
-            state.performance.isAnalyticsRefreshing = false;
-          });
+          set((state) => ({
+            ...state,
+            error: error instanceof Error ? error.message : 'Failed to refresh analytics',
+            performance: {
+              ...state.performance,
+              isAnalyticsRefreshing: false
+            }
+          }));
         }
       });
     },
@@ -317,10 +333,11 @@ export const createAnalyticsActions: StateCreator<
       const estimation = tracker.generateEstimation(params);
       
       set((state) => {
-        state.estimations.push(estimation);
-        if (state.estimations.length > 10) {
-          state.estimations = state.estimations.slice(-10);
-        }
+        const newEstimations = [...state.estimations, estimation];
+        return {
+          ...state,
+          estimations: newEstimations.length > 10 ? newEstimations.slice(-10) : newEstimations
+        };
       });
 
       return estimation;
@@ -332,9 +349,10 @@ export const createAnalyticsActions: StateCreator<
 
       const analysis = tracker.analyzeBatch(callIds);
       
-      set((state) => {
-        state.batchAnalysis = analysis;
-      });
+      set((state) => ({
+        ...state,
+        batchAnalysis: analysis
+      }));
 
       return analysis;
     }
@@ -346,7 +364,7 @@ export const createAnalyticsActions: StateCreator<
  */
 export const createFilterActions: StateCreator<
   CostStore,
-  [],
+  [['zustand/immer', never]],
   [],
   Pick<CostStoreActions, 'setSelectedPeriod' | 'setSelectedGranularity' | 'setFilterModel' | 'setFilterDateRange'>
 > = (set, get) => ({
@@ -355,19 +373,21 @@ export const createFilterActions: StateCreator<
       throw new Error(VALIDATION_ERRORS.INVALID_PERIOD);
     }
 
-    set((state) => {
-      state.selectedPeriod = period;
-      state.error = null;
-    });
+    set((state) => ({
+      ...state,
+      selectedPeriod: period,
+      error: null
+    }));
 
     // Refresh analytics with new period
     get().refreshAnalytics();
   }, 'Failed to set period'),
 
   setSelectedGranularity: (granularity) => {
-    set((state) => {
-      state.selectedGranularity = granularity;
-    });
+    set((state) => ({
+      ...state,
+      selectedGranularity: granularity
+    }));
   },
 
   setFilterModel: withErrorBoundary((model) => {
@@ -375,16 +395,18 @@ export const createFilterActions: StateCreator<
       throw new Error(VALIDATION_ERRORS.INVALID_MODEL);
     }
 
-    set((state) => {
-      state.filterModel = model;
-      state.error = null;
-    });
+    set((state) => ({
+      ...state,
+      filterModel: model,
+      error: null
+    }));
   }, 'Failed to set filter model'),
 
   setFilterDateRange: (range) => {
-    set((state) => {
-      state.filterDateRange = range;
-    });
+    set((state) => ({
+      ...state,
+      filterDateRange: range
+    }));
   }
 });
 
@@ -393,7 +415,7 @@ export const createFilterActions: StateCreator<
  */
 export const createDataActions: StateCreator<
   CostStore,
-  [],
+  [['zustand/immer', never]],
   [],
   Pick<CostStoreActions, 'exportData' | 'importData' | 'clearData'>
 > = (set, get) => ({
@@ -422,31 +444,34 @@ export const createDataActions: StateCreator<
       throw new Error(VALIDATION_ERRORS.TRACKER_UNAVAILABLE);
     }
 
-    set((state) => {
-      state.isLoading = true;
-      state.error = null;
-    });
+    set((state) => ({
+      ...state,
+      isLoading: true,
+      error: null
+    }));
 
     try {
       tracker.importData(data);
       
-      set((state) => {
-        state.apiCalls = tracker.getAPICalls();
-        state.budgets = tracker.getBudgets();
-        state.events = tracker.getEvents();
-        state.lastUpdated = new Date();
-        state.isLoading = false;
-      });
+      set((state) => ({
+        ...state,
+        apiCalls: tracker.getAPICalls(),
+        budgets: tracker.getBudgets(),
+        events: tracker.getEvents(),
+        lastUpdated: new Date(),
+        isLoading: false
+      }));
 
       // Refresh analytics after import
       await get().refreshAnalytics();
       
       return true;
     } catch (error) {
-      set((state) => {
-        state.error = error instanceof Error ? error.message : 'Failed to import data';
-        state.isLoading = false;
-      });
+      set((state) => ({
+        ...state,
+        error: error instanceof Error ? error.message : 'Failed to import data',
+        isLoading: false
+      }));
       throw error;
     }
   }, 'Failed to import data'),
@@ -461,21 +486,32 @@ export const createDataActions: StateCreator<
         const initialCallCount = state.apiCalls.length;
         const initialEventCount = state.events.length;
         
-        state.apiCalls = state.apiCalls.filter(call => call.timestamp >= olderThan);
-        state.events = state.events.filter(event => event.timestamp >= olderThan);
+        const filteredApiCalls = state.apiCalls.filter(call => call.timestamp >= olderThan);
+        const filteredEvents = state.events.filter(event => event.timestamp >= olderThan);
         
-        console.log(`Cleared ${initialCallCount - state.apiCalls.length} API calls and ${initialEventCount - state.events.length} events older than ${olderThan.toISOString()}`);
+        console.log(`Cleared ${initialCallCount - filteredApiCalls.length} API calls and ${initialEventCount - filteredEvents.length} events older than ${olderThan.toISOString()}`);
+        
+        return {
+          ...state,
+          apiCalls: filteredApiCalls,
+          events: filteredEvents,
+          lastUpdated: new Date(),
+          error: null
+        };
       } else {
         const clearedCalls = state.apiCalls.length;
         const clearedEvents = state.events.length;
         
-        state.apiCalls = [];
-        state.events = [];
-        
         console.log(`Cleared all data: ${clearedCalls} API calls and ${clearedEvents} events`);
+        
+        return {
+          ...state,
+          apiCalls: [],
+          events: [],
+          lastUpdated: new Date(),
+          error: null
+        };
       }
-      state.lastUpdated = new Date();
-      state.error = null;
     });
   }, 'Failed to clear data')
 });

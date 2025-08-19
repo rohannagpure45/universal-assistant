@@ -70,7 +70,7 @@ export const useCostSummary = () => {
       // Count active budgets that need attention
       const activeBudgets = budgets.filter(budget => {
         const percentage = (budget.currentUsage / budget.limit) * 100;
-        return percentage >= budget.threshold;
+        return percentage >= (budget.alerts.thresholds[0] || 50); // Use first threshold or default 50%
       }).length;
       
       return {

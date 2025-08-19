@@ -31,9 +31,8 @@ export const validateBudget = (budget: Partial<CostBudget>): string[] => {
     errors.push(VALIDATION_ERRORS.INVALID_BUDGET_LIMIT);
   }
   
-  if (budget.threshold !== undefined && (budget.threshold < 0 || budget.threshold > 100)) {
-    errors.push('Budget threshold must be between 0 and 100');
-  }
+  // Skip threshold validation as it's now part of budget.alerts.thresholds array
+  // Individual thresholds are validated within the alerts structure
   
   return errors;
 };
@@ -52,8 +51,8 @@ export const validateAPICall = (call: Partial<APICall>): string[] => {
     errors.push(VALIDATION_ERRORS.INVALID_MODEL);
   }
   
-  if (call.duration !== undefined && call.duration < 0) {
-    errors.push('Duration must be a positive number');
+  if (call.latency !== undefined && call.latency < 0) {
+    errors.push('Latency must be a positive number');
   }
   
   return errors;
@@ -80,7 +79,8 @@ const isValidAIModel = (model: string): boolean => {
     'claude-3-7-opus',
     'gpt-5-mini',
     'gpt-5-nano',
-    'claude-haiku'
+    'gpt-5',
+    'gpt-4.1-nano'
   ];
   return validModels.includes(model as AIModel);
 };

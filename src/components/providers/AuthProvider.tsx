@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { authService } from '@/services/firebase/AuthService';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -79,5 +80,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <ErrorBoundary
+      fallbackType="full-page"
+      severity="critical"
+      componentName="AuthProvider"
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+          <div className="text-center max-w-md">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              Authentication Error
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              The authentication system encountered a critical error. Please refresh the page or contact support if the issue persists.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      }
+    >
+      {children}
+    </ErrorBoundary>
+  );
 };

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { motion, type HTMLMotionProps, type Variants } from 'framer-motion';
+import ErrorBoundary from './ErrorBoundary';
 
 // Animation variants for common patterns
 export const fadeInUpVariants: Variants = {
@@ -189,17 +190,24 @@ export const MotionCard: React.FC<MotionCardProps> = ({
   className = '', 
   ...props 
 }) => (
-  <motion.div
-    variants={hover ? cardHoverVariants : fadeInUpVariants}
-    initial="initial"
-    animate="animate"
-    whileHover={hover ? "hover" : undefined}
-    whileTap={hover ? "tap" : undefined}
+  <ErrorBoundary
+    fallbackType="inline"
+    severity="warning"
+    componentName="MotionCard"
     className={className}
-    {...props}
   >
-    {children}
-  </motion.div>
+    <motion.div
+      variants={hover ? cardHoverVariants : fadeInUpVariants}
+      initial="initial"
+      animate="animate"
+      whileHover={hover ? "hover" : undefined}
+      whileTap={hover ? "tap" : undefined}
+      className={className}
+      {...props}
+    >
+      {children}
+    </motion.div>
+  </ErrorBoundary>
 );
 
 interface MotionButtonProps extends HTMLMotionProps<'button'> {
@@ -212,16 +220,23 @@ export const MotionButton: React.FC<MotionButtonProps> = ({
   className = '', 
   ...props 
 }) => (
-  <motion.button
-    variants={buttonVariants}
-    initial="initial"
-    whileHover="hover"
-    whileTap="tap"
+  <ErrorBoundary
+    fallbackType="inline"
+    severity="warning"
+    componentName="MotionButton"
     className={className}
-    {...props}
   >
-    {children}
-  </motion.button>
+    <motion.button
+      variants={buttonVariants}
+      initial="initial"
+      whileHover="hover"
+      whileTap="tap"
+      className={className}
+      {...props}
+    >
+      {children}
+    </motion.button>
+  </ErrorBoundary>
 );
 
 interface MotionListProps extends HTMLMotionProps<'div'> {
@@ -236,16 +251,23 @@ export const MotionList: React.FC<MotionListProps> = ({
   stagger = true,
   ...props 
 }) => (
-  <motion.div
-    variants={stagger ? staggerChildrenVariants : fadeInVariants}
-    initial="initial"
-    animate="animate"
-    exit="exit"
+  <ErrorBoundary
+    fallbackType="inline"
+    severity="warning"
+    componentName="MotionList"
     className={className}
-    {...props}
   >
-    {children}
-  </motion.div>
+    <motion.div
+      variants={stagger ? staggerChildrenVariants : fadeInVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      className={className}
+      {...props}
+    >
+      {children}
+    </motion.div>
+  </ErrorBoundary>
 );
 
 interface MotionCounterProps {
@@ -264,34 +286,62 @@ export const MotionCounter: React.FC<MotionCounterProps> = ({
   const [displayValue, setDisplayValue] = React.useState(0);
 
   React.useEffect(() => {
-    let start = 0;
+    const start = displayValue;
     const end = value;
-    const incrementTime = (duration * 1000) / Math.abs(end - start);
     
-    if (start === end) return;
+    // Early return for edge cases - prevents memory leaks
+    if (start === end || duration <= 0 || !Number.isFinite(value)) {
+      setDisplayValue(end);
+      return;
+    }
 
+    const difference = Math.abs(end - start);
+    // Prevent division by zero and ensure reasonable increment time
+    const incrementTime = Math.max(16, (duration * 1000) / Math.max(difference, 1));
+    
+    // Determine direction and step size
+    const isIncreasing = end > start;
+    const stepSize = Math.max(1, Math.ceil(difference * 0.1));
+
+    let currentValue = start;
+    
     const timer = setInterval(() => {
-      start += Math.ceil((end - start) * 0.1);
-      setDisplayValue(start);
+      if (isIncreasing) {
+        currentValue = Math.min(currentValue + stepSize, end);
+      } else {
+        currentValue = Math.max(currentValue - stepSize, end);
+      }
       
-      if (start >= end) {
-        setDisplayValue(end);
+      setDisplayValue(currentValue);
+      
+      // Clean termination condition for both directions
+      if (currentValue === end) {
         clearInterval(timer);
       }
     }, incrementTime);
 
-    return () => clearInterval(timer);
+    // Cleanup function - ensures timer is always cleared
+    return () => {
+      clearInterval(timer);
+    };
   }, [value, duration]);
 
   return (
-    <motion.span
-      variants={countUpVariants}
-      initial="initial"
-      animate="animate"
-      className={className}
+    <ErrorBoundary
+      fallbackType="minimal"
+      severity="info"
+      componentName="MotionCounter"
+      fallback={<span className={className}>{formatter(value)}</span>}
     >
-      {formatter(displayValue)}
-    </motion.span>
+      <motion.span
+        variants={countUpVariants}
+        initial="initial"
+        animate="animate"
+        className={className}
+      >
+        {formatter(displayValue)}
+      </motion.span>
+    </ErrorBoundary>
   );
 };
 
@@ -307,17 +357,28 @@ export const MotionSpinner: React.FC<{ className?: string; size?: 'sm' | 'md' | 
   };
 
   return (
-    <motion.div
-      className={`${sizeClasses[size]} ${className}`}
-      animate={{ rotate: 360 }}
-      transition={{
-        duration: 1,
-        repeat: Infinity,
-        ease: 'linear',
-      }}
+    <ErrorBoundary
+      fallbackType="minimal"
+      severity="info"
+      componentName="MotionSpinner"
+      fallback={
+        <div className={`${sizeClasses[size]} ${className} animate-spin`}>
+          <div className="w-full h-full border-2 border-primary-200 border-t-primary-500 rounded-full" />
+        </div>
+      }
     >
-      <div className="w-full h-full border-2 border-primary-200 border-t-primary-500 rounded-full" />
-    </motion.div>
+      <motion.div
+        className={`${sizeClasses[size]} ${className}`}
+        animate={{ rotate: 360 }}
+        transition={{
+          duration: 1,
+          repeat: Infinity,
+          ease: 'linear',
+        }}
+      >
+        <div className="w-full h-full border-2 border-primary-200 border-t-primary-500 rounded-full" />
+      </motion.div>
+    </ErrorBoundary>
   );
 };
 
@@ -328,18 +389,25 @@ interface PageTransitionProps {
 }
 
 export const PageTransition: React.FC<PageTransitionProps> = ({ children, className = '' }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -20 }}
-    transition={{
-      duration: 0.3,
-      ease: [0.4, 0, 0.2, 1],
-    }}
-    className={className}
+  <ErrorBoundary
+    fallbackType="inline"
+    severity="warning"
+    componentName="PageTransition"
+    fallback={<div className={className}>{children}</div>}
   >
-    {children}
-  </motion.div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{
+        duration: 0.3,
+        ease: [0.4, 0, 0.2, 1],
+      }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  </ErrorBoundary>
 );
 
 export default {

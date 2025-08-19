@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { audioManager } from '@/services/universal-assistant/AudioManager';
 
 export function useAudioRecording() {
@@ -6,6 +6,16 @@ export function useAudioRecording() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup timer on component unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, []);
 
   const startRecording = useCallback(async () => {
     try {

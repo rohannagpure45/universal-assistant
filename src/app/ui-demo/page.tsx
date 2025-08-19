@@ -6,9 +6,16 @@ import {
   PlayCircle, PauseCircle, StopCircle, DollarSign, Settings, Home,
   Bell, LogOut, User, X, Menu, Zap, Target, RefreshCw
 } from 'lucide-react';
+import { TestButtonProps } from '@/components/ui/test-button-props';
 
 // Demo Dashboard Card Component
-const DashboardCard = ({ title, value, icon: Icon, trend, className = '' }) => {
+const DashboardCard = ({ title, value, icon: Icon, trend, className = '' }: {
+  title: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+  trend?: { value: number; isPositive: boolean };
+  className?: string;
+}) => {
   const [isVisible, setIsVisible] = useState(false);
   
   useEffect(() => {
@@ -55,7 +62,7 @@ const DashboardCard = ({ title, value, icon: Icon, trend, className = '' }) => {
 };
 
 // Demo Navigation Sidebar
-const Sidebar = ({ isOpen }) => {
+const Sidebar = ({ isOpen }: { isOpen: boolean }) => {
   const navigationItems = [
     { label: 'Dashboard', href: '/dashboard', icon: Home, active: true },
     { label: 'Meeting', href: '/meeting', icon: Mic, active: false },
@@ -359,6 +366,13 @@ export default function UIDemoPage() {
                 <p className="text-fluid-sm text-gray-500 dark:text-gray-500">
                   Fluid Small Text - For secondary information
                 </p>
+              </div>
+            </section>
+            
+            {/* Section: Button Prop Testing */}
+            <section>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <TestButtonProps />
               </div>
             </section>
           </div>

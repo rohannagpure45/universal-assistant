@@ -104,7 +104,7 @@ export interface CostStoreActions {
   analyzeBatch: (callIds: string[]) => BatchCostAnalysis | null;
   
   // Event tracking
-  recordEvent: (event: Omit<CostEvent, 'id' | 'timestamp'>) => void;
+  recordEvent: (event: Omit<CostEvent, 'timestamp'>) => void;
   getEvents: (filter?: { type?: string; severity?: string }) => CostEvent[];
   
   // Filters and views

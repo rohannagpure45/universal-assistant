@@ -59,6 +59,8 @@ export interface CostBudget {
   resetDate: Date;
   createdAt: Date;
   updatedAt: Date;
+  startDate?: Date;
+  endDate?: Date;
 }
 
 export interface TimeBasedUsage {

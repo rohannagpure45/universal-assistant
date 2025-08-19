@@ -101,9 +101,6 @@ export class CostTracker {
     if (config) {
       this.config = { ...this.config, ...config };
     }
-    if (config?.retentionPeriod) {
-      this.retentionDays = config.retentionPeriod;
-    }
     this.cleanup();
     
     // Periodic cleanup
@@ -115,11 +112,12 @@ export class CostTracker {
   }
 
   // Core tracking methods
-  async trackAPICall(call: Omit<APICall, 'id' | 'cost'>): Promise<APICall> {
+  async trackAPICall(call: Omit<APICall, 'id' | 'timestamp'>): Promise<APICall> {
     const cost = this.calculateCostFromCall(call);
     const fullCall: APICall = {
       ...call,
       id: nanoid(),
+      timestamp: new Date(),
       cost,
     };
 
@@ -141,7 +139,7 @@ export class CostTracker {
   }
 
   // Cost calculation methods
-  calculateCostFromCall(call: Omit<APICall, 'id' | 'cost'>): number {
+  calculateCostFromCall(call: Omit<APICall, 'id' | 'timestamp'>): number {
     switch (call.service) {
       case 'openai':
       case 'anthropic':
@@ -336,7 +334,12 @@ export class CostTracker {
   }
 
   // Batch analysis
-  analyzeBatch(calls: APICall[]): BatchCostAnalysis {
+  analyzeBatch(callIds: string[]): BatchCostAnalysis {
+    // Look up actual API calls by their IDs
+    const calls = callIds
+      .map(id => this.callsIndex.get(id) || this.apiCalls.find(call => call.id === id))
+      .filter((call): call is APICall => call !== undefined);
+    
     const totalCost = calls.reduce((acc, call) => acc + call.cost, 0);
     const averageCost = calls.length > 0 ? totalCost / calls.length : 0;
     
@@ -364,8 +367,7 @@ export class CostTracker {
   trackDeepgramUsage(audioLength: number, model: string = 'general', language: string = 'en'): DeepgramCost {
     const cost = (audioLength / 60) * 0.0125; // $0.0125 per minute
     
-    const apiCall: Omit<APICall, 'id' | 'cost'> = {
-      timestamp: new Date(),
+    const apiCall: Omit<APICall, 'id' | 'timestamp'> = {
       model: 'gpt-4o-mini', // Placeholder as Deepgram doesn't use our AI models
       service: 'deepgram',
       operation: 'speech_to_text',
@@ -373,6 +375,7 @@ export class CostTracker {
       latency: 0,
       requestSize: audioLength,
       metadata: { contextLength: Math.floor(audioLength) },
+      cost,
     };
 
     this.trackAPICall(apiCall);
@@ -389,14 +392,14 @@ export class CostTracker {
   trackElevenLabsUsage(characterCount: number, voiceId: string, model: string = 'eleven_multilingual_v2'): ElevenLabsCost {
     const cost = (characterCount / 1000) * 0.30; // $0.30 per 1K characters
     
-    const apiCall: Omit<APICall, 'id' | 'cost'> = {
-      timestamp: new Date(),
+    const apiCall: Omit<APICall, 'id' | 'timestamp'> = {
       model: 'gpt-4o-mini', // Placeholder
       service: 'elevenlabs',
       operation: 'text_to_speech',
       tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
       latency: 0,
       requestSize: characterCount,
+      cost,
     };
 
     this.trackAPICall(apiCall);
@@ -603,6 +606,49 @@ export class CostTracker {
     this.events.push(event);
     // In a real implementation, this would emit to event listeners
     console.log(`[CostTracker] ${event.severity.toUpperCase()}: ${event.message}`);
+  }
+
+  recordEvent(event: Omit<CostEvent, 'timestamp'>): void {
+    const fullEvent: CostEvent = {
+      ...event,
+      timestamp: new Date(),
+    };
+    this.emitEvent(fullEvent);
+  }
+
+  generateEstimation(params: {
+    model: AIModel;
+    estimatedCalls: number;
+    period: string;
+  }): CostEstimation {
+    // Estimate based on typical call patterns
+    const avgTokensPerCall = 2000; // Reasonable average
+    const estimatedTokens = params.estimatedCalls * avgTokensPerCall;
+    
+    const cost = this.calculateCostFromCall({
+      model: params.model,
+      service: 'openai',
+      operation: 'chat_completion',
+      tokenUsage: {
+        inputTokens: Math.ceil(estimatedTokens * 0.7),
+        outputTokens: Math.ceil(estimatedTokens * 0.3),
+        totalTokens: estimatedTokens
+      },
+      latency: 0,
+      cost: 0 // Will be calculated
+    });
+
+    return {
+      estimatedTokens,
+      estimatedCost: cost * params.estimatedCalls,
+      confidence: 0.75,
+      factors: {
+        promptLength: avgTokensPerCall * 0.6,
+        contextSize: avgTokensPerCall * 0.4,
+        modelComplexity: 0.8,
+        historicalAverage: cost * params.estimatedCalls * 1.1
+      }
+    };
   }
 
 

@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { presets } from '@/lib/motion-variants';
 import { spacing, colors, typography, accessibility } from '@/lib/design-system';
+import { processComponentProps } from '@/utils/propUtils';
 
 // Button configuration following design system
 const buttonConfig = {
@@ -324,18 +325,54 @@ interface MotionButtonProps extends BaseButtonProps, Omit<HTMLMotionProps<'butto
   
   /** Whether to animate on tap/click */
   whileTap?: any;
+  
+  /** Discriminant property - explicitly false for motion buttons */
+  static?: false | undefined;
 }
 
 interface StaticButtonProps extends BaseButtonProps, Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'className' | 'disabled'> {
-  /** No motion - static button */
-  static?: true;
+  /** Discriminant property - must be true for static buttons */
+  static: true;
+  
+  /** Explicitly exclude motion-specific properties using never */
+  variants?: never;
+  whileHover?: never;
+  whileTap?: never;
+  viewport?: never;
+  initial?: never;
+  animate?: never;
+  exit?: never;
+  transition?: never;
+  drag?: never;
+  dragConstraints?: never;
+  dragElastic?: never;
+  dragMomentum?: never;
+  onAnimationComplete?: never;
+  onAnimationStart?: never;
+  onDrag?: never;
+  onDragEnd?: never;
+  onDragStart?: never;
+  onHoverEnd?: never;
+  onHoverStart?: never;
+  onPan?: never;
+  onPanEnd?: never;
+  onPanStart?: never;
+  onTap?: never;
+  onTapCancel?: never;
+  onTapStart?: never;
+  onUpdate?: never;
+  style?: React.CSSProperties; // Override to ensure it's not MotionStyle
 }
 
 export type ButtonProps = MotionButtonProps | StaticButtonProps;
 
-// Type guard to check if props include motion
-const isMotionButton = (props: ButtonProps): props is MotionButtonProps => {
-  return !('static' in props) || !props.static;
+// Type guards using precise literal type checking (TypeScript best practice)
+const isStaticButtonProps = (props: ButtonProps): props is StaticButtonProps => {
+  return props.static === true;
+};
+
+const isMotionButtonProps = (props: ButtonProps): props is MotionButtonProps => {
+  return props.static !== true;
 };
 
 /**
@@ -348,21 +385,23 @@ const isMotionButton = (props: ButtonProps): props is MotionButtonProps => {
  * Dependency Inversion: Depends on design system abstractions
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({
-    children,
-    size = 'md',
-    variant = 'primary',
-    disabled = false,
-    loading = false,
-    leftIcon,
-    rightIcon,
-    fullWidth = false,
-    className,
-    type = 'button',
-    'aria-label': ariaLabel,
-    'aria-describedby': ariaDescribedBy,
-    ...props
-  }, ref) => {
+  (props, ref) => {
+    // Extract common props
+    const {
+      children,
+      size = 'md',
+      variant = 'primary',
+      disabled = false,
+      loading = false,
+      leftIcon,
+      rightIcon,
+      fullWidth = false,
+      className,
+      type = 'button',
+      'aria-label': ariaLabel,
+      'aria-describedby': ariaDescribedBy,
+    } = props;
+
     // Build class names using design system
     const sizeConfig = buttonSizes[size];
     const variantConfig = buttonVariants[variant];
@@ -427,7 +466,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       </>
     );
 
-    // Accessibility props
+    // Common accessibility props
     const accessibilityProps = {
       'aria-label': ariaLabel,
       'aria-describedby': ariaDescribedBy,
@@ -437,123 +476,170 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       type,
     };
 
-    // For motion buttons, use motion.button
-    if (isMotionButton(props)) {
-      const {
-        variants = presets.button,
-        whileHover = !isDisabled ? 'hover' : undefined,
-        whileTap = !isDisabled ? 'tap' : undefined,
-        ...motionProps
+    // Use type discrimination with proper type guards (TypeScript best practice)
+    if (isStaticButtonProps(props)) {
+      // TypeScript now knows this is StaticButtonProps - no motion properties available
+      const { 
+        static: _, 
+        children: _children,
+        size: _size,
+        variant: _variant,
+        disabled: _disabled,
+        loading: _loading,
+        leftIcon: _leftIcon,
+        rightIcon: _rightIcon,
+        fullWidth: _fullWidth,
+        className: _className,
+        'aria-label': _ariaLabel,
+        'aria-describedby': _ariaDescribedBy,
+        ...cleanStaticProps 
       } = props;
-
+      
+      // Process props to filter out custom props for DOM safety
+      const { filteredProps: domSafeProps } = processComponentProps(cleanStaticProps);
+      
       return (
-        <motion.button
+        <button
           ref={ref}
           className={classes}
-          variants={variants}
-          whileHover={whileHover}
-          whileTap={whileTap}
           {...accessibilityProps}
-          {...motionProps}
+          {...domSafeProps}
         >
           {buttonContent}
-        </motion.button>
+        </button>
       );
     }
 
-    // For static buttons, use regular button
-    const { static: _, ...staticProps } = props as StaticButtonProps;
+    // TypeScript now knows this is MotionButtonProps - all motion properties available
+    const { 
+      variants = presets.button, 
+      whileHover, 
+      whileTap, 
+      static: _,
+      children: _children,
+      size: _size,
+      variant: _variant,
+      disabled: _disabled,
+      loading: _loading,
+      leftIcon: _leftIcon,
+      rightIcon: _rightIcon,
+      fullWidth: _fullWidth,
+      className: _className,
+      'aria-label': _ariaLabel,
+      'aria-describedby': _ariaDescribedBy,
+      ...restMotionProps 
+    } = props;
+
+    // Process props to filter out custom props for DOM safety
+    const { filteredProps: domSafeMotionProps } = processComponentProps(restMotionProps);
+
     return (
-      <button
+      <motion.button
         ref={ref}
         className={classes}
+        variants={variants}
+        whileHover={whileHover ?? (!isDisabled ? 'hover' : undefined)}
+        whileTap={whileTap ?? (!isDisabled ? 'tap' : undefined)}
         {...accessibilityProps}
-        {...staticProps}
+        {...domSafeMotionProps}
       >
         {buttonContent}
-      </button>
+      </motion.button>
     );
   }
 );
 
 Button.displayName = 'Button';
 
+// Define specialized button prop types that preserve discriminated union
+type SpecializedMotionButtonProps = Omit<MotionButtonProps, 'variant'>;
+type SpecializedStaticButtonProps = Omit<StaticButtonProps, 'variant'>;
+type SpecializedButtonProps = SpecializedMotionButtonProps | SpecializedStaticButtonProps;
+
 // Specialized button components following Single Responsibility
-export const PrimaryButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, 'variant'>>(
+export const PrimaryButton = forwardRef<HTMLButtonElement, SpecializedButtonProps>(
   (props, ref) => <Button ref={ref} variant="primary" {...props} />
 );
 
 PrimaryButton.displayName = 'PrimaryButton';
 
-export const SecondaryButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, 'variant'>>(
+export const SecondaryButton = forwardRef<HTMLButtonElement, SpecializedButtonProps>(
   (props, ref) => <Button ref={ref} variant="secondary" {...props} />
 );
 
 SecondaryButton.displayName = 'SecondaryButton';
 
-export const OutlineButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, 'variant'>>(
+export const OutlineButton = forwardRef<HTMLButtonElement, SpecializedButtonProps>(
   (props, ref) => <Button ref={ref} variant="outline" {...props} />
 );
 
 OutlineButton.displayName = 'OutlineButton';
 
-export const GhostButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, 'variant'>>(
+export const GhostButton = forwardRef<HTMLButtonElement, SpecializedButtonProps>(
   (props, ref) => <Button ref={ref} variant="ghost" {...props} />
 );
 
 GhostButton.displayName = 'GhostButton';
 
-export const SuccessButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, 'variant'>>(
+export const SuccessButton = forwardRef<HTMLButtonElement, SpecializedButtonProps>(
   (props, ref) => <Button ref={ref} variant="success" {...props} />
 );
 
 SuccessButton.displayName = 'SuccessButton';
 
-export const WarningButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, 'variant'>>(
+export const WarningButton = forwardRef<HTMLButtonElement, SpecializedButtonProps>(
   (props, ref) => <Button ref={ref} variant="warning" {...props} />
 );
 
 WarningButton.displayName = 'WarningButton';
 
-export const DangerButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, 'variant'>>(
+export const DangerButton = forwardRef<HTMLButtonElement, SpecializedButtonProps>(
   (props, ref) => <Button ref={ref} variant="danger" {...props} />
 );
 
 DangerButton.displayName = 'DangerButton';
 
-// Icon-only button variant
-export const IconButton = forwardRef<HTMLButtonElement, 
-  Omit<ButtonProps, 'children' | 'leftIcon' | 'rightIcon'> & {
-    icon: React.ReactNode;
-    'aria-label': string; // Required for icon-only buttons
+// Icon-only button variant with proper discriminated union handling
+type IconMotionButtonProps = Omit<MotionButtonProps, 'children' | 'leftIcon' | 'rightIcon'>;
+type IconStaticButtonProps = Omit<StaticButtonProps, 'children' | 'leftIcon' | 'rightIcon'>;
+type IconButtonProps = (IconMotionButtonProps | IconStaticButtonProps) & {
+  icon: React.ReactNode;
+  'aria-label': string; // Required for icon-only buttons
+};
+
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
+  ({ icon, className, size = 'md', ...props }, ref) => {
+    const sizeConfig = buttonSizes[size];
+    
+    return (
+      <Button
+        ref={ref}
+        size={size}
+        className={cn(
+          // Square shape for icon-only
+          'aspect-square',
+          sizeConfig.height,
+          'px-0', // Remove horizontal padding
+          className
+        )}
+        {...props}
+      >
+        <span className={sizeConfig.iconSize} aria-hidden="true">
+          {icon}
+        </span>
+      </Button>
+    );
   }
->(({ icon, className, size = 'md', ...props }, ref) => {
-  const sizeConfig = buttonSizes[size];
-  
-  return (
-    <Button
-      ref={ref}
-      size={size}
-      className={cn(
-        // Square shape for icon-only
-        'aspect-square',
-        sizeConfig.height,
-        'px-0', // Remove horizontal padding
-        className
-      )}
-      {...props}
-    >
-      <span className={sizeConfig.iconSize} aria-hidden="true">
-        {icon}
-      </span>
-    </Button>
-  );
-});
+);
 
 IconButton.displayName = 'IconButton';
 
 // Loading button - button that's always in loading state
-export const LoadingButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, 'loading'>>(
+type LoadingMotionButtonProps = Omit<MotionButtonProps, 'loading'>;
+type LoadingStaticButtonProps = Omit<StaticButtonProps, 'loading'>;
+type LoadingButtonProps = LoadingMotionButtonProps | LoadingStaticButtonProps;
+
+export const LoadingButton = forwardRef<HTMLButtonElement, LoadingButtonProps>(
   (props, ref) => <Button ref={ref} loading {...props} />
 );
 
@@ -597,4 +683,4 @@ export const createButtonClasses = (
 };
 
 // Export types for external use
-export type { ButtonProps, MotionButtonProps, StaticButtonProps, BaseButtonProps };
+export type { MotionButtonProps, StaticButtonProps, BaseButtonProps };

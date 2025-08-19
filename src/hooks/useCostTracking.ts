@@ -127,7 +127,7 @@ export const useCostTracking = () => {
 
   // Enhanced tracking function with validation and error handling
   const trackAPICallEnhanced = useCallback(async (
-    call: Omit<APICall, 'id' | 'cost'>,
+    call: Omit<APICall, 'id' | 'timestamp'>,
     options?: {
       skipBudgetCheck?: boolean;
       estimateFirst?: boolean;
@@ -201,7 +201,7 @@ export const useCostTracking = () => {
   }, [estimateCost, filteredCalls]);
 
   // Batch operations for multiple API calls
-  const trackBatch = useCallback(async (calls: Array<Omit<APICall, 'id' | 'cost'>>) => {
+  const trackBatch = useCallback(async (calls: Array<Omit<APICall, 'id' | 'timestamp'>>) => {
     const results = [];
     for (const call of calls) {
       try {
@@ -233,7 +233,9 @@ export const useCostTracking = () => {
         thresholds: [50, 80, 95],
         notified: []
       },
-      resetDate: new Date()
+      resetDate: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
   }, [createBudget]);
 
@@ -247,7 +249,7 @@ export const useCostTracking = () => {
     }
   ) => {
     try {
-      let data = exportData(format);
+      let data = exportData();
       
       if (options?.includeMetadata && format === 'json') {
         const metadata = {

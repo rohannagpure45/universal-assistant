@@ -1,7 +1,28 @@
 /**
  * Design System Configuration
- * Centralized design tokens following WCAG AA guidelines and 8px grid system
+ * 
+ * This file serves as the single source of truth for all design tokens in the application.
+ * It provides centralized design tokens following WCAG AA guidelines and 8px grid system.
+ * 
+ * The values exported from this file are imported and used by:
+ * - tailwind.config.ts (for Tailwind CSS configuration)
+ * - React components (for programmatic styling)
+ * - CSS-in-JS solutions
+ * 
+ * Key principles:
+ * - WCAG AA compliant colors (4.5:1 contrast minimum)
+ * - 8px grid system for consistent spacing
+ * - Mobile-first responsive design
+ * - Type-safe design tokens
+ * 
+ * @see /tailwind.config.ts for Tailwind integration
  */
+
+// Font Family System
+export const fontFamily = {
+  sans: ['Inter', 'system-ui', 'sans-serif'],
+  display: ['Inter', 'system-ui', 'sans-serif'],
+};
 
 // Typography Scale - Type-safe typography system
 export const typography = {
@@ -116,9 +137,23 @@ export const typography = {
       letterSpacing: '0.025em',
     },
   },
-} as const;
 
-// Spacing System - 8px grid system
+  // Tailwind-compatible fontSize definitions
+  fontSize: {
+    xs: ['0.75rem', { lineHeight: '1rem' }],
+    sm: ['0.875rem', { lineHeight: '1.25rem' }],
+    base: ['1rem', { lineHeight: '1.5rem' }],
+    lg: ['1.125rem', { lineHeight: '1.75rem' }],
+    xl: ['1.25rem', { lineHeight: '1.75rem' }],
+    '2xl': ['1.5rem', { lineHeight: '2rem' }],
+    '3xl': ['1.875rem', { lineHeight: '2.25rem' }],
+    '4xl': ['2.25rem', { lineHeight: '2.5rem' }],
+    '5xl': ['3rem', { lineHeight: '1' }],
+    '6xl': ['3.75rem', { lineHeight: '1' }],
+  },
+};
+
+// Spacing System - 8px grid system with extended values
 export const spacing = {
   px: '1px',
   0: '0',
@@ -130,33 +165,71 @@ export const spacing = {
   3: '0.75rem',       // 12px
   3.5: '0.875rem',    // 14px
   4: '1rem',          // 16px
+  4.5: '1.125rem',    // 18px
   5: '1.25rem',       // 20px
+  5.5: '1.375rem',    // 22px
   6: '1.5rem',        // 24px
+  6.5: '1.625rem',    // 26px
   7: '1.75rem',       // 28px
+  7.5: '1.875rem',    // 30px
   8: '2rem',          // 32px
+  8.5: '2.125rem',    // 34px
   9: '2.25rem',       // 36px
+  9.5: '2.375rem',    // 38px
   10: '2.5rem',       // 40px
+  10.5: '2.625rem',   // 42px
   11: '2.75rem',      // 44px (minimum touch target)
+  11.5: '2.875rem',   // 46px
   12: '3rem',         // 48px
+  12.5: '3.125rem',   // 50px
+  13: '3.25rem',      // 52px
   14: '3.5rem',       // 56px
+  15: '3.75rem',      // 60px
   16: '4rem',         // 64px
+  17: '4.25rem',      // 68px
   18: '4.5rem',       // 72px
+  19: '4.75rem',      // 76px
   20: '5rem',         // 80px
+  21: '5.25rem',      // 84px
+  22: '5.5rem',       // 88px
+  23: '5.75rem',      // 92px
   24: '6rem',         // 96px
+  25: '6.25rem',      // 100px
+  26: '6.5rem',       // 104px
+  27: '6.75rem',      // 108px
   28: '7rem',         // 112px
+  29: '7.25rem',      // 116px
+  30: '7.5rem',       // 120px
+  31: '7.75rem',      // 124px
   32: '8rem',         // 128px
+  33: '8.25rem',      // 132px
+  34: '8.5rem',       // 136px
+  35: '8.75rem',      // 140px
   36: '9rem',         // 144px
+  37: '9.25rem',      // 148px
+  38: '9.5rem',       // 152px
+  39: '9.75rem',      // 156px
   40: '10rem',        // 160px
+  41: '10.25rem',     // 164px
+  42: '10.5rem',      // 168px
+  43: '10.75rem',     // 172px
   44: '11rem',        // 176px
+  45: '11.25rem',     // 180px
+  46: '11.5rem',      // 184px
+  47: '11.75rem',     // 188px
   48: '12rem',        // 192px
+  49: '12.25rem',     // 196px
+  50: '12.5rem',      // 200px
   52: '13rem',        // 208px
   56: '14rem',        // 224px
   60: '15rem',        // 240px
   64: '16rem',        // 256px
   72: '18rem',        // 288px
   80: '20rem',        // 320px
+  88: '22rem',        // 352px
   96: '24rem',        // 384px
-} as const;
+  128: '32rem',       // 512px
+};
 
 // WCAG AA Compliant Color System
 export const colors = {
@@ -190,6 +263,21 @@ export const colors = {
     800: '#262626',   // 14.8:1 contrast with white
     900: '#171717',   // 17.9:1 contrast with white
     950: '#0a0a0a',
+  },
+  
+  // Secondary colors for additional UI elements
+  secondary: {
+    50: '#f8fafc',
+    100: '#f1f5f9',
+    200: '#e2e8f0',
+    300: '#cbd5e1',
+    400: '#94a3b8',
+    500: '#64748b',
+    600: '#475569',   // Enhanced contrast
+    700: '#334155',
+    800: '#1e293b',
+    900: '#0f172a',
+    950: '#020617',
   },
   
   // Semantic colors - WCAG AA compliant
@@ -248,7 +336,7 @@ export const colors = {
     900: '#0c4a6e',
     950: '#082f49',
   },
-} as const;
+};
 
 // Shadow System - Consistent elevation
 export const shadows = {
@@ -260,10 +348,11 @@ export const shadows = {
   xl: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
   '2xl': '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
   soft: '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
-  glow: '0 0 20px rgba(14, 165, 233, 0.15)',
-  'glow-lg': '0 0 30px rgba(14, 165, 233, 0.2)',
+  glow: '0 0 20px rgba(99, 102, 241, 0.15)',
+  'glow-lg': '0 0 30px rgba(99, 102, 241, 0.2)',
+  'inner-soft': 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.05)',
   inner: 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.05)',
-} as const;
+};
 
 // Border Radius System
 export const borderRadius = {
@@ -275,8 +364,10 @@ export const borderRadius = {
   xl: '0.75rem',      // 12px
   '2xl': '1rem',      // 16px
   '3xl': '1.5rem',    // 24px
+  '4xl': '2rem',      // 32px
+  '5xl': '2.5rem',    // 40px
   full: '9999px',
-} as const;
+};
 
 // Animation System - Consistent timing and easing
 export const animations = {
@@ -306,18 +397,88 @@ export const animations = {
     opacity: 'opacity 200ms ease-out',
     shadow: 'box-shadow 300ms ease-out',
   },
-} as const;
+
+  // Custom animations from Tailwind config
+  animation: {
+    'fade-in': 'fadeIn 0.5s ease-in-out',
+    'slide-up': 'slideUp 0.3s ease-out',
+    'slide-down': 'slideDown 0.3s ease-out',
+    'slide-left': 'slideLeft 0.3s ease-out',
+    'slide-right': 'slideRight 0.3s ease-out',
+    'scale-in': 'scaleIn 0.2s ease-out',
+    'bounce-soft': 'bounceSoft 0.6s ease-out',
+    'pulse-soft': 'pulseSoft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+    'shimmer': 'shimmer 2s ease-in-out infinite',
+    'counter': 'counter 1.5s ease-out',
+    'float': 'float 6s ease-in-out infinite',
+    'glow': 'glow 2s ease-in-out infinite alternate',
+  },
+
+  // Keyframes definitions
+  keyframes: {
+    fadeIn: {
+      '0%': { opacity: '0' },
+      '100%': { opacity: '1' },
+    },
+    slideUp: {
+      '0%': { transform: 'translateY(10px)', opacity: '0' },
+      '100%': { transform: 'translateY(0)', opacity: '1' },
+    },
+    slideDown: {
+      '0%': { transform: 'translateY(-10px)', opacity: '0' },
+      '100%': { transform: 'translateY(0)', opacity: '1' },
+    },
+    slideLeft: {
+      '0%': { transform: 'translateX(10px)', opacity: '0' },
+      '100%': { transform: 'translateX(0)', opacity: '1' },
+    },
+    slideRight: {
+      '0%': { transform: 'translateX(-10px)', opacity: '0' },
+      '100%': { transform: 'translateX(0)', opacity: '1' },
+    },
+    scaleIn: {
+      '0%': { transform: 'scale(0.95)', opacity: '0' },
+      '100%': { transform: 'scale(1)', opacity: '1' },
+    },
+    bounceSoft: {
+      '0%, 20%, 53%, 80%, 100%': { transform: 'translate3d(0,0,0)' },
+      '40%, 43%': { transform: 'translate3d(0, -8px, 0)' },
+      '70%': { transform: 'translate3d(0, -4px, 0)' },
+      '90%': { transform: 'translate3d(0, -2px, 0)' },
+    },
+    pulseSoft: {
+      '0%, 100%': { opacity: '1' },
+      '50%': { opacity: '0.7' },
+    },
+    shimmer: {
+      '0%': { backgroundPosition: '-200% 0' },
+      '100%': { backgroundPosition: '200% 0' },
+    },
+    counter: {
+      '0%': { opacity: '0', transform: 'translateY(20px) scale(0.8)' },
+      '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+    },
+    float: {
+      '0%, 100%': { transform: 'translateY(0px)' },
+      '50%': { transform: 'translateY(-10px)' },
+    },
+    glow: {
+      '0%': { boxShadow: '0 0 20px rgba(99, 102, 241, 0.15)' },
+      '100%': { boxShadow: '0 0 30px rgba(99, 102, 241, 0.25)' },
+    },
+  },
+};
 
 // Breakpoints - Mobile-first responsive design
 export const breakpoints = {
-  xs: '320px',    // Small phones
-  sm: '375px',    // Large phones
+  xs: '375px',    // Large phones - mobile-first
+  sm: '640px',    // Small tablets
   md: '768px',    // Tablets
   lg: '1024px',   // Small laptops
   xl: '1280px',   // Desktop
   '2xl': '1536px', // Large desktop
   '3xl': '1920px', // Ultra-wide
-} as const;
+};
 
 // Z-index layers
 export const zIndex = {
@@ -331,7 +492,29 @@ export const zIndex = {
   tooltip: 1060,
   toast: 1070,
   max: 2147483647,
-} as const;
+};
+
+// Background Image System
+export const backgroundImage = {
+  'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+  'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
+  'gradient-primary': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  'gradient-success': 'linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%)',
+  'gradient-warning': 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
+  'gradient-danger': 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
+  'glass': 'linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))',
+};
+
+// Backdrop Blur System
+export const backdropBlur = {
+  xs: '2px',
+  sm: '4px',
+  md: '12px',
+  lg: '16px',
+  xl: '24px',
+  '2xl': '40px',
+  '3xl': '64px',
+};
 
 // Component variants - Reusable component styles
 export const variants = {
@@ -384,7 +567,7 @@ export const variants = {
       lg: spacing[6],      // 24px
     },
   },
-} as const;
+};
 
 // Accessibility helpers
 export const accessibility = {
@@ -405,14 +588,14 @@ export const accessibility = {
     whiteSpace: 'nowrap',
     borderWidth: '0',
   },
-} as const;
+};
 
 // Dark mode color mappings
 export const darkMode = {
   background: {
     primary: colors.neutral[900],
     secondary: colors.neutral[800],
-    tertiary: colors.neutral[750],
+    tertiary: colors.neutral[700],
   },
   
   text: {
@@ -425,7 +608,7 @@ export const darkMode = {
     primary: colors.neutral[700],
     secondary: colors.neutral[600],
   },
-} as const;
+};
 
 // CSS-in-JS helper functions
 export const createTypographyClasses = () => {
@@ -531,7 +714,7 @@ export const cssVariables = {
   '--focus-ring-offset': accessibility.focusRingOffset,
   '--focus-ring-color': accessibility.focusRingColor,
   '--min-touch-target': accessibility.minTouchTarget,
-} as const;
+};
 
 export type SpacingKey = keyof typeof spacing;
 export type ColorKey = keyof typeof colors;

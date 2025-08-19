@@ -102,7 +102,7 @@ export class PerformanceMonitor {
   private lastAlertTimes: Map<string, number> = new Map();
   
   // Enhanced monitoring data
-  private enhancedMetrics: PerformanceMetrics[] = [];
+  protected enhancedMetrics: PerformanceMetrics[] = [];
   private fallbackHistory: FallbackTracking[] = [];
   private resourceHistory: ResourceMonitoring[] = [];
   private performanceThresholds: Map<string, PerformanceThreshold> = new Map();
@@ -1558,7 +1558,7 @@ export class EnhancedPerformanceMonitor extends PerformanceMonitor {
     const recommendations: string[] = [];
     
     // Basic health checks
-    const memoryUsage = (this.getHeapUsed() / this.getHeapTotal()) * 100;
+    const memoryUsage = (process.memoryUsage().heapUsed / process.memoryUsage().heapTotal) * 100;
     if (memoryUsage > 90) {
       issues.push('High memory usage');
       recommendations.push('Restart service or clear cache');

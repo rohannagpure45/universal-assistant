@@ -69,7 +69,16 @@ export const createMockUsageMetrics = (overrides?: Partial<UsageMetrics>): Usage
   averageLatency: 250,
   averageCostPerCall: 0.0015,
   costByModel: {
+    'gpt-4o': { inputCost: 0.02, outputCost: 0.01, totalCost: 0.03, currency: 'USD' },
     'gpt-4o-mini': { inputCost: 0.01, outputCost: 0.005, totalCost: 0.015, currency: 'USD' },
+    'claude-3-5-sonnet': { inputCost: 0.015, outputCost: 0.0075, totalCost: 0.0225, currency: 'USD' },
+    'claude-3-5-opus': { inputCost: 0.03, outputCost: 0.015, totalCost: 0.045, currency: 'USD' },
+    'claude-3-7-sonnet': { inputCost: 0.025, outputCost: 0.0125, totalCost: 0.0375, currency: 'USD' },
+    'claude-3-7-opus': { inputCost: 0.05, outputCost: 0.025, totalCost: 0.075, currency: 'USD' },
+    'gpt-5-mini': { inputCost: 0.008, outputCost: 0.004, totalCost: 0.012, currency: 'USD' },
+    'gpt-5-nano': { inputCost: 0.005, outputCost: 0.0025, totalCost: 0.0075, currency: 'USD' },
+    'gpt-5': { inputCost: 0.06, outputCost: 0.03, totalCost: 0.09, currency: 'USD' },
+    'gpt-4.1-nano': { inputCost: 0.006, outputCost: 0.003, totalCost: 0.009, currency: 'USD' },
   },
   costByService: {
     openai: { inputCost: 0.01, outputCost: 0.005, totalCost: 0.015, currency: 'USD' },

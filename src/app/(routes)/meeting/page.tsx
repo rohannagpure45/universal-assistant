@@ -32,59 +32,73 @@ const LiveTranscript: React.FC = () => {
   if (!isInMeeting) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
-        <div className="text-center">
-          <Mic className="w-12 h-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-          <p>Start a meeting to see live transcript</p>
+        <div className="text-center p-8">
+          <div className="relative mb-6">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-purple-400/20 rounded-full blur-xl" />
+            <Mic className="relative w-16 h-16 mx-auto text-gray-300 dark:text-gray-600" />
+          </div>
+          <h3 className="text-fluid-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">Ready to Record</h3>
+          <p className="text-gray-500 dark:text-gray-400">Start a meeting to see live transcript and AI assistance</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-          Live Transcript
-        </h3>
+    <div className="flex-1 glass-morphism dark:glass-morphism-dark rounded-xl border border-white/30 dark:border-gray-700/30 overflow-hidden shadow-soft backdrop-blur-xl">
+      <div className="p-6 border-b border-white/20 dark:border-gray-700/30 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-blue-900/20 dark:to-indigo-900/20">
+        <div className="flex items-center space-x-3">
+          <div className="w-2 h-2 bg-green-500 rounded-full pulse-soft" />
+          <h3 className="text-fluid-lg font-semibold text-gray-900 dark:text-white">
+            Live Transcript
+          </h3>
+        </div>
       </div>
       
-      <div className="p-4 h-80 overflow-y-auto">
+      <div className="p-6 h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
         {transcript.length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-            <div className="text-center">
-              <div className="animate-pulse">
-                <div className="w-3 h-3 bg-green-500 rounded-full inline-block mr-2"></div>
-                <span>Listening...</span>
+            <div className="text-center p-8">
+              <div className="relative mb-4">
+                <div className="absolute inset-0 bg-green-500/20 rounded-full blur-lg animate-pulse" />
+                <div className="relative w-4 h-4 bg-green-500 rounded-full mx-auto pulse-soft" />
               </div>
+              <p className="text-gray-600 dark:text-gray-300 font-medium">Listening for speech...</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Speak naturally to see real-time transcription</p>
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {transcript.map((entry, index) => (
               <div 
                 key={entry.id || index} 
-                className="border-l-2 border-blue-200 dark:border-blue-700 pl-4"
+                className="group relative p-4 rounded-xl bg-white/40 dark:bg-gray-800/40 border-l-4 border-gradient-primary backdrop-blur-sm hover:bg-white/60 dark:hover:bg-gray-800/60 transition-all duration-200"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                        {entry.speakerId || 'Speaker'}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                          {entry.speakerId || 'Speaker'}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100/50 dark:bg-gray-700/50 px-2 py-1 rounded-full">
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </span>
                       {entry.confidence && (
-                        <span className="text-xs text-gray-400 dark:text-gray-500">
-                          ({Math.round(entry.confidence * 100)}%)
+                        <span className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-900/20 px-2 py-1 rounded-full font-medium">
+                          {Math.round(entry.confidence * 100)}% confident
                         </span>
                       )}
                     </div>
-                    <p className="text-gray-900 dark:text-white leading-relaxed">
+                    <p className="text-gray-900 dark:text-white leading-relaxed text-fluid-base">
                       {entry.text}
                     </p>
                   </div>
                 </div>
+                {/* Subtle hover effect */}
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
               </div>
             ))}
             <div ref={transcriptEndRef} />
@@ -108,24 +122,22 @@ const PastMeetings: React.FC = () => {
   }, [user?.uid, recentMeetings.length, isLoadingRecentMeetings, loadRecentMeetings]);
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <div className="glass-morphism dark:glass-morphism-dark rounded-xl border border-white/30 dark:border-gray-700/30 overflow-hidden shadow-soft">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+        className="w-full p-6 flex items-center justify-between text-left hover:bg-white/30 dark:hover:bg-gray-800/30 transition-all duration-200 button-press"
         aria-expanded={isExpanded}
         aria-controls="past-meetings-content"
       >
-        <div className="flex items-center space-x-2">
-          {isExpanded ? (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
-          ) : (
-            <ChevronRight className="w-5 h-5 text-gray-400" />
-          )}
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+        <div className="flex items-center space-x-4">
+          <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
+            <ChevronRight className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          </div>
+          <h3 className="text-fluid-lg font-semibold text-gray-900 dark:text-white">
             Past Meetings
           </h3>
           {recentMeetings.length > 0 && (
-            <span className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-sm px-2 py-1 rounded-full">
+            <span className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 text-blue-700 dark:text-blue-300 text-sm font-medium px-3 py-1 rounded-full border border-blue-200/50 dark:border-blue-700/50">
               {recentMeetings.length}
             </span>
           )}
@@ -149,39 +161,41 @@ const PastMeetings: React.FC = () => {
               {recentMeetings.map((meeting) => (
                 <div
                   key={meeting.meetingId}
-                  className="p-4 border-b border-gray-100 dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
+                  className="group relative p-5 border-b border-white/10 dark:border-gray-700/30 last:border-b-0 hover:bg-white/30 dark:hover:bg-gray-800/30 cursor-pointer transition-all duration-200 card-hover"
                   onClick={() => console.log('View meeting:', meeting.meetingId)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
-                      <h4 className="font-medium text-gray-900 dark:text-white mb-1">
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-200">
                         {meeting.title}
                       </h4>
-                      <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-                        <div className="flex items-center">
-                          <Calendar className="w-4 h-4 mr-1" />
-                          {new Date(meeting.createdAt).toLocaleDateString()}
+                      <div className="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex items-center space-x-2 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
+                          <Calendar className="w-4 h-4" />
+                          <span>{new Date(meeting.createdAt).toLocaleDateString()}</span>
                         </div>
                         {meeting.endTime && (
-                          <div className="flex items-center">
-                            <Clock className="w-4 h-4 mr-1" />
-                            {Math.round((new Date(meeting.endTime).getTime() - new Date(meeting.startTime).getTime()) / (1000 * 60))} min
+                          <div className="flex items-center space-x-2 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
+                            <Clock className="w-4 h-4" />
+                            <span>{Math.round((new Date(meeting.endTime).getTime() - new Date(meeting.startTime).getTime()) / (1000 * 60))} min</span>
                           </div>
                         )}
-                        <div className="flex items-center">
-                          <Users className="w-4 h-4 mr-1" />
-                          {meeting.participants.length}
+                        <div className="flex items-center space-x-2 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
+                          <Users className="w-4 h-4" />
+                          <span>{meeting.participants.length}</span>
                         </div>
                       </div>
                     </div>
-                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    <div className={`px-3 py-1.5 rounded-full text-xs font-medium shadow-soft group-hover:scale-105 transition-transform duration-200 ${
                       meeting.status === 'active' 
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                        : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                        ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 dark:from-green-900/30 dark:to-emerald-900/30 dark:text-green-400 border border-green-200/50 dark:border-green-700/50'
+                        : 'bg-gradient-to-r from-gray-100 to-slate-100 text-gray-800 dark:from-gray-700 dark:to-slate-700 dark:text-gray-300 border border-gray-200/50 dark:border-gray-600/50'
                     }`}>
                       {meeting.status}
                     </div>
                   </div>
+                  {/* Subtle gradient overlay on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg pointer-events-none" />
                 </div>
               ))}
             </div>
@@ -318,29 +332,32 @@ export default function MeetingPage() {
     <MainLayout>
       <div className="max-w-4xl mx-auto space-y-8">
         
-        {/* Header */}
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Meeting Assistant
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Distraction-free meeting experience with AI assistance
-          </p>
+        {/* Header with Wave Background */}
+        <div className="relative text-center p-8 rounded-2xl overflow-hidden">
+          <div className="absolute inset-0 wave-bg opacity-10" />
+          <div className="relative">
+            <h1 className="text-fluid-3xl font-bold text-gray-900 dark:text-white mb-4">
+              Meeting Assistant
+            </h1>
+            <p className="text-fluid-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Distraction-free meeting experience with AI assistance and real-time transcription
+            </p>
+          </div>
         </div>
 
         {/* Error Display */}
         {(meetingError || assistantError) && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-            <div className="flex items-center">
-              <div className="text-red-600 dark:text-red-400">
+          <div className="glass-morphism-dark border border-red-200/50 dark:border-red-800/50 rounded-xl p-5 bg-gradient-to-r from-red-50/80 to-pink-50/80 dark:from-red-900/30 dark:to-pink-900/30 shadow-soft">
+            <div className="flex items-start justify-between">
+              <div className="text-red-600 dark:text-red-400 flex-1">
                 {meetingError && (
                   <>
-                    <p className="font-medium">Meeting Error: {meetingError.message}</p>
-                    <p className="text-sm mt-1">Operation: {meetingError.operation}</p>
+                    <p className="font-semibold text-fluid-base mb-1">Meeting Error: {meetingError.message}</p>
+                    <p className="text-sm opacity-80">Operation: {meetingError.operation}</p>
                   </>
                 )}
                 {assistantError && (
-                  <p className="font-medium">Assistant Error: {assistantError}</p>
+                  <p className="font-semibold text-fluid-base">Assistant Error: {assistantError}</p>
                 )}
               </div>
               <button
@@ -348,7 +365,7 @@ export default function MeetingPage() {
                   clearMeetingError();
                   // Note: assistantError clears automatically when operation succeeds
                 }}
-                className="ml-auto text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
+                className="ml-4 p-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100/50 dark:hover:bg-red-800/20 rounded-lg transition-all duration-200 button-press"
               >
                 <span className="sr-only">Close</span>
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -368,37 +385,50 @@ export default function MeetingPage() {
               <button
                 onClick={handleStartMeeting}
                 disabled={isStartingMeeting || isLoadingMeeting}
-                className="w-48 h-48 sm:w-56 sm:h-56 bg-green-500 hover:bg-green-600 disabled:bg-green-400 disabled:opacity-50 text-white rounded-full flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-green-500/50"
+                className="group relative w-56 h-56 sm:w-64 sm:h-64 bg-gradient-success hover:scale-105 disabled:scale-100 disabled:opacity-50 text-white rounded-full flex items-center justify-center transition-all duration-300 shadow-glow hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-green-500/50 button-press overflow-hidden"
                 aria-label="Start Meeting"
               >
-                <div className="text-center">
+                {/* Pulsing ring animation */}
+                <div className="absolute inset-0 rounded-full bg-green-400/30 animate-ping" />
+                <div className="absolute inset-2 rounded-full bg-green-400/20 animate-ping animation-delay-75" />
+                
+                <div className="relative text-center z-10">
                   {isStartingMeeting || isLoadingMeeting ? (
-                    <div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
+                    <div className="animate-spin h-10 w-10 border-3 border-white border-t-transparent rounded-full mx-auto mb-3"></div>
                   ) : (
-                    <Play className="w-12 h-12 mb-2 mx-auto" />
+                    <Play className="w-14 h-14 mb-3 mx-auto group-hover:scale-110 transition-transform duration-200" />
                   )}
-                  <span className="text-xl font-semibold">
+                  <span className="text-fluid-xl font-bold tracking-wide">
                     {isStartingMeeting ? 'Starting...' : 'Start Meeting'}
                   </span>
                 </div>
+                
+                {/* Shine effect on hover */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300" />
               </button>
             ) : (
               <button
                 onClick={handleEndMeeting}
                 disabled={isEndingMeeting}
-                className="w-48 h-48 sm:w-56 sm:h-56 bg-red-500 hover:bg-red-600 disabled:bg-red-400 disabled:opacity-50 text-white rounded-full flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-red-500/50"
+                className="group relative w-56 h-56 sm:w-64 sm:h-64 bg-gradient-error hover:scale-105 disabled:scale-100 disabled:opacity-50 text-white rounded-full flex items-center justify-center transition-all duration-300 shadow-glow hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-red-500/50 button-press overflow-hidden"
                 aria-label="Stop Meeting"
               >
-                <div className="text-center">
+                {/* Pulsing ring animation for active recording */}
+                <div className="absolute inset-0 rounded-full bg-red-400/30 pulse-soft" />
+                
+                <div className="relative text-center z-10">
                   {isEndingMeeting ? (
-                    <div className="animate-spin h-8 w-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
+                    <div className="animate-spin h-10 w-10 border-3 border-white border-t-transparent rounded-full mx-auto mb-3"></div>
                   ) : (
-                    <Square className="w-12 h-12 mb-2 mx-auto" />
+                    <Square className="w-14 h-14 mb-3 mx-auto group-hover:scale-110 transition-transform duration-200" />
                   )}
-                  <span className="text-xl font-semibold">
+                  <span className="text-fluid-xl font-bold tracking-wide">
                     {isEndingMeeting ? 'Stopping...' : 'Stop Meeting'}
                   </span>
                 </div>
+                
+                {/* Shine effect on hover */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300" />
               </button>
             )}
           </div>
@@ -409,17 +439,17 @@ export default function MeetingPage() {
               <button
                 onClick={handleTriggerAISpeech}
                 disabled={isTriggeringAI || assistantIsProcessing}
-                className="px-8 py-4 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 disabled:opacity-50 text-white rounded-lg font-medium transition-colors flex items-center space-x-2 shadow-md hover:shadow-lg focus:outline-none focus:ring-4 focus:ring-blue-500/50"
+                className="group px-10 py-5 bg-gradient-primary hover:scale-105 disabled:scale-100 disabled:opacity-50 text-white rounded-xl font-semibold transition-all duration-200 flex items-center space-x-3 shadow-glow hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/50 button-press"
                 aria-label="Trigger AI Speech"
               >
                 {isTriggeringAI || assistantIsProcessing ? (
-                  <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+                  <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full" />
                 ) : assistantIsPlaying ? (
-                  <Volume2 className="w-5 h-5" />
+                  <Volume2 className="w-6 h-6 group-hover:scale-110 transition-transform duration-200" />
                 ) : (
-                  <Mic className="w-5 h-5" />
+                  <Mic className="w-6 h-6 group-hover:scale-110 transition-transform duration-200" />
                 )}
-                <span>
+                <span className="text-fluid-lg">
                   {isTriggeringAI ? 'Processing...' : 
                    assistantIsProcessing ? 'Thinking...' :
                    assistantIsPlaying ? 'Speaking...' : 
@@ -428,18 +458,32 @@ export default function MeetingPage() {
               </button>
               
               {/* Audio Status Indicators */}
-              <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-                <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${assistantIsRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'}`} />
-                  <span>Recording</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${assistantIsProcessing ? 'bg-yellow-500 animate-pulse' : 'bg-gray-300'}`} />
-                  <span>Processing</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${assistantIsPlaying ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-                  <span>Speaking</span>
+              <div className="glass-morphism dark:glass-morphism-dark rounded-xl p-4 shadow-soft border border-white/30 dark:border-gray-700/30">
+                <div className="flex items-center justify-center space-x-8 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex flex-col items-center space-y-2">
+                    <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                      assistantIsRecording ? 'bg-red-500 pulse-soft shadow-glow' : 'bg-gray-300 dark:bg-gray-600'
+                    }`} />
+                    <span className={`font-medium transition-colors duration-200 ${
+                      assistantIsRecording ? 'text-red-600 dark:text-red-400' : ''
+                    }`}>Recording</span>
+                  </div>
+                  <div className="flex flex-col items-center space-y-2">
+                    <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                      assistantIsProcessing ? 'bg-yellow-500 pulse-soft shadow-glow' : 'bg-gray-300 dark:bg-gray-600'
+                    }`} />
+                    <span className={`font-medium transition-colors duration-200 ${
+                      assistantIsProcessing ? 'text-yellow-600 dark:text-yellow-400' : ''
+                    }`}>Processing</span>
+                  </div>
+                  <div className="flex flex-col items-center space-y-2">
+                    <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                      assistantIsPlaying ? 'bg-green-500 pulse-soft shadow-glow' : 'bg-gray-300 dark:bg-gray-600'
+                    }`} />
+                    <span className={`font-medium transition-colors duration-200 ${
+                      assistantIsPlaying ? 'text-green-600 dark:text-green-400' : ''
+                    }`}>Speaking</span>
+                  </div>
                 </div>
               </div>
             </div>

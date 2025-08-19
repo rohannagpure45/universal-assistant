@@ -757,7 +757,7 @@ export const useCostStore = create<CostState & CostActions>()(
           // Filters and views
           setSelectedPeriod: withErrorBoundary((period) => {
             // Validate period
-            const validPeriods: CostPeriod[] = ['hour', 'day', 'week', 'month', 'quarter', 'year'];
+            const validPeriods: CostPeriod[] = ['hour', 'day', 'week', 'month', 'year'];
             if (!validPeriods.includes(period)) {
               const error = new Error(VALIDATION_ERRORS.INVALID_PERIOD);
               set((state) => {
@@ -1005,9 +1005,6 @@ export const useCostStore = create<CostState & CostActions>()(
                     break;
                   case 'month':
                     startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    break;
-                  case 'quarter':
-                    startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
                     break;
                   case 'year':
                     startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);

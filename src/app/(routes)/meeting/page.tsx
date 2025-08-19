@@ -399,6 +399,10 @@ export default function MeetingPage() {
         canClose: true,
         successMessage: 'Meeting started successfully! You can now speak and interact with the AI assistant.'
       });
+      // Auto-close the setup modal so it doesn't block other controls (e.g., Stop Meeting)
+      setTimeout(() => {
+        meetingSetupModal.closeModal();
+      }, 800);
       
     } catch (error) {
       console.error('Failed to start meeting:', error);
@@ -500,6 +504,10 @@ export default function MeetingPage() {
         canClose: true,
         successMessage: 'Meeting ended successfully. Your transcript and data have been saved.'
       });
+      // Auto-close the ending modal to return control to the UI
+      setTimeout(() => {
+        meetingEndModal.closeModal();
+      }, 800);
       
     } catch (error) {
       console.error('Failed to end meeting:', error);

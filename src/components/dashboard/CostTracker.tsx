@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   DollarSign, 
   TrendingUp, 
@@ -10,7 +11,6 @@ import {
   Settings, 
   Calendar,
   BarChart3,
-  PieChart,
   Activity,
   Target,
   Zap,
@@ -23,11 +23,13 @@ import {
   Users,
   HelpCircle,
   Sparkles,
-  Play,
-  TrendingUp as TrendingUpIcon
+  Play
 } from 'lucide-react';
 import { useCostTracking } from '@/hooks/useCostTracking';
 import { CostPeriod, CostGranularity, AIModel } from '@/types';
+import { MotionCard, MotionList, MotionCounter, fadeInUpVariants } from '@/components/ui/Motion';
+import { BarChart, LineChart, PieChart, ProgressRing } from '@/components/ui/Charts';
+import { cn } from '@/lib/utils';
 
 interface CostMetricCardProps {
   title: string;
@@ -55,62 +57,104 @@ const CostMetricCard: React.FC<CostMetricCardProps> = ({
 }) => {
   if (loading) {
     return (
-      <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 ${className}`}>
+      <MotionCard className={cn(
+        'bg-white/90 dark:bg-neutral-800/90 backdrop-blur-sm',
+        'rounded-xl shadow-soft border border-neutral-200/60 dark:border-neutral-700/60',
+        'p-6', // 8px grid: 24px padding
+        className
+      )}>
         <div className="animate-pulse">
           <div className="flex items-center justify-between">
-            <div>
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24 mb-2"></div>
-              <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-16"></div>
-              <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-20 mt-2"></div>
+            <div className="space-y-3">
+              <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-24"></div>
+              <div className="h-8 bg-neutral-200 dark:bg-neutral-700 rounded w-16"></div>
+              <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded w-20"></div>
             </div>
-            <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg"></div>
+            <div className="w-12 h-12 bg-neutral-200 dark:bg-neutral-700 rounded-xl"></div>
           </div>
         </div>
-      </div>
+      </MotionCard>
     );
   }
 
+  const numericValue = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]/g, '')) || 0 : value;
+
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow ${isPrimary ? 'p-8' : 'p-6'} ${className}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center space-x-1">
-            <p className={`${isPrimary ? 'text-base' : 'text-sm'} font-medium text-gray-600 dark:text-gray-400`}>
+    <MotionCard 
+      className={cn(
+        // Design system styling
+        'bg-white/90 dark:bg-neutral-800/90 backdrop-blur-sm',
+        'rounded-xl shadow-soft border border-neutral-200/60 dark:border-neutral-700/60',
+        'hover:bg-white/95 dark:hover:bg-neutral-800/95',
+        'transition-all duration-300 ease-out',
+        // Responsive padding using 8px grid
+        isPrimary ? 'p-6 lg:p-8' : 'p-6', // 24px and 32px
+        className
+      )}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-3">
+            <p className={cn(
+              'font-medium text-contrast-medium truncate',
+              isPrimary ? 'text-label-lg' : 'text-label-base'
+            )}>
               {title}
             </p>
             {tooltip && (
               <div className="group relative">
-                <HelpCircle className="w-4 h-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" />
+                <HelpCircle className="w-4 h-4 text-contrast-accessible hover:text-contrast-medium cursor-help transition-colors" />
                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10">
-                  <div className="bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap">
+                  <div className="bg-neutral-900 dark:bg-neutral-700 text-white text-body-xs rounded-lg py-2 px-3 whitespace-nowrap shadow-lg">
                     {tooltip}
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-neutral-900 dark:border-t-neutral-700" />
                   </div>
                 </div>
               </div>
             )}
           </div>
-          <p className={`${isPrimary ? 'text-3xl' : 'text-2xl'} font-bold text-gray-900 dark:text-white mt-1`}>
-            {value}
-          </p>
+          
+          <div className="mb-4"> {/* 8px grid: 16px spacing */}
+            <MotionCounter
+              value={numericValue}
+              className={cn(
+                'font-bold text-neutral-900 dark:text-neutral-100',
+                isPrimary ? 'text-display-2xl' : 'text-display-xl'
+              )}
+              formatter={() => value.toString()}
+            />
+          </div>
+          
           {trend && (
-            <div className={`flex items-center mt-2 ${isPrimary ? 'text-base' : 'text-sm'} ${
-              trend.isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-            }`}>
+            <div className={cn(
+              'flex items-center gap-1.5 transition-colors duration-200',
+              isPrimary ? 'text-body-sm' : 'text-body-xs',
+              trend.isPositive ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400'
+            )}>
               {trend.isPositive ? (
-                <TrendingUp className={`${isPrimary ? 'w-5 h-5' : 'w-4 h-4'} mr-1`} />
+                <TrendingUp className={cn('flex-shrink-0', isPrimary ? 'w-5 h-5' : 'w-4 h-4')} aria-hidden="true" />
               ) : (
-                <TrendingDown className={`${isPrimary ? 'w-5 h-5' : 'w-4 h-4'} mr-1`} />
+                <TrendingDown className={cn('flex-shrink-0', isPrimary ? 'w-5 h-5' : 'w-4 h-4')} aria-hidden="true" />
               )}
               <span className="font-medium">{Math.abs(trend.value)}% from last period</span>
             </div>
           )}
         </div>
-        <div className={`${isPrimary ? 'p-4' : 'p-3'} bg-blue-50 dark:bg-blue-900/20 rounded-lg`}>
-          <Icon className={`${isPrimary ? 'w-8 h-8' : 'w-6 h-6'} text-blue-600 dark:text-blue-400`} />
+        
+        <div className={cn(
+          'bg-gradient-to-br from-primary-100 to-primary-50 dark:from-primary-900/30 dark:to-primary-800/20',
+          'rounded-xl transition-transform duration-200 hover:scale-105 flex-shrink-0 ml-4',
+          isPrimary ? 'p-4' : 'p-3'
+        )}>
+          <Icon className={cn(
+            'text-primary-600 dark:text-primary-400',
+            isPrimary ? 'w-8 h-8' : 'w-6 h-6'
+          )} />
         </div>
       </div>
-    </div>
+    </MotionCard>
   );
 };
 
@@ -132,55 +176,72 @@ interface BudgetProgressProps {
 const BudgetProgress: React.FC<BudgetProgressProps> = ({ budget, status }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'danger': return 'bg-red-500';
-      case 'warning': return 'bg-yellow-500';
-      default: return 'bg-green-500';
+      case 'danger': return '#ef4444';
+      case 'warning': return '#f59e0b';
+      default: return '#22c55e';
     }
   };
 
   const getStatusTextColor = (status: string) => {
     switch (status) {
-      case 'danger': return 'text-red-600 dark:text-red-400';
-      case 'warning': return 'text-yellow-600 dark:text-yellow-400';
-      default: return 'text-green-600 dark:text-green-400';
+      case 'danger': return 'text-danger-600 dark:text-danger-400';
+      case 'warning': return 'text-warning-600 dark:text-warning-400';
+      default: return 'text-success-600 dark:text-success-400';
     }
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h4 className="font-medium text-gray-900 dark:text-white">{budget.name}</h4>
-          <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">{budget.period} budget</p>
+    <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-5 hover:bg-white/90 dark:hover:bg-gray-800/90">
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-gray-900 dark:text-white truncate">{budget.name}</h4>
+          <p className="text-sm text-gray-500 dark:text-gray-400 capitalize mt-1">{budget.period} budget</p>
         </div>
-        <div className="flex items-center space-x-1">
-          {status.status !== 'safe' && (
-            <AlertTriangle className={`w-4 h-4 ${getStatusTextColor(status.status)}`} />
-          )}
-          <span className={`text-sm font-medium ${getStatusTextColor(status.status)}`}>
-            {status.percentage.toFixed(1)}%
-          </span>
+        
+        <div className="flex items-center space-x-3 flex-shrink-0 ml-4">
+          <ProgressRing
+            percentage={Math.min(status.percentage, 100)}
+            size={60}
+            strokeWidth={6}
+            color={getStatusColor(status.status)}
+            showLabel={false}
+          />
+          <div className="text-right">
+            {status.status !== 'safe' && (
+              <AlertTriangle className={cn('w-4 h-4 mb-1', getStatusTextColor(status.status))} />
+            )}
+            <div className={cn('text-sm font-semibold', getStatusTextColor(status.status))}>
+              {status.percentage.toFixed(1)}%
+            </div>
+          </div>
         </div>
       </div>
       
-      <div className="space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600 dark:text-gray-400">
-            ${budget.currentUsage.toFixed(2)} / ${budget.limit.toFixed(2)}
-          </span>
-          <span className="text-gray-600 dark:text-gray-400">
-            ${status.remaining.toFixed(2)} remaining
-          </span>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-gray-500 dark:text-gray-400 block">Used</span>
+            <MotionCounter
+              value={budget.currentUsage}
+              className="font-semibold text-gray-900 dark:text-white"
+              formatter={(v) => `$${v.toFixed(2)}`}
+            />
+          </div>
+          <div>
+            <span className="text-gray-500 dark:text-gray-400 block">Remaining</span>
+            <MotionCounter
+              value={status.remaining}
+              className={cn('font-semibold', getStatusTextColor(status.status))}
+              formatter={(v) => `$${v.toFixed(2)}`}
+            />
+          </div>
         </div>
         
-        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-          <div 
-            className={`h-2 rounded-full transition-all duration-300 ${getStatusColor(status.status)}`}
-            style={{ width: `${Math.min(status.percentage, 100)}%` }}
-          />
+        <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+          Limit: <span className="font-medium">${budget.limit.toFixed(2)}</span>
         </div>
       </div>
-    </div>
+    </MotionCard>
   );
 };
 
@@ -195,33 +256,86 @@ interface CostBreakdownProps {
 }
 
 const CostBreakdown: React.FC<CostBreakdownProps> = ({ data, title }) => {
+  const [showChart, setShowChart] = useState(false);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setShowChart(true), 300);
+    return () => clearTimeout(timer);
+  }, []);
+  
+  const hasData = data && data.length > 0;
+  
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{title}</h3>
-      <div className="space-y-3">
-        {data.map((item, index) => (
-          <div key={index} className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div 
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: item.color }}
-              />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {item.name}
-              </span>
-            </div>
-            <div className="text-right">
-              <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                ${item.value.toFixed(3)}
-              </span>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {item.percentage.toFixed(1)}%
-              </div>
-            </div>
-          </div>
-        ))}
+    <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-soft border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-6 hover:bg-white/90 dark:hover:bg-gray-800/90">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">{title}</h3>
+        <div className="flex items-center space-x-2">
+          <PieChart className="w-4 h-4 text-gray-400" />
+          <span className="text-xs text-gray-500 dark:text-gray-400">{data.length} items</span>
+        </div>
       </div>
-    </div>
+      
+      {!hasData ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+            <PieChart className="w-8 h-8 text-gray-400" />
+          </div>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            No data available yet
+          </p>
+          <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
+            Start using AI services to see cost breakdown
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Chart */}
+          <div className="flex justify-center">
+            <PieChart 
+              data={data.map(item => ({ ...item, label: item.name }))} 
+              size={160}
+              innerRadius={50}
+              animate={showChart}
+              showPercentages
+            />
+          </div>
+          
+          {/* Legend with enhanced styling */}
+          <MotionList className="space-y-3">
+            {data.map((item, index) => (
+              <motion.div
+                key={index}
+                className="group flex items-center justify-between p-3 rounded-lg hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-all duration-200 cursor-pointer"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                whileHover={{ x: 2 }}
+              >
+                <div className="flex items-center space-x-3">
+                  <div 
+                    className="w-3 h-3 rounded-full shadow-sm"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
+                    {item.name}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <MotionCounter
+                    value={item.value}
+                    className="text-sm font-semibold text-gray-900 dark:text-white"
+                    formatter={(v) => `$${v.toFixed(3)}`}
+                  />
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {item.percentage.toFixed(1)}%
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </MotionList>
+        </div>
+      )}
+    </MotionCard>
   );
 };
 
@@ -235,12 +349,29 @@ interface CostHistoryProps {
 }
 
 const CostHistory: React.FC<CostHistoryProps> = ({ data, selectedPeriod }) => {
-  const maxCost = Math.max(...data.map(d => d.totalCost));
+  const [showChart, setShowChart] = useState(false);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setShowChart(true), 500);
+    return () => clearTimeout(timer);
+  }, []);
+  
+  const hasData = data && data.length > 0;
+  const chartData = hasData ? data.slice(-10).map(item => ({
+    label: item.period,
+    value: item.totalCost,
+    color: `hsl(220, 70%, ${50 + (Math.random() * 20)}%)`
+  })) : [];
+  
+  const lineChartData = hasData ? data.slice(-10).map(item => ({
+    x: item.period,
+    y: item.totalCost
+  })) : [];
   
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+    <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-soft border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-6 hover:bg-white/90 dark:hover:bg-gray-800/90">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
           Cost History ({selectedPeriod})
         </h3>
         <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
@@ -249,101 +380,176 @@ const CostHistory: React.FC<CostHistoryProps> = ({ data, selectedPeriod }) => {
         </div>
       </div>
       
-      <div className="space-y-4">
-        {data.slice(-10).map((item, index) => (
-          <div key={index} className="flex items-center space-x-4">
-            <div className="w-20 text-xs text-gray-500 dark:text-gray-400">
-              {item.period}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  ${item.totalCost.toFixed(3)}
-                </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {item.calls} calls
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div 
-                  className="h-2 bg-blue-500 rounded-full transition-all duration-300"
-                  style={{ width: `${maxCost > 0 ? (item.totalCost / maxCost) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
+      {!hasData ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+            <BarChart3 className="w-8 h-8 text-gray-400" />
           </div>
-        ))}
-      </div>
-    </div>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            No cost history available
+          </p>
+          <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
+            Cost data will appear here as you use AI services
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* Line Chart */}
+          <div className="h-48">
+            <LineChart 
+              data={lineChartData}
+              height={192}
+              color="#3b82f6"
+              animate={showChart}
+            />
+          </div>
+          
+          {/* Bar Chart */}
+          <div className="h-32">
+            <BarChart 
+              data={chartData}
+              height={128}
+              showValues
+              animate={showChart}
+            />
+          </div>
+          
+          {/* Detailed breakdown */}
+          <div className="border-t border-gray-200/50 dark:border-gray-700/50 pt-6">
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Detailed Breakdown</h4>
+            <MotionList className="space-y-3 max-h-48 overflow-y-auto">
+              {data.slice(-10).reverse().map((item, index) => (
+                <motion.div
+                  key={index}
+                  className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50/50 dark:hover:bg-gray-700/30 transition-all duration-200"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 min-w-[4rem]">
+                      {item.period}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                        ${item.totalCost.toFixed(3)}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {item.calls.toLocaleString()} calls
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    ${(item.totalCost / Math.max(item.calls, 1)).toFixed(4)}/call
+                  </div>
+                </motion.div>
+              ))}
+            </MotionList>
+          </div>
+        </div>
+      )}
+    </MotionCard>
   );
 };
 
-// Empty State Component
+// Enhanced Empty State Component
 interface EmptyStateProps {
   onStartMeeting?: () => void;
 }
 
 const EmptyState: React.FC<EmptyStateProps> = ({ onStartMeeting }) => {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center">
-      <div className="max-w-md mx-auto">
-        {/* Icon */}
-        <div className="mx-auto w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-6">
-          <Sparkles className="w-8 h-8 text-white" />
-        </div>
+    <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-soft border border-gray-200/50 dark:border-gray-700/50 p-6 sm:p-8 text-center">
+      <div className="max-w-lg mx-auto">
+        {/* Animated Icon */}
+        <motion.div
+          className="mx-auto w-20 h-20 bg-gradient-to-r from-primary-500 to-purple-600 rounded-full flex items-center justify-center mb-6 shadow-glow"
+          initial={{ scale: 0, rotate: -180 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ duration: 0.6, ease: 'backOut' }}
+        >
+          <Sparkles className="w-10 h-10 text-white" />
+        </motion.div>
         
         {/* Title */}
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+        <motion.h3 
+          className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
           Start Tracking Your AI Costs
-        </h3>
+        </motion.h3>
         
         {/* Description */}
-        <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+        <motion.p 
+          className="text-gray-600 dark:text-gray-400 mb-8 leading-relaxed text-sm sm:text-base"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
           Your cost dashboard is ready! Once you start using AI services through meetings or API calls, 
           you'll see detailed analytics, cost breakdowns, and usage trends here.
-        </p>
+        </motion.p>
         
-        {/* Sample metrics preview */}
-        <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-          <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">$0.045</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Avg cost/call</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">2.3k</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Tokens/dollar</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">15ms</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Response time</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">97%</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Success rate</div>
-          </div>
-        </div>
-        
-        {/* Action */}
-        <div className="space-y-3">
-          {onStartMeeting && (
-            <button
-              onClick={onStartMeeting}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        {/* Sample metrics preview with animations */}
+        <motion.div 
+          className="grid grid-cols-2 gap-4 mb-8 p-4 sm:p-6 bg-gradient-to-br from-gray-50 to-blue-50/50 dark:from-gray-700/50 dark:to-blue-900/20 rounded-xl"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.4 }}
+        >
+          {[
+            { value: '$0.045', label: 'Avg cost/call' },
+            { value: '2.3k', label: 'Tokens/dollar' },
+            { value: '15ms', label: 'Response time' },
+            { value: '97%', label: 'Success rate' },
+          ].map((metric, index) => (
+            <motion.div
+              key={metric.label}
+              className="text-center p-2 rounded-lg hover:bg-white/50 dark:hover:bg-gray-600/30 transition-colors"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 + index * 0.1 }}
             >
-              <Play className="w-4 h-4 mr-2" />
+              <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">{metric.value}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{metric.label}</div>
+            </motion.div>
+          ))}
+        </motion.div>
+        
+        {/* Actions */}
+        <motion.div 
+          className="space-y-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          {onStartMeeting && (
+            <MotionCard
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-primary-500 to-primary-700 text-white font-semibold rounded-xl shadow-glow hover:shadow-glow-lg transition-all duration-200 cursor-pointer"
+              whileHover={{ scale: 1.05, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={onStartMeeting}
+            >
+              <Play className="w-5 h-5 mr-2" />
               Start Your First Meeting
-            </button>
+            </MotionCard>
           )}
-          <div className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             <span>Or explore the </span>
-            <a href="/meeting" className="text-blue-600 dark:text-blue-400 hover:underline">
+            <motion.a 
+              href="/meeting" 
+              className="text-primary-600 dark:text-primary-400 font-medium hover:underline transition-colors"
+              whileHover={{ scale: 1.05 }}
+            >
               Meeting page
-            </a>
+            </motion.a>
             <span> to get started</span>
-          </div>
-        </div>
+          </p>
+        </motion.div>
       </div>
-    </div>
+    </MotionCard>
   );
 };
 
@@ -452,14 +658,24 @@ export const CostTracker: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <motion.div 
+      className="space-y-6 lg:space-y-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <motion.div 
+        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+        variants={fadeInUpVariants}
+        initial="initial"
+        animate="animate"
+      >
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
             Cost Tracking
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
             Monitor your AI service usage and costs
           </p>
         </div>
@@ -516,7 +732,7 @@ export const CostTracker: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Filters */}
       {showFilters && (
@@ -616,126 +832,216 @@ export const CostTracker: React.FC = () => {
       )}
 
       {/* Summary Cards or Empty State */}
-      {!hasUsageData && !loading ? (
-        <EmptyState onStartMeeting={() => window.location.href = '/meeting'} />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <CostMetricCard
-            title="Total Cost"
-            value={`$${summary.totalCost.toFixed(3)}`}
-            icon={DollarSign}
-            trend={costTrend ? {
-              value: costTrend.percentage,
-              isPositive: costTrend.direction === 'up'
-            } : undefined}
-            isPrimary={true}
-            loading={loading}
-          />
-          
-          <CostMetricCard
-            title="API Calls"
-            value={summary.totalCalls.toLocaleString()}
-            icon={Activity}
-            loading={loading}
-          />
-          
-          <CostMetricCard
-            title="Avg Cost/Call"
-            value={`$${(summary.totalCost / Math.max(summary.totalCalls, 1)).toFixed(4)}`}
-            icon={Target}
-            loading={loading}
-          />
-          
-          <CostMetricCard
-            title="Efficiency"
-            value={efficiency ? `${Math.round(efficiency.averageTokensPerDollar)}t/$` : '-'}
-            icon={Zap}
-            tooltip="Average tokens generated per dollar spent - higher is more efficient"
-            loading={loading}
-          />
-        </div>
-      )}
+      <AnimatePresence mode="wait">
+        {!hasUsageData && !loading ? (
+          <motion.div
+            key="empty-state"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.3 }}
+          >
+            <EmptyState onStartMeeting={() => window.location.href = '/meeting'} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="metric-cards"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <MotionList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              <CostMetricCard
+                title="Total Cost"
+                value={`$${summary.totalCost.toFixed(3)}`}
+                icon={DollarSign}
+                trend={costTrend ? {
+                  value: costTrend.percentage,
+                  isPositive: costTrend.direction === 'up'
+                } : undefined}
+                isPrimary={true}
+                loading={loading}
+              />
+              
+              <CostMetricCard
+                title="API Calls"
+                value={summary.totalCalls.toLocaleString()}
+                icon={Activity}
+                loading={loading}
+              />
+              
+              <CostMetricCard
+                title="Avg Cost/Call"
+                value={`$${(summary.totalCost / Math.max(summary.totalCalls, 1)).toFixed(4)}`}
+                icon={Target}
+                loading={loading}
+              />
+              
+              <CostMetricCard
+                title="Efficiency"
+                value={efficiency ? `${Math.round(efficiency.averageTokensPerDollar)}t/$` : '-'}
+                icon={Zap}
+                tooltip="Average tokens generated per dollar spent - higher is more efficient"
+                loading={loading}
+              />
+            </MotionList>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Budget Alerts */}
-      {hasUsageData && budgets.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Budget Status
-            </h3>
-            <button
-              onClick={() => setShowBudgets(!showBudgets)}
-              className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-            >
-              {showBudgets ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-            </button>
-          </div>
-          
-          {showBudgets && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {budgets.map((budget) => {
-                const status = getBudgetStatus(budget.id);
-                return status ? (
-                  <BudgetProgress
-                    key={budget.id}
-                    budget={budget}
-                    status={status}
-                  />
-                ) : null;
-              })}
+      <AnimatePresence>
+        {hasUsageData && budgets.length > 0 && (
+          <MotionCard 
+            className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-soft border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-6 hover:bg-white/90 dark:hover:bg-gray-800/90"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
+                Budget Status
+              </h3>
+              <MotionCard
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
+                onClick={() => setShowBudgets(!showBudgets)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <motion.div
+                  animate={{ rotate: showBudgets ? 180 : 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <ChevronDown className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                </motion.div>
+              </MotionCard>
             </div>
-          )}
-        </div>
-      )}
+            
+            <AnimatePresence>
+              {showBudgets && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <MotionList className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                    {budgets.map((budget, index) => {
+                      const status = getBudgetStatus(budget.id);
+                      return status ? (
+                        <motion.div
+                          key={budget.id}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 20 }}
+                          transition={{ delay: index * 0.1 }}
+                        >
+                          <BudgetProgress
+                            budget={budget}
+                            status={status}
+                          />
+                        </motion.div>
+                      ) : null;
+                    })}
+                  </MotionList>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </MotionCard>
+        )}
+      </AnimatePresence>
 
       {/* Cost Breakdown and History */}
-      {hasUsageData && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {modelBreakdownData.length > 0 && (
-            <CostBreakdown
-              title="Cost by Model"
-              data={modelBreakdownData}
-            />
-          )}
-          
-          {serviceBreakdownData.length > 0 && (
-            <CostBreakdown
-              title="Cost by Service"
-              data={serviceBreakdownData}
-            />
-          )}
-        </div>
-      )}
+      <AnimatePresence>
+        {hasUsageData && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.4 }}
+          >
+            <MotionList className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
+              {modelBreakdownData.length > 0 && (
+                <CostBreakdown
+                  title="Cost by Model"
+                  data={modelBreakdownData}
+                />
+              )}
+              
+              {serviceBreakdownData.length > 0 && (
+                <CostBreakdown
+                  title="Cost by Service"
+                  data={serviceBreakdownData}
+                />
+              )}
+            </MotionList>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Cost History */}
-      {hasUsageData && historyData.length > 0 && (
-        <CostHistory
-          data={historyData}
-          selectedPeriod={selectedPeriod}
-        />
-      )}
+      <AnimatePresence>
+        {hasUsageData && historyData.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5 }}
+          >
+            <CostHistory
+              data={historyData}
+              selectedPeriod={selectedPeriod}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Status Footer */}
-      <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center">
-            <Clock className="w-4 h-4 mr-1" />
-            Last updated: {summary.lastUpdated ? new Date(summary.lastUpdated).toLocaleString() : 'Never'}
+      {/* Enhanced Status Footer */}
+      <motion.div 
+        className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.8 }}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 text-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+            <div className="flex items-center text-gray-600 dark:text-gray-400">
+              <Clock className="w-4 h-4 mr-2 text-primary-500" />
+              <span>Last updated: </span>
+              <span className="font-medium ml-1">
+                {summary.lastUpdated ? new Date(summary.lastUpdated).toLocaleString() : 'Never'}
+              </span>
+            </div>
+            <div className="flex items-center">
+              <div className={cn(
+                'w-2 h-2 rounded-full mr-2 transition-colors',
+                summary.isTracking ? 'bg-success-500 animate-pulse-soft' : 'bg-gray-400'
+              )} />
+              <span className="text-gray-600 dark:text-gray-400">Tracking: </span>
+              <span className={cn(
+                'font-medium ml-1',
+                summary.isTracking ? 'text-success-600 dark:text-success-400' : 'text-gray-500 dark:text-gray-400'
+              )}>
+                {summary.isTracking ? 'Active' : 'Paused'}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center">
-            <Users className="w-4 h-4 mr-1" />
-            Tracking: {summary.isTracking ? 'Active' : 'Paused'}
+          
+          <div className="flex items-center justify-between sm:justify-end gap-4">
+            <span className="text-gray-500 dark:text-gray-400">Retention: 90 days</span>
+            <MotionCard
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+            >
+              <ExternalLink className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+            </MotionCard>
           </div>
         </div>
-        
-        <div className="flex items-center space-x-2">
-          <span>Retention: 90 days</span>
-          <button className="text-blue-600 dark:text-blue-400 hover:underline">
-            <ExternalLink className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

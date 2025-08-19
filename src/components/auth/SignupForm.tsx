@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, User, UserPlus, Chrome, Check } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
+import { Button } from '@/components/ui/Button';
+import { LinearProgress } from '@/components/ui';
 
 interface SignupFormProps {
   onSuccess?: () => void;
@@ -41,6 +44,9 @@ export const SignupForm: React.FC<SignupFormProps> = ({
     score: 0,
     feedback: '',
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleSignUpProgress, setGoogleSignUpProgress] = useState(false);
+  const [authProgress, setAuthProgress] = useState(0);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -141,28 +147,65 @@ export const SignupForm: React.FC<SignupFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSubmitting || isSigningUp) return;
+    
     clearError();
+    setIsSubmitting(true);
+    setAuthProgress(0);
 
     if (!validateForm()) {
+      setIsSubmitting(false);
       return;
     }
 
-    const success = await signUp({
-      email: formData.email,
-      password: formData.password,
-      displayName: formData.displayName,
-    });
-
-    if (success && onSuccess) {
-      onSuccess();
+    try {
+      // Simulate signup progress
+      setAuthProgress(20);
+      
+      const success = await signUp({
+        email: formData.email,
+        password: formData.password,
+        displayName: formData.displayName,
+      });
+      
+      setAuthProgress(80);
+      
+      if (success) {
+        setAuthProgress(100);
+        if (onSuccess) {
+          onSuccess();
+        }
+      }
+    } finally {
+      setIsSubmitting(false);
+      setAuthProgress(0);
     }
   };
 
   const handleGoogleSignUp = async () => {
+    if (googleSignUpProgress || isSigningUp) return;
+    
     clearError();
-    const success = await signInWithGoogle();
-    if (success && onSuccess) {
-      onSuccess();
+    setGoogleSignUpProgress(true);
+    setAuthProgress(0);
+    
+    try {
+      setAuthProgress(30);
+      
+      const success = await signInWithGoogle();
+      
+      setAuthProgress(80);
+      
+      if (success) {
+        setAuthProgress(100);
+        if (onSuccess) {
+          onSuccess();
+        }
+      }
+    } finally {
+      setGoogleSignUpProgress(false);
+      setAuthProgress(0);
     }
   };
 
@@ -195,13 +238,37 @@ export const SignupForm: React.FC<SignupFormProps> = ({
   };
 
   return (
-    <div className={`w-full max-w-md mx-auto ${className}`}>
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
-          Create Account
-        </h2>
+    <ErrorBoundary
+      fallbackType="card"
+      severity="warning"
+      componentName="SignupForm"
+      className={className}
+      fallback={
+        <div className={`w-full max-w-md mx-auto ${className}`}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 text-center">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Signup Unavailable
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              The signup form encountered an error. Please refresh the page or try again later.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <div className={`w-full max-w-md mx-auto ${className}`}>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
+            Create Account
+          </h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
           {/* Display Name Field */}
           <div>
             <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -340,6 +407,25 @@ export const SignupForm: React.FC<SignupFormProps> = ({
             )}
           </div>
 
+          {/* Progress Bar */}
+          {(isSubmitting || isSigningUp || googleSignUpProgress) && (
+            <div className="space-y-2">
+              <LinearProgress
+                progress={authProgress}
+                indeterminate={authProgress === 0}
+                size="sm"
+                color="primary"
+                label="Creating account"
+              />
+              <p className="text-xs text-center text-neutral-600 dark:text-neutral-400">
+                {authProgress === 0 ? 'Initiating account creation...' :
+                 authProgress < 40 ? 'Validating information...' :
+                 authProgress < 80 ? 'Creating your account...' :
+                 'Finalizing setup...'}
+              </p>
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -361,20 +447,16 @@ export const SignupForm: React.FC<SignupFormProps> = ({
           </div>
 
           {/* Sign Up Button */}
-          <button
+          <Button
             type="submit"
-            disabled={isSigningUp}
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            variant="primary"
+            loading={isSubmitting || isSigningUp}
+            disabled={isSubmitting || isSigningUp || googleSignUpProgress}
+            className="w-full"
+            leftIcon={!isSubmitting && !isSigningUp ? <UserPlus className="h-5 w-5" /> : undefined}
           >
-            {isSigningUp ? (
-              <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
-            ) : (
-              <>
-                <UserPlus className="h-5 w-5 mr-2" />
-                Create Account
-              </>
-            )}
-          </button>
+            {isSubmitting || isSigningUp ? 'Creating Account...' : 'Create Account'}
+          </Button>
 
           {/* Divider */}
           <div className="relative my-6">
@@ -389,15 +471,17 @@ export const SignupForm: React.FC<SignupFormProps> = ({
           </div>
 
           {/* Google Sign Up Button */}
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={handleGoogleSignUp}
-            disabled={isSigningUp}
-            className="w-full bg-white dark:bg-gray-700 text-gray-900 dark:text-white py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            loading={googleSignUpProgress}
+            disabled={isSubmitting || isSigningUp || googleSignUpProgress}
+            className="w-full"
+            leftIcon={!googleSignUpProgress ? <Chrome className="h-5 w-5" /> : undefined}
           >
-            <Chrome className="h-5 w-5 mr-2" />
-            Sign up with Google
-          </button>
+            {googleSignUpProgress ? 'Connecting to Google...' : 'Sign up with Google'}
+          </Button>
         </form>
 
         {/* Switch to Login */}
@@ -407,15 +491,17 @@ export const SignupForm: React.FC<SignupFormProps> = ({
               Already have an account?{' '}
               <button
                 onClick={onSwitchToLogin}
-                className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                disabled={isSubmitting || isSigningUp || googleSignUpProgress}
+                className="text-blue-600 dark:text-blue-400 hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Sign in
               </button>
             </p>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 

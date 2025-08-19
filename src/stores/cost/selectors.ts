@@ -51,7 +51,7 @@ export const selectBudgetUtilization = (state: CostStoreState) => {
     
     let status: 'safe' | 'warning' | 'danger' = 'safe';
     if (percentage >= 95) status = 'danger';
-    else if (percentage >= budget.threshold) status = 'warning';
+    else if (percentage >= (budget.alerts.thresholds[1] || 80)) status = 'warning';
     
     return {
       ...budget,
@@ -92,13 +92,13 @@ export const selectCostTrend = (state: CostStoreState) => {
  * Get performance metrics
  */
 export const selectPerformanceMetrics = (state: CostStoreState) => {
-  if (!state.analytics) return null;
+  if (!state.usageMetrics) return null;
   
   return {
-    averageLatency: state.analytics.performanceMetrics.averageLatency,
-    throughput: state.analytics.performanceMetrics.throughput,
-    errorRate: state.analytics.performanceMetrics.errorRate,
-    successRate: 1 - state.analytics.performanceMetrics.errorRate
+    averageLatency: state.usageMetrics.averageLatency,
+    throughput: state.usageMetrics.totalAPICalls / 60, // calls per minute estimate
+    errorRate: 0, // Would need to be calculated from actual error data
+    successRate: 1 // Would need to be calculated from actual success data
   };
 };
 
@@ -121,10 +121,10 @@ export const selectCostAlerts = (state: CostStoreState) => {
         message: `Budget "${budget.name}" is at ${percentage.toFixed(1)}% capacity`,
         budgetId: budget.id
       });
-    } else if (percentage >= budget.threshold) {
+    } else if (percentage >= (budget.alerts.thresholds[1] || 80)) {
       alerts.push({
         type: 'warning',
-        message: `Budget "${budget.name}" has exceeded ${budget.threshold}% threshold`,
+        message: `Budget "${budget.name}" has exceeded ${budget.alerts.thresholds[1] || 80}% threshold`,
         budgetId: budget.id
       });
     }

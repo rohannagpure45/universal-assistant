@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { AIModel, AIResponse } from '@/types';
 import { useCostStore } from '@/stores/costStore';
-import { getModelConfig, estimateTokens } from '@/config/modelConfigs';
+import { getModelConfig, estimateTokens, calculateCost } from '@/config/modelConfigs';
 import { APICall } from '@/types/cost';
 
 export class AIService {
@@ -172,14 +172,17 @@ export class AIService {
       // Determine service provider
       const service = callData.model.startsWith('gpt-') ? 'openai' : 'anthropic';
       
-      const apiCall: Omit<APICall, 'id' | 'cost'> = {
-        timestamp: new Date(),
+      // Calculate cost first
+      const cost = calculateCost(callData.model, callData.tokenUsage.inputTokens, callData.tokenUsage.outputTokens);
+      
+      const apiCall: Omit<APICall, 'id' | 'timestamp'> = {
         model: callData.model,
         service,
         operation: callData.metadata?.operation || 'generate_response',
         tokenUsage: callData.tokenUsage,
         latency: callData.latency,
         metadata: callData.metadata,
+        cost,
       };
 
       const trackedCall = await trackAPICall(apiCall);

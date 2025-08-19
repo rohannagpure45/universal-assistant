@@ -15,9 +15,13 @@ import {
   Calendar, 
   Clock, 
   Users,
-  Volume2
+  Volume2,
+  Settings,
+  Wifi,
+  Shield
 } from 'lucide-react';
 import { MeetingType } from '@/types';
+import { ProgressModal, ProgressStep, useProgressModal, LoadingSpinner } from '@/components/ui';
 
 // LiveTranscript Component
 const LiveTranscript: React.FC = () => {
@@ -148,7 +152,7 @@ const PastMeetings: React.FC = () => {
         <div id="past-meetings-content" className="border-t border-gray-200 dark:border-gray-700">
           {isLoadingRecentMeetings ? (
             <div className="p-4 flex items-center justify-center">
-              <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+              <LoadingSpinner size="sm" color="primary" />
               <span className="ml-2 text-gray-500 dark:text-gray-400">Loading meetings...</span>
             </div>
           ) : recentMeetings.length === 0 ? (
@@ -236,6 +240,10 @@ export default function MeetingPage() {
   const [isStartingMeeting, setIsStartingMeeting] = useState(false);
   const [isEndingMeeting, setIsEndingMeeting] = useState(false);
   const [isTriggeringAI, setIsTriggeringAI] = useState(false);
+  
+  // Progress modal for meeting setup
+  const meetingSetupModal = useProgressModal();
+  const meetingEndModal = useProgressModal();
 
   // Clear errors on component mount
   useEffect(() => {
@@ -246,18 +254,85 @@ export default function MeetingPage() {
     if (!user?.uid) return;
     
     setIsStartingMeeting(true);
+    
+    // Create meeting setup steps
+    const steps: ProgressStep[] = [
+      {
+        id: 'permissions',
+        label: 'Requesting permissions',
+        description: 'Getting microphone access for audio recording',
+        status: 'pending'
+      },
+      {
+        id: 'initialize',
+        label: 'Initializing meeting',
+        description: 'Setting up meeting room and participant data',
+        status: 'pending'
+      },
+      {
+        id: 'audio-setup',
+        label: 'Setting up audio',
+        description: 'Configuring audio recording and AI assistant',
+        status: 'pending'
+      },
+      {
+        id: 'start-recording',
+        label: 'Starting recording',
+        description: 'Beginning audio capture and transcription',
+        status: 'pending'
+      }
+    ];
+
+    meetingSetupModal.openModal({
+      title: 'Starting Meeting',
+      description: 'Setting up your meeting environment',
+      steps,
+      canCancel: true,
+      canClose: false,
+      icon: Settings,
+      onCancel: () => {
+        setIsStartingMeeting(false);
+        meetingSetupModal.closeModal();
+      }
+    });
+
     try {
-      // Request microphone permission first
+      // Step 1: Request microphone permission
+      meetingSetupModal.updateProgress({
+        steps: steps.map((step, index) => 
+          index === 0 ? { ...step, status: 'running' } : step
+        ),
+        currentStep: 0,
+        progress: 10
+      });
+      
       if (assistantReady) {
         try {
           await navigator.mediaDevices.getUserMedia({ audio: true });
         } catch (err) {
           console.error('Microphone permission denied:', err);
-          alert('Please allow microphone access to record audio');
+          meetingSetupModal.updateProgress({
+            hasError: true,
+            errorMessage: 'Microphone access is required to record audio. Please allow microphone permissions and try again.',
+            canClose: true
+          });
           setIsStartingMeeting(false);
           return;
         }
       }
+      
+      // Step 2: Initialize meeting
+      meetingSetupModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index === 0) return { ...step, status: 'completed' };
+          if (index === 1) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 1,
+        progress: 35
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 800)); // Simulate setup time
       
       // Start the meeting in the store
       await startMeeting({
@@ -287,12 +362,55 @@ export default function MeetingPage() {
         updatedAt: new Date(),
       });
 
+      // Step 3: Setup audio
+      meetingSetupModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index <= 1) return { ...step, status: 'completed' };
+          if (index === 2) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 2,
+        progress: 65
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // Step 4: Start recording
+      meetingSetupModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index <= 2) return { ...step, status: 'completed' };
+          if (index === 3) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 3,
+        progress: 85
+      });
+      
       // Start audio recording with Universal Assistant
       await startAssistantRecording();
       startRecording();
       
+      // Complete
+      meetingSetupModal.updateProgress({
+        steps: steps.map(step => ({ ...step, status: 'completed' })),
+        currentStep: 3,
+        progress: 100,
+        isComplete: true,
+        canClose: true,
+        successMessage: 'Meeting started successfully! You can now speak and interact with the AI assistant.'
+      });
+      
     } catch (error) {
       console.error('Failed to start meeting:', error);
+      meetingSetupModal.updateProgress({
+        hasError: true,
+        errorMessage: `Failed to start meeting: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        canClose: true,
+        onRetry: () => {
+          meetingSetupModal.closeModal();
+          setTimeout(() => handleStartMeeting(), 100);
+        }
+      });
     } finally {
       setIsStartingMeeting(false);
     }
@@ -300,15 +418,96 @@ export default function MeetingPage() {
 
   const handleEndMeeting = async () => {
     setIsEndingMeeting(true);
+    
+    const steps: ProgressStep[] = [
+      {
+        id: 'stop-recording',
+        label: 'Stopping recording',
+        description: 'Ending audio capture and transcription',
+        status: 'pending'
+      },
+      {
+        id: 'save-data',
+        label: 'Saving meeting data',
+        description: 'Storing transcript and meeting information',
+        status: 'pending'
+      },
+      {
+        id: 'cleanup',
+        label: 'Cleaning up',
+        description: 'Finalizing meeting resources',
+        status: 'pending'
+      }
+    ];
+
+    meetingEndModal.openModal({
+      title: 'Ending Meeting',
+      description: 'Saving your meeting data and cleaning up resources',
+      steps,
+      canCancel: false,
+      canClose: false,
+      variant: 'warning'
+    });
+
     try {
-      // Stop audio recording first
+      // Step 1: Stop recording
+      meetingEndModal.updateProgress({
+        steps: steps.map((step, index) => 
+          index === 0 ? { ...step, status: 'running' } : step
+        ),
+        currentStep: 0,
+        progress: 20
+      });
+      
       stopAssistantRecording();
       stopRecording();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Step 2: Save data
+      meetingEndModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index === 0) return { ...step, status: 'completed' };
+          if (index === 1) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 1,
+        progress: 60
+      });
       
       // End the meeting in the store
       await endMeeting();
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Step 3: Cleanup
+      meetingEndModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index <= 1) return { ...step, status: 'completed' };
+          if (index === 2) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 2,
+        progress: 90
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 400));
+      
+      // Complete
+      meetingEndModal.updateProgress({
+        steps: steps.map(step => ({ ...step, status: 'completed' })),
+        currentStep: 2,
+        progress: 100,
+        isComplete: true,
+        canClose: true,
+        successMessage: 'Meeting ended successfully. Your transcript and data have been saved.'
+      });
+      
     } catch (error) {
       console.error('Failed to end meeting:', error);
+      meetingEndModal.updateProgress({
+        hasError: true,
+        errorMessage: `Failed to end meeting: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        canClose: true
+      });
     } finally {
       setIsEndingMeeting(false);
     }
@@ -394,7 +593,7 @@ export default function MeetingPage() {
                 
                 <div className="relative text-center z-10">
                   {isStartingMeeting || isLoadingMeeting ? (
-                    <div className="animate-spin h-10 w-10 border-3 border-white border-t-transparent rounded-full mx-auto mb-3"></div>
+                    <LoadingSpinner size="xl" color="white" />
                   ) : (
                     <Play className="w-14 h-14 mb-3 mx-auto group-hover:scale-110 transition-transform duration-200" />
                   )}
@@ -418,7 +617,7 @@ export default function MeetingPage() {
                 
                 <div className="relative text-center z-10">
                   {isEndingMeeting ? (
-                    <div className="animate-spin h-10 w-10 border-3 border-white border-t-transparent rounded-full mx-auto mb-3"></div>
+                    <LoadingSpinner size="xl" color="white" />
                   ) : (
                     <Square className="w-14 h-14 mb-3 mx-auto group-hover:scale-110 transition-transform duration-200" />
                   )}
@@ -443,7 +642,7 @@ export default function MeetingPage() {
                 aria-label="Trigger AI Speech"
               >
                 {isTriggeringAI || assistantIsProcessing ? (
-                  <div className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full" />
+                  <LoadingSpinner size="sm" color="white" />
                 ) : assistantIsPlaying ? (
                   <Volume2 className="w-6 h-6 group-hover:scale-110 transition-transform duration-200" />
                 ) : (
@@ -500,6 +699,10 @@ export default function MeetingPage() {
           <PastMeetings />
         </div>
       </div>
+      
+      {/* Progress Modals */}
+      <meetingSetupModal.ProgressModal />
+      <meetingEndModal.ProgressModal />
     </MainLayout>
   );
 }

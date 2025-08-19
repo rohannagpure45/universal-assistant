@@ -3,6 +3,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import ErrorBoundary from './ErrorBoundary';
 
 interface ChartData {
   label: string;
@@ -29,64 +30,85 @@ export const BarChart: React.FC<BarChartProps> = ({
   const maxValue = Math.max(...data.map(d => d.value));
 
   return (
-    <div className={cn('w-full', className)}>
-      <div className="flex items-end justify-between space-x-2" style={{ height: `${height}px` }}>
-        {data.map((item, index) => {
-          const barHeight = maxValue > 0 ? (item.value / maxValue) * height * 0.8 : 0;
-          const color = item.color || `hsl(${(index * 137.508) % 360}, 70%, 50%)`;
-          
-          return (
-            <div key={item.label} className="flex flex-col items-center flex-1 max-w-16">
-              <div className="relative w-full flex flex-col items-center">
-                {showValues && (
-                  <motion.span
-                    className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 truncate max-w-full"
-                    initial={animate ? { opacity: 0 } : false}
-                    animate={animate ? { opacity: 1 } : false}
-                    transition={{ delay: index * 0.1 + 0.5 }}
-                  >
-                    {item.value.toLocaleString()}
-                  </motion.span>
-                )}
-                
-                <motion.div
-                  className="w-full rounded-t-md relative overflow-hidden"
-                  style={{
-                    backgroundColor: color,
-                    minHeight: '4px',
-                  }}
-                  initial={animate ? { height: 0 } : { height: barHeight }}
-                  animate={animate ? { height: barHeight } : false}
-                  transition={{
-                    duration: 0.8,
-                    delay: index * 0.1,
-                    ease: [0.4, 0, 0.2, 1],
-                  }}
-                >
-                  {/* Gradient overlay */}
-                  <div
-                    className="absolute inset-0 opacity-20"
-                    style={{
-                      background: `linear-gradient(to top, ${color}, rgba(255,255,255,0.3))`,
-                    }}
-                  />
-                </motion.div>
+    <ErrorBoundary
+      fallbackType="card"
+      severity="warning"
+      componentName="BarChart"
+      fallback={
+        <div className={cn('w-full p-8 text-center', className)}>
+          <div className="text-gray-500 dark:text-gray-400">
+            Chart unavailable - displaying data in table format:
+          </div>
+          <div className="mt-4 space-y-1">
+            {data.map((item, index) => (
+              <div key={index} className="flex justify-between text-sm">
+                <span>{item.label}</span>
+                <span>{item.value.toLocaleString()}</span>
               </div>
-              
-              <motion.span
-                className="text-xs font-medium text-gray-700 dark:text-gray-300 mt-2 truncate max-w-full text-center"
-                initial={animate ? { opacity: 0, y: 10 } : false}
-                animate={animate ? { opacity: 1, y: 0 } : false}
-                transition={{ delay: index * 0.1 + 0.3 }}
-                title={item.label}
-              >
-                {item.label}
-              </motion.span>
-            </div>
-          );
-        })}
+            ))}
+          </div>
+        </div>
+      }
+    >
+      <div className={cn('w-full', className)}>
+        <div className="flex items-end justify-between space-x-2" style={{ height: `${height}px` }}>
+          {data.map((item, index) => {
+            const barHeight = maxValue > 0 ? (item.value / maxValue) * height * 0.8 : 0;
+            const color = item.color || `hsl(${(index * 137.508) % 360}, 70%, 50%)`;
+            
+            return (
+              <div key={item.label} className="flex flex-col items-center flex-1 max-w-16">
+                <div className="relative w-full flex flex-col items-center">
+                  {showValues && (
+                    <motion.span
+                      className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 truncate max-w-full"
+                      initial={animate ? { opacity: 0 } : false}
+                      animate={animate ? { opacity: 1 } : false}
+                      transition={{ delay: index * 0.1 + 0.5 }}
+                    >
+                      {item.value.toLocaleString()}
+                    </motion.span>
+                  )}
+                  
+                  <motion.div
+                    className="w-full rounded-t-md relative overflow-hidden"
+                    style={{
+                      backgroundColor: color,
+                      minHeight: '4px',
+                    }}
+                    initial={animate ? { height: 0 } : { height: barHeight }}
+                    animate={animate ? { height: barHeight } : false}
+                    transition={{
+                      duration: 0.8,
+                      delay: index * 0.1,
+                      ease: [0.4, 0, 0.2, 1],
+                    }}
+                  >
+                    {/* Gradient overlay */}
+                    <div
+                      className="absolute inset-0 opacity-20"
+                      style={{
+                        background: `linear-gradient(to top, ${color}, rgba(255,255,255,0.3))`,
+                      }}
+                    />
+                  </motion.div>
+                </div>
+                
+                <motion.span
+                  className="text-xs font-medium text-gray-700 dark:text-gray-300 mt-2 truncate max-w-full text-center"
+                  initial={animate ? { opacity: 0, y: 10 } : false}
+                  animate={animate ? { opacity: 1, y: 0 } : false}
+                  transition={{ delay: index * 0.1 + 0.3 }}
+                  title={item.label}
+                >
+                  {item.label}
+                </motion.span>
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 
@@ -116,87 +138,108 @@ export const LineChart: React.FC<LineChartProps> = ({
   }).join(' ');
 
   return (
-    <div className={cn('w-full relative', className)} style={{ height: `${height}px` }}>
-      <svg width="100%" height="100%" className="overflow-visible">
-        {/* Grid lines */}
-        <defs>
-          <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path
-              d="M 20 0 L 0 0 0 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="0.5"
-              className="text-gray-200 dark:text-gray-700"
-            />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#grid)" opacity="0.3" />
+    <ErrorBoundary
+      fallbackType="card"
+      severity="warning"
+      componentName="LineChart"
+      fallback={
+        <div className={cn('w-full p-8 text-center', className)}>
+          <div className="text-gray-500 dark:text-gray-400">
+            Chart unavailable - displaying data points:
+          </div>
+          <div className="mt-4 space-y-1 max-h-32 overflow-y-auto">
+            {data.map((item, index) => (
+              <div key={index} className="flex justify-between text-sm">
+                <span>{item.x}</span>
+                <span>{item.y}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      }
+    >
+      <div className={cn('w-full relative', className)} style={{ height: `${height}px` }}>
+        <svg width="100%" height="100%" className="overflow-visible">
+          {/* Grid lines */}
+          <defs>
+            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path
+                d="M 20 0 L 0 0 0 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="0.5"
+                className="text-gray-200 dark:text-gray-700"
+              />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid)" opacity="0.3" />
 
-        {/* Area under the line */}
-        <motion.path
-          d={`M0,100 L${points} L100,100 Z`}
-          fill={color}
-          fillOpacity="0.1"
-          initial={animate ? { pathLength: 0 } : false}
-          animate={animate ? { pathLength: 1 } : false}
-          transition={{ duration: 1.5, ease: 'easeInOut' }}
-        />
+          {/* Area under the line */}
+          <motion.path
+            d={`M0,100 L${points} L100,100 Z`}
+            fill={color}
+            fillOpacity="0.1"
+            initial={animate ? { pathLength: 0 } : false}
+            animate={animate ? { pathLength: 1 } : false}
+            transition={{ duration: 1.5, ease: 'easeInOut' }}
+          />
 
-        {/* Line */}
-        <motion.polyline
-          points={points}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          initial={animate ? { pathLength: 0 } : false}
-          animate={animate ? { pathLength: 1 } : false}
-          transition={{ duration: 1, ease: 'easeInOut' }}
-        />
+          {/* Line */}
+          <motion.polyline
+            points={points}
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            initial={animate ? { pathLength: 0 } : false}
+            animate={animate ? { pathLength: 1 } : false}
+            transition={{ duration: 1, ease: 'easeInOut' }}
+          />
 
-        {/* Data points */}
-        {data.map((point, index) => {
-          const x = (index / (data.length - 1)) * 100;
-          const y = 100 - ((point.y - minValue) / range) * 80;
-          
-          return (
-            <motion.circle
+          {/* Data points */}
+          {data.map((point, index) => {
+            const x = (index / (data.length - 1)) * 100;
+            const y = 100 - ((point.y - minValue) / range) * 80;
+            
+            return (
+              <motion.circle
+                key={index}
+                cx={`${x}%`}
+                cy={`${y}%`}
+                r="3"
+                fill={color}
+                stroke="white"
+                strokeWidth="2"
+                initial={animate ? { scale: 0, opacity: 0 } : false}
+                animate={animate ? { scale: 1, opacity: 1 } : false}
+                transition={{
+                  duration: 0.3,
+                  delay: animate ? index * 0.1 + 0.5 : 0,
+                  ease: 'backOut',
+                }}
+                className="drop-shadow-sm"
+              />
+            );
+          })}
+        </svg>
+
+        {/* X-axis labels */}
+        <div className="absolute -bottom-6 left-0 right-0 flex justify-between">
+          {data.map((point, index) => (
+            <motion.span
               key={index}
-              cx={`${x}%`}
-              cy={`${y}%`}
-              r="3"
-              fill={color}
-              stroke="white"
-              strokeWidth="2"
-              initial={animate ? { scale: 0, opacity: 0 } : false}
-              animate={animate ? { scale: 1, opacity: 1 } : false}
-              transition={{
-                duration: 0.3,
-                delay: animate ? index * 0.1 + 0.5 : 0,
-                ease: 'backOut',
-              }}
-              className="drop-shadow-sm"
-            />
-          );
-        })}
-      </svg>
-
-      {/* X-axis labels */}
-      <div className="absolute -bottom-6 left-0 right-0 flex justify-between">
-        {data.map((point, index) => (
-          <motion.span
-            key={index}
-            className="text-xs text-gray-500 dark:text-gray-400"
-            initial={animate ? { opacity: 0, y: 10 } : false}
-            animate={animate ? { opacity: 1, y: 0 } : false}
-            transition={{ delay: index * 0.05 + 1 }}
-          >
-            {point.x}
-          </motion.span>
-        ))}
+              className="text-xs text-gray-500 dark:text-gray-400"
+              initial={animate ? { opacity: 0, y: 10 } : false}
+              animate={animate ? { opacity: 1, y: 0 } : false}
+              transition={{ delay: index * 0.05 + 1 }}
+            >
+              {point.x}
+            </motion.span>
+          ))}
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 
@@ -262,69 +305,99 @@ export const PieChart: React.FC<PieChartProps> = ({
   });
   
   return (
-    <div className={cn('flex items-center gap-6', className)}>
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} className="transform -rotate-90">
-          {segments.map((segment, index) => (
-            <motion.path
-              key={index}
-              d={segment.pathData}
-              fill={segment.color}
-              stroke="white"
-              strokeWidth="2"
-              initial={animate ? { pathLength: 0, opacity: 0 } : false}
-              animate={animate ? { pathLength: 1, opacity: 1 } : false}
-              transition={{
-                duration: 0.8,
-                delay: index * 0.1,
-                ease: [0.4, 0, 0.2, 1],
-              }}
-              className="hover:opacity-80 transition-opacity cursor-pointer drop-shadow-sm"
-            />
-          ))}
-        </svg>
-        
-        {innerRadius > 0 && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                {data.length}
-              </div>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
-                Items
-              </div>
-            </div>
+    <ErrorBoundary
+      fallbackType="card"
+      severity="warning"
+      componentName="PieChart"
+      fallback={
+        <div className={cn('w-full p-8 text-center', className)}>
+          <div className="text-gray-500 dark:text-gray-400 mb-4">
+            Chart unavailable - displaying data breakdown:
           </div>
-        )}
-      </div>
-      
-      {/* Legend */}
-      <div className="space-y-2 flex-1">
-        {segments.map((segment, index) => (
-          <motion.div
-            key={index}
-            className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-            initial={animate ? { opacity: 0, x: 20 } : false}
-            animate={animate ? { opacity: 1, x: 0 } : false}
-            transition={{ delay: index * 0.1 + 0.5 }}
-          >
-            <div
-              className="w-3 h-3 rounded-full flex-shrink-0"
-              style={{ backgroundColor: segment.color }}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {segment.label}
+          <div className="space-y-2">
+            {data.map((item, index) => (
+              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded">
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: item.color || `hsl(${(index * 137.508) % 360}, 70%, 50%)` }}
+                  />
+                  <span className="text-sm">{item.label}</span>
+                </div>
+                <div className="text-sm font-medium">
+                  {item.value.toLocaleString()}
+                  {showPercentages && item.percentage && ` (${item.percentage.toFixed(1)}%)`}
+                </div>
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {segment.value.toLocaleString()}
-                {showPercentages && ` (${segment.percentage}%)`}
+            ))}
+          </div>
+        </div>
+      }
+    >
+      <div className={cn('flex items-center gap-6', className)}>
+        <div className="relative" style={{ width: size, height: size }}>
+          <svg width={size} height={size} className="transform -rotate-90">
+            {segments.map((segment, index) => (
+              <motion.path
+                key={index}
+                d={segment.pathData}
+                fill={segment.color}
+                stroke="white"
+                strokeWidth="2"
+                initial={animate ? { pathLength: 0, opacity: 0 } : false}
+                animate={animate ? { pathLength: 1, opacity: 1 } : false}
+                transition={{
+                  duration: 0.8,
+                  delay: index * 0.1,
+                  ease: [0.4, 0, 0.2, 1],
+                }}
+                className="hover:opacity-80 transition-opacity cursor-pointer drop-shadow-sm"
+              />
+            ))}
+          </svg>
+          
+          {innerRadius > 0 && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {data.length}
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Items
+                </div>
               </div>
             </div>
-          </motion.div>
-        ))}
+          )}
+        </div>
+        
+        {/* Legend */}
+        <div className="space-y-2 flex-1">
+          {segments.map((segment, index) => (
+            <motion.div
+              key={index}
+              className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+              initial={animate ? { opacity: 0, x: 20 } : false}
+              animate={animate ? { opacity: 1, x: 0 } : false}
+              transition={{ delay: index * 0.1 + 0.5 }}
+            >
+              <div
+                className="w-3 h-3 rounded-full flex-shrink-0"
+                style={{ backgroundColor: segment.color }}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {segment.label}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {segment.value.toLocaleString()}
+                  {showPercentages && ` (${segment.percentage}%)`}
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 };
 
@@ -357,62 +430,85 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
   return (
-    <div className={cn('relative inline-flex items-center justify-center', className)}>
-      <svg width={size} height={size} className="transform -rotate-90">
-        {/* Background circle */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={backgroundColor}
-          strokeWidth={strokeWidth}
-          fill="none"
-          className="dark:stroke-gray-700"
-        />
-        
-        {/* Progress circle */}
-        <motion.circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke={color}
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={strokeDasharray}
-          initial={animate ? { strokeDashoffset: circumference } : { strokeDashoffset }}
-          animate={animate ? { strokeDashoffset } : false}
-          transition={{
-            duration: 1,
-            ease: [0.4, 0, 0.2, 1],
-          }}
-          className="drop-shadow-sm"
-        />
-      </svg>
-      
-      {showLabel && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <motion.span
-            className="text-lg font-bold text-gray-900 dark:text-white"
-            initial={animate ? { scale: 0 } : false}
-            animate={animate ? { scale: 1 } : false}
-            transition={{ delay: 0.5, duration: 0.3 }}
-          >
-            {Math.round(percentage)}%
-          </motion.span>
-          {label && (
-            <motion.span
-              className="text-xs text-gray-500 dark:text-gray-400 text-center"
-              initial={animate ? { opacity: 0 } : false}
-              animate={animate ? { opacity: 1 } : false}
-              transition={{ delay: 0.7 }}
-            >
-              {label}
-            </motion.span>
+    <ErrorBoundary
+      fallbackType="inline"
+      severity="info"
+      componentName="ProgressRing"
+      fallback={
+        <div className={cn('relative inline-flex items-center justify-center', className)} style={{ width: size, height: size }}>
+          <div className="w-full h-full border-4 border-gray-200 dark:border-gray-700 rounded-full"></div>
+          {showLabel && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-lg font-bold text-gray-900 dark:text-white">
+                {Math.round(percentage)}%
+              </span>
+              {label && (
+                <span className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                  {label}
+                </span>
+              )}
+            </div>
           )}
         </div>
-      )}
-    </div>
+      }
+    >
+      <div className={cn('relative inline-flex items-center justify-center', className)}>
+        <svg width={size} height={size} className="transform -rotate-90">
+          {/* Background circle */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={backgroundColor}
+            strokeWidth={strokeWidth}
+            fill="none"
+            className="dark:stroke-gray-700"
+          />
+          
+          {/* Progress circle */}
+          <motion.circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={color}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={strokeDasharray}
+            initial={animate ? { strokeDashoffset: circumference } : { strokeDashoffset }}
+            animate={animate ? { strokeDashoffset } : false}
+            transition={{
+              duration: 1,
+              ease: [0.4, 0, 0.2, 1],
+            }}
+            className="drop-shadow-sm"
+          />
+        </svg>
+        
+        {showLabel && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <motion.span
+              className="text-lg font-bold text-gray-900 dark:text-white"
+              initial={animate ? { scale: 0 } : false}
+              animate={animate ? { scale: 1 } : false}
+              transition={{ delay: 0.5, duration: 0.3 }}
+            >
+              {Math.round(percentage)}%
+            </motion.span>
+            {label && (
+              <motion.span
+                className="text-xs text-gray-500 dark:text-gray-400 text-center"
+                initial={animate ? { opacity: 0 } : false}
+                animate={animate ? { opacity: 1 } : false}
+                transition={{ delay: 0.7 }}
+              >
+                {label}
+              </motion.span>
+            )}
+          </div>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 };
 

@@ -44,7 +44,7 @@ export interface AdditionalActions {
   resetConfig: () => void;
   
   // Data export variations
-  exportData: (format: 'json' | 'csv') => string;
+  exportDataWithFormat: (format: 'json' | 'csv') => string;
 }
 
 /**
@@ -52,7 +52,7 @@ export interface AdditionalActions {
  */
 export const createAdditionalActions: StateCreator<
   CostStore,
-  [],
+  [['zustand/immer', never]],
   [],
   AdditionalActions
 > = (set, get) => ({
@@ -64,32 +64,36 @@ export const createAdditionalActions: StateCreator<
     }
 
     const fullPrompt = context ? [...context, prompt].join('\n') : prompt;
-    const estimatedTokens = estimateTokens(fullPrompt);
+    const totalEstimatedTokens = estimateTokens(fullPrompt);
+    
+    // Estimate input/output split (assume 70% input, 30% output)
+    const estimatedInputTokens = Math.ceil(totalEstimatedTokens * 0.7);
+    const estimatedOutputTokens = Math.ceil(totalEstimatedTokens * 0.3);
     
     // Estimate based on model pricing
-    const inputCost = (estimatedTokens.input / 1000) * config.pricing.input;
-    const outputCost = (estimatedTokens.output / 1000) * config.pricing.output;
+    const inputCost = (estimatedInputTokens / 1000) * config.pricing.inputTokenCost;
+    const outputCost = (estimatedOutputTokens / 1000) * config.pricing.outputTokenCost;
     const totalCost = inputCost + outputCost;
 
     const estimation: CostEstimation = {
-      id: `est-${Date.now()}`,
-      model,
-      estimatedTokens,
+      estimatedTokens: totalEstimatedTokens,
       estimatedCost: totalCost,
-      breakdown: {
-        inputCost,
-        outputCost
-      },
-      timestamp: new Date(),
-      prompt: prompt.substring(0, 100) // Store first 100 chars for reference
+      confidence: 0.7, // Medium confidence for estimate
+      factors: {
+        promptLength: fullPrompt.length,
+        contextSize: context?.length || 0,
+        modelComplexity: config.pricing.inputTokenCost + config.pricing.outputTokenCost,
+        historicalAverage: totalCost // Use current estimate as historical average fallback
+      }
     };
 
     // Store estimation
     set((state) => {
-      state.estimations.push(estimation);
-      if (state.estimations.length > 20) {
-        state.estimations = state.estimations.slice(-20);
-      }
+      const newEstimations = [...state.estimations, estimation];
+      return {
+        ...state,
+        estimations: newEstimations.length > 20 ? newEstimations.slice(-20) : newEstimations
+      };
     });
 
     return estimation;
@@ -103,64 +107,72 @@ export const createAdditionalActions: StateCreator<
   },
 
   clearEvents: () => {
-    set((state) => {
-      state.events = [];
-    });
+    set((state) => ({
+      ...state,
+      events: []
+    }));
   },
 
   // Tracking control
   startTracking: () => {
-    set((state) => {
-      state.isTracking = true;
-    });
+    set((state) => ({
+      ...state,
+      isTracking: true
+    }));
   },
 
   stopTracking: () => {
-    set((state) => {
-      state.isTracking = false;
-    });
+    set((state) => ({
+      ...state,
+      isTracking: false
+    }));
   },
 
   isTracking: false,
 
   // Error handling
   resetError: () => {
-    set((state) => {
-      state.error = null;
-    });
+    set((state) => ({
+      ...state,
+      error: null
+    }));
   },
 
   // Data refresh
   refresh: async () => {
     const { refreshAnalytics, tracker } = get();
     
-    set((state) => {
-      state.isLoading = true;
-      state.error = null;
-    });
+    set((state) => ({
+      ...state,
+      isLoading: true,
+      error: null
+    }));
 
     try {
       // Reload data from tracker
       if (tracker) {
-        set((state) => {
-          state.apiCalls = tracker.getAPICalls();
-          state.budgets = tracker.getBudgets();
-          state.events = tracker.getEvents();
-        });
+        set((state) => ({
+          ...state,
+          apiCalls: tracker.getAPICalls(),
+          budgets: tracker.getBudgets(),
+          events: tracker.getEvents()
+        }));
       }
 
       // Refresh analytics
       await refreshAnalytics(true);
 
-      set((state) => {
-        state.isLoading = false;
-        state.lastUpdated = new Date();
-      });
+      set((state) => ({
+        ...state,
+        isLoading: false,
+        lastUpdated: new Date()
+      }));
     } catch (error) {
-      set((state) => {
-        state.error = error instanceof Error ? error.message : 'Failed to refresh';
-        state.isLoading = false;
-      });
+      set((state) => ({
+        ...state,
+        error: error instanceof Error ? error.message : 'Failed to refresh',
+        isLoading: false
+      }));
       throw error;
     }
   },
@@ -169,17 +181,19 @@ export const createAdditionalActions: StateCreator<
   filterService: null,
   
   setFilterService: (service) => {
-    set((state) => {
-      state.filterService = service;
-    });
+    set((state) => ({
+      ...state,
+      filterService: service
+    }));
   },
 
   clearFilters: () => {
-    set((state) => {
-      state.filterModel = 'all';
-      state.filterService = null;
-      state.filterDateRange = { start: null, end: null };
-    });
+    set((state) => ({
+      ...state,
+      filterModel: 'all',
+      filterService: null,
+      filterDateRange: { start: null, end: null }
+    }));
   },
 
   // Historical data
@@ -220,21 +234,23 @@ export const createAdditionalActions: StateCreator<
 
   // Config reset
   resetConfig: () => {
-    set((state) => {
-      state.config = {
+    set((state) => ({
+      ...state,
+      config: {
+        ...state.config,
+        enabled: true,
+        trackingLevel: 'detailed' as const,
+        retentionDays: 30,
+        budgetAlerts: true,
         realTimeTracking: true,
-        budgetAlertsEnabled: true,
-        performanceMonitoring: true,
-        autoExport: false,
-        exportInterval: 3600000,
-        retentionPeriod: 30,
-        aggregationLevel: 'detailed'
-      };
-    });
+        aggregationInterval: 60,
+        exportFormat: 'json' as const
+      }
+    }));
   },
 
   // Enhanced export with format support
-  exportData: (format) => {
+  exportDataWithFormat: (format) => {
     const state = get();
     const data = {
       apiCalls: state.apiCalls,
@@ -254,10 +270,10 @@ export const createAdditionalActions: StateCreator<
         call.timestamp.toISOString(),
         call.model,
         call.cost.toFixed(6),
-        call.tokensUsed.input,
-        call.tokensUsed.output,
-        call.duration || 0,
-        call.success ? 'true' : 'false'
+        call.tokenUsage.inputTokens,
+        call.tokenUsage.outputTokens,
+        call.latency || 0,
+        'true' // API calls in the system are assumed successful
       ]);
 
       return [

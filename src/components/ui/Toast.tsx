@@ -35,7 +35,7 @@ const toastVariants = {
     scale: 1,
     transition: {
       duration: 0.3,
-      ease: [0.4, 0, 0.2, 1],
+      ease: "easeOut" as const,
     },
   },
   exit: {
@@ -44,7 +44,7 @@ const toastVariants = {
     scale: 0.95,
     transition: {
       duration: 0.2,
-      ease: [0.4, 0, 0.2, 1],
+      ease: "easeOut" as const,
     },
   },
 };
@@ -55,7 +55,7 @@ const progressVariants = {
     width: '0%',
     transition: {
       duration: duration / 1000,
-      ease: 'linear',
+      ease: 'linear' as const,
     },
   }),
 };

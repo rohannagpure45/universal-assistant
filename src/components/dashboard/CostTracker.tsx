@@ -23,12 +23,27 @@ import {
   Users,
   HelpCircle,
   Sparkles,
-  Play
+  Play,
+  PieChart as PieChartIcon,
+  FileText,
+  Database
 } from 'lucide-react';
 import { useCostTracking } from '@/hooks/useCostTracking';
 import { CostPeriod, CostGranularity, AIModel } from '@/types';
 import { MotionCard, MotionList, MotionCounter, fadeInUpVariants } from '@/components/ui/Motion';
 import { BarChart, LineChart, PieChart, ProgressRing } from '@/components/ui/Charts';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
+import { 
+  LoadingSpinner, 
+  LinearProgress, 
+  SkeletonDashboardCard,
+  SkeletonCostTracker,
+  ExportProgressModal, 
+  AnalyticsProgressModal,
+  useProgressModal,
+  ProgressStep 
+} from '@/components/ui';
+import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 
 interface CostMetricCardProps {
@@ -191,37 +206,49 @@ const BudgetProgress: React.FC<BudgetProgressProps> = ({ budget, status }) => {
   };
 
   return (
-    <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-5 hover:bg-white/90 dark:hover:bg-gray-800/90">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-gray-900 dark:text-white truncate">{budget.name}</h4>
-          <p className="text-sm text-gray-500 dark:text-gray-400 capitalize mt-1">{budget.period} budget</p>
-        </div>
-        
-        <div className="flex items-center space-x-3 flex-shrink-0 ml-4">
-          <ProgressRing
-            percentage={Math.min(status.percentage, 100)}
-            size={60}
-            strokeWidth={6}
-            color={getStatusColor(status.status)}
-            showLabel={false}
-          />
-          <div className="text-right">
-            {status.status !== 'safe' && (
-              <AlertTriangle className={cn('w-4 h-4 mb-1', getStatusTextColor(status.status))} />
-            )}
-            <div className={cn('text-sm font-semibold', getStatusTextColor(status.status))}>
-              {status.percentage.toFixed(1)}%
+    <ErrorBoundary
+      fallbackType="inline"
+      severity="info"
+      componentName="BudgetProgress"
+      fallback={
+        <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-5">
+          <div className="text-center py-8">
+            <p className="text-gray-500 dark:text-gray-400">Budget data unavailable</p>
+          </div>
+        </MotionCard>
+      }
+    >
+      <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-5 hover:bg-white/90 dark:hover:bg-gray-800/90">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1 min-w-0">
+            <h4 className="font-semibold text-gray-900 dark:text-white truncate">{budget.name}</h4>
+            <p className="text-sm text-gray-500 dark:text-gray-400 capitalize mt-1">{budget.period} budget</p>
+          </div>
+          
+          <div className="flex items-center space-x-3 flex-shrink-0 ml-4">
+            <ProgressRing
+              percentage={Math.min(status.percentage, 100)}
+              size={60}
+              strokeWidth={6}
+              color={getStatusColor(status.status)}
+              showLabel={false}
+            />
+            <div className="text-right">
+              {status.status !== 'safe' && (
+                <AlertTriangle className={cn('w-4 h-4 mb-1', getStatusTextColor(status.status))} />
+              )}
+              <div className={cn('text-sm font-semibold', getStatusTextColor(status.status))}>
+                {status.percentage.toFixed(1)}%
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-gray-500 dark:text-gray-400 block">Used</span>
-            <MotionCounter
+        
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-gray-500 dark:text-gray-400 block">Used</span>
+              <MotionCounter
               value={budget.currentUsage}
               className="font-semibold text-gray-900 dark:text-white"
               formatter={(v) => `$${v.toFixed(2)}`}
@@ -242,6 +269,7 @@ const BudgetProgress: React.FC<BudgetProgressProps> = ({ budget, status }) => {
         </div>
       </div>
     </MotionCard>
+    </ErrorBoundary>
   );
 };
 
@@ -266,11 +294,24 @@ const CostBreakdown: React.FC<CostBreakdownProps> = ({ data, title }) => {
   const hasData = data && data.length > 0;
   
   return (
+    <ErrorBoundary
+      fallbackType="card"
+      severity="info"
+      componentName="CostBreakdown"
+      fallback={
+        <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-soft border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-6">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-6">{title}</h3>
+          <div className="text-center py-12">
+            <p className="text-gray-500 dark:text-gray-400">Chart data unavailable</p>
+          </div>
+        </MotionCard>
+      }
+    >
     <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-soft border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-6 hover:bg-white/90 dark:hover:bg-gray-800/90">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">{title}</h3>
         <div className="flex items-center space-x-2">
-          <PieChart className="w-4 h-4 text-gray-400" />
+          <PieChartIcon className="w-4 h-4 text-gray-400" />
           <span className="text-xs text-gray-500 dark:text-gray-400">{data.length} items</span>
         </div>
       </div>
@@ -278,7 +319,7 @@ const CostBreakdown: React.FC<CostBreakdownProps> = ({ data, title }) => {
       {!hasData ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
-            <PieChart className="w-8 h-8 text-gray-400" />
+            <PieChartIcon className="w-8 h-8 text-gray-400" />
           </div>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             No data available yet
@@ -336,6 +377,7 @@ const CostBreakdown: React.FC<CostBreakdownProps> = ({ data, title }) => {
         </div>
       )}
     </MotionCard>
+    </ErrorBoundary>
   );
 };
 
@@ -369,6 +411,21 @@ const CostHistory: React.FC<CostHistoryProps> = ({ data, selectedPeriod }) => {
   })) : [];
   
   return (
+    <ErrorBoundary
+      fallbackType="card"
+      severity="info"
+      componentName="CostHistory"
+      fallback={
+        <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-soft border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-6">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-6">
+            Cost History ({selectedPeriod})
+          </h3>
+          <div className="text-center py-16">
+            <p className="text-gray-500 dark:text-gray-400">History charts unavailable</p>
+          </div>
+        </MotionCard>
+      }
+    >
     <MotionCard className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-soft border border-gray-200/50 dark:border-gray-700/50 p-4 sm:p-6 hover:bg-white/90 dark:hover:bg-gray-800/90">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
@@ -449,6 +506,7 @@ const CostHistory: React.FC<CostHistoryProps> = ({ data, selectedPeriod }) => {
         </div>
       )}
     </MotionCard>
+    </ErrorBoundary>
   );
 };
 
@@ -579,6 +637,12 @@ export const CostTracker: React.FC = () => {
   const [showBudgets, setShowBudgets] = useState(true);
   const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('csv');
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Progress modal hooks
+  const exportModal = useProgressModal();
+  const analyticsModal = useProgressModal();
 
   // Calculate if filters are active
   useEffect(() => {
@@ -589,12 +653,104 @@ export const CostTracker: React.FC = () => {
     setHasActiveFilters(isFiltered);
   }, [filterModel, filterService, selectedPeriod, selectedGranularity]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
+    if (isExporting) return;
+    
+    setIsExporting(true);
+    
+    // Create export steps based on data size and format
+    const steps: ProgressStep[] = [
+      {
+        id: 'prepare',
+        label: 'Preparing data',
+        description: 'Gathering cost analytics and metrics',
+        status: 'pending'
+      },
+      {
+        id: 'format',
+        label: `Converting to ${exportFormat.toUpperCase()}`,
+        description: `Formatting data for ${exportFormat} export`,
+        status: 'pending'
+      },
+      {
+        id: 'generate',
+        label: 'Generating file',
+        description: 'Creating downloadable file',
+        status: 'pending'
+      },
+      {
+        id: 'download',
+        label: 'Starting download',
+        description: 'Initiating file download',
+        status: 'pending'
+      }
+    ];
+
+    exportModal.openModal({
+      title: `Export Cost Data (${exportFormat.toUpperCase()})`,
+      description: `Exporting cost analytics and usage data in ${exportFormat.toUpperCase()} format`,
+      steps,
+      canCancel: true,
+      canClose: false,
+      onCancel: () => {
+        setIsExporting(false);
+        exportModal.closeModal();
+      }
+    });
+
     try {
+      // Step 1: Prepare data
+      exportModal.updateProgress({
+        steps: steps.map((step, index) => 
+          index === 0 ? { ...step, status: 'running' } : step
+        ),
+        currentStep: 0,
+        progress: 10
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 800)); // Simulate data preparation
+      
+      // Step 2: Format data
+      exportModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index === 0) return { ...step, status: 'completed' };
+          if (index === 1) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 1,
+        progress: 40
+      });
+      
       const data = exportData(exportFormat);
+      await new Promise(resolve => setTimeout(resolve, 600)); // Simulate formatting
+      
+      // Step 3: Generate file
+      exportModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index <= 1) return { ...step, status: 'completed' };
+          if (index === 2) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 2,
+        progress: 70
+      });
+      
       const blob = new Blob([data], { 
         type: exportFormat === 'csv' ? 'text/csv' : 'application/json' 
       });
+      await new Promise(resolve => setTimeout(resolve, 400)); // Simulate file generation
+      
+      // Step 4: Download
+      exportModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index <= 2) return { ...step, status: 'completed' };
+          if (index === 3) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 3,
+        progress: 90
+      });
+      
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -603,8 +759,30 @@ export const CostTracker: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      
+      // Complete
+      exportModal.updateProgress({
+        steps: steps.map(step => ({ ...step, status: 'completed' })),
+        currentStep: 3,
+        progress: 100,
+        isComplete: true,
+        canClose: true,
+        successMessage: `Cost data successfully exported as ${exportFormat.toUpperCase()} file`
+      });
+      
     } catch (err) {
       console.error('Export failed:', err);
+      exportModal.updateProgress({
+        hasError: true,
+        errorMessage: `Failed to export data: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        canClose: true,
+        onRetry: () => {
+          exportModal.closeModal();
+          setTimeout(() => handleExport(), 100);
+        }
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -634,6 +812,108 @@ export const CostTracker: React.FC = () => {
   const efficiency = analytics?.efficiency;
   const costTrend = analytics?.costTrends;
   
+  // Enhanced refresh function with progress modal
+  const handleRefreshWithProgress = async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    
+    const steps: ProgressStep[] = [
+      {
+        id: 'fetch-metrics',
+        label: 'Fetching latest metrics',
+        description: 'Retrieving current cost data',
+        status: 'pending'
+      },
+      {
+        id: 'calculate-analytics',
+        label: 'Calculating analytics',
+        description: 'Processing usage patterns and trends',
+        status: 'pending'
+      },
+      {
+        id: 'update-charts',
+        label: 'Updating visualizations',
+        description: 'Refreshing charts and graphs',
+        status: 'pending'
+      }
+    ];
+
+    analyticsModal.openModal({
+      title: 'Refreshing Analytics',
+      description: 'Updating cost tracking data and analytics',
+      steps,
+      canCancel: false,
+      canClose: false,
+      indeterminate: false
+    });
+
+    try {
+      // Step 1: Fetch metrics
+      analyticsModal.updateProgress({
+        steps: steps.map((step, index) => 
+          index === 0 ? { ...step, status: 'running' } : step
+        ),
+        currentStep: 0,
+        progress: 10
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Step 2: Calculate analytics
+      analyticsModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index === 0) return { ...step, status: 'completed' };
+          if (index === 1) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 1,
+        progress: 50
+      });
+      
+      // Call the actual refresh function
+      await refreshData();
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Step 3: Update charts
+      analyticsModal.updateProgress({
+        steps: steps.map((step, index) => {
+          if (index <= 1) return { ...step, status: 'completed' };
+          if (index === 2) return { ...step, status: 'running' };
+          return step;
+        }),
+        currentStep: 2,
+        progress: 80
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Complete
+      analyticsModal.updateProgress({
+        steps: steps.map(step => ({ ...step, status: 'completed' })),
+        currentStep: 2,
+        progress: 100,
+        isComplete: true,
+        canClose: true,
+        successMessage: 'Analytics data refreshed successfully'
+      });
+      
+    } catch (err) {
+      console.error('Refresh failed:', err);
+      analyticsModal.updateProgress({
+        hasError: true,
+        errorMessage: `Failed to refresh data: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        canClose: true,
+        onRetry: () => {
+          analyticsModal.closeModal();
+          setTimeout(() => handleRefreshWithProgress(), 100);
+        }
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+  
   // Check if we have any usage data
   const hasUsageData = summary.totalCalls > 0 || summary.totalCost > 0;
 
@@ -658,12 +938,33 @@ export const CostTracker: React.FC = () => {
   }
 
   return (
-    <motion.div 
-      className="space-y-6 lg:space-y-8"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
+    <ErrorBoundary
+      fallbackType="card"
+      severity="warning"
+      componentName="CostTracker"
+      fallback={
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 text-center">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            Cost Tracker Unavailable
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            The cost tracking dashboard encountered an error. Your data is safe, but the interface is temporarily unavailable.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Refresh Dashboard
+          </button>
+        </div>
+      }
     >
+      <motion.div 
+        className="space-y-6 lg:space-y-8"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      >
       {/* Header */}
       <motion.div 
         className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
@@ -707,23 +1008,31 @@ export const CostTracker: React.FC = () => {
               <option value="csv">CSV</option>
               <option value="json">JSON</option>
             </select>
-            <button
+            <Button
               onClick={handleExport}
-              className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 transition-colors text-sm border border-blue-600"
+              loading={isExporting}
+              disabled={isExporting}
+              className="rounded-r-lg rounded-l-none border-l-0 text-sm"
+              size="sm"
+              variant="primary"
+              leftIcon={!isExporting ? <Download className="w-4 h-4" /> : undefined}
             >
-              <Download className="w-4 h-4 mr-1" />
-              Export
-            </button>
+              {isExporting ? 'Exporting...' : 'Export'}
+            </Button>
           </div>
           
           <div className="group relative">
-            <button
-              onClick={refreshData}
-              disabled={loading}
-              className="p-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            <Button
+              onClick={handleRefreshWithProgress}
+              loading={isRefreshing || loading}
+              disabled={isRefreshing || loading}
+              variant="secondary"
+              size="sm"
+              className="p-2"
+              aria-label="Refresh analytics data"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+              <RefreshCw className="w-4 h-4" />
+            </Button>
             <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10">
               <div className="bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap">
                 Refresh data
@@ -792,7 +1101,7 @@ export const CostTracker: React.FC = () => {
                 Service
               </label>
               <select
-                value={filterService}
+                value={filterService || ''}
                 onChange={(e) => setFilterService(e.target.value)}
                 className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
@@ -831,6 +1140,18 @@ export const CostTracker: React.FC = () => {
         </div>
       )}
 
+      {/* Loading State */}
+      {loading && !hasUsageData && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <SkeletonCostTracker />
+        </motion.div>
+      )}
+
       {/* Summary Cards or Empty State */}
       <AnimatePresence mode="wait">
         {!hasUsageData && !loading ? (
@@ -852,39 +1173,48 @@ export const CostTracker: React.FC = () => {
             transition={{ duration: 0.3 }}
           >
             <MotionList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-              <CostMetricCard
-                title="Total Cost"
-                value={`$${summary.totalCost.toFixed(3)}`}
-                icon={DollarSign}
-                trend={costTrend ? {
-                  value: costTrend.percentage,
-                  isPositive: costTrend.direction === 'up'
-                } : undefined}
-                isPrimary={true}
-                loading={loading}
-              />
-              
-              <CostMetricCard
-                title="API Calls"
-                value={summary.totalCalls.toLocaleString()}
-                icon={Activity}
-                loading={loading}
-              />
-              
-              <CostMetricCard
-                title="Avg Cost/Call"
-                value={`$${(summary.totalCost / Math.max(summary.totalCalls, 1)).toFixed(4)}`}
-                icon={Target}
-                loading={loading}
-              />
-              
-              <CostMetricCard
-                title="Efficiency"
-                value={efficiency ? `${Math.round(efficiency.averageTokensPerDollar)}t/$` : '-'}
-                icon={Zap}
-                tooltip="Average tokens generated per dollar spent - higher is more efficient"
-                loading={loading}
-              />
+              {loading ? (
+                // Show skeleton cards while loading
+                Array.from({ length: 4 }).map((_, index) => (
+                  <SkeletonDashboardCard key={index} showTrend={index < 2} />
+                ))
+              ) : (
+                <>
+                  <CostMetricCard
+                    title="Total Cost"
+                    value={`$${summary.totalCost.toFixed(3)}`}
+                    icon={DollarSign}
+                    trend={costTrend ? {
+                      value: costTrend.percentage,
+                      isPositive: costTrend.direction === 'up'
+                    } : undefined}
+                    isPrimary={true}
+                    loading={false}
+                  />
+                  
+                  <CostMetricCard
+                    title="API Calls"
+                    value={summary.totalCalls.toLocaleString()}
+                    icon={Activity}
+                    loading={false}
+                  />
+                  
+                  <CostMetricCard
+                    title="Avg Cost/Call"
+                    value={`$${(summary.totalCost / Math.max(summary.totalCalls, 1)).toFixed(4)}`}
+                    icon={Target}
+                    loading={false}
+                  />
+                  
+                  <CostMetricCard
+                    title="Efficiency"
+                    value={efficiency ? `${Math.round(efficiency.averageTokensPerDollar)}t/$` : '-'}
+                    icon={Zap}
+                    tooltip="Average tokens generated per dollar spent - higher is more efficient"
+                    loading={false}
+                  />
+                </>
+              )}
             </MotionList>
           </motion.div>
         )}
@@ -1041,7 +1371,12 @@ export const CostTracker: React.FC = () => {
           </div>
         </div>
       </motion.div>
-    </motion.div>
+      </motion.div>
+      
+      {/* Progress Modals */}
+      <exportModal.ProgressModal />
+      <analyticsModal.ProgressModal />
+    </ErrorBoundary>
   );
 };
 

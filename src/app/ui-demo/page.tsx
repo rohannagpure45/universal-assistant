@@ -8,7 +8,13 @@ import {
 } from 'lucide-react';
 
 // Demo Dashboard Card Component
-const DashboardCard = ({ title, value, icon: Icon, trend, className = '' }) => {
+const DashboardCard = ({ title, value, icon: Icon, trend, className = '' }: {
+  title: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+  trend?: { value: number; isPositive: boolean };
+  className?: string;
+}) => {
   const [isVisible, setIsVisible] = useState(false);
   
   useEffect(() => {
@@ -55,7 +61,7 @@ const DashboardCard = ({ title, value, icon: Icon, trend, className = '' }) => {
 };
 
 // Demo Navigation Sidebar
-const Sidebar = ({ isOpen }) => {
+const Sidebar = ({ isOpen }: { isOpen: boolean }) => {
   const navigationItems = [
     { label: 'Dashboard', href: '/dashboard', icon: Home, active: true },
     { label: 'Meeting', href: '/meeting', icon: Mic, active: false },

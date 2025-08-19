@@ -63,20 +63,20 @@ export const useCostStore = create<CostStore>()(
         
         // Filters and views
         selectedPeriod: 'day' as const,
-        selectedGranularity: 'hour' as const,
+        selectedGranularity: 'global' as const,
         filterModel: 'all' as const,
         filterDateRange: { start: null, end: null },
         filterService: null,
         
         // Configuration
         config: {
+          enabled: true,
+          trackingLevel: 'detailed' as const,
+          retentionDays: 30,
+          budgetAlerts: true,
           realTimeTracking: true,
-          budgetAlertsEnabled: true,
-          performanceMonitoring: true,
-          autoExport: false,
-          exportInterval: 3600000,
-          retentionPeriod: 30,
-          aggregationLevel: 'detailed' as const
+          aggregationInterval: 60,
+          exportFormat: 'json' as const
         },
         
         // Performance
@@ -183,9 +183,9 @@ export const useCostStore = create<CostStore>()(
 
           // Apply config changes to tracker
           const tracker = get().tracker;
-          if (tracker && config.budgetAlertsEnabled !== undefined) {
+          if (tracker && config.budgetAlerts !== undefined) {
             tracker.updateConfig({
-              enableBudgetAlerts: config.budgetAlertsEnabled
+              enableBudgetAlerts: config.budgetAlerts
             });
           }
         },

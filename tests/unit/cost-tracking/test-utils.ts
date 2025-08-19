@@ -218,7 +218,7 @@ export const measurePerformance = async <T>(fn: () => Promise<T>): Promise<{ res
 export const createMockCostTracker = (): Partial<CostTracker> => ({
   trackAPICall: jest.fn().mockResolvedValue(createMockAPICall()),
   estimateCost: jest.fn().mockReturnValue(createMockCostEstimation()),
-  getCostAnalytics: jest.fn().mockReturnValue(createMockCostAnalytics()),
+  getAnalytics: jest.fn().mockReturnValue(createMockCostAnalytics()),
   getUsageMetrics: jest.fn().mockReturnValue(createMockUsageMetrics()),
   createBudget: jest.fn().mockReturnValue(createMockCostBudget()),
   updateBudget: jest.fn().mockReturnValue(createMockCostBudget()),

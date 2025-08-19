@@ -125,7 +125,10 @@ interface BaseCardProps {
   role?: string;
 }
 
-interface MotionCardProps extends BaseCardProps, Omit<HTMLMotionProps<'div'>, 'children' | 'className'> {
+interface MotionCardProps extends BaseCardProps, Omit<HTMLMotionProps<'div'>, 'children' | 'className' | 'role' | keyof BaseCardProps> {
+  /** Whether this is a static card (discriminant) */
+  static?: false | undefined;
+  
   /** Motion variants - defaults to card preset */
   variants?: any;
   
@@ -151,16 +154,30 @@ interface MotionCardProps extends BaseCardProps, Omit<HTMLMotionProps<'div'>, 'c
   whileInView?: any;
 }
 
-interface StaticCardProps extends BaseCardProps, Omit<React.HTMLAttributes<HTMLDivElement>, 'children' | 'className'> {
-  /** No motion - static card */
-  static?: true;
+interface StaticCardProps extends BaseCardProps, Omit<React.HTMLAttributes<HTMLDivElement>, 'children' | 'className' | 'role' | keyof BaseCardProps> {
+  /** Static card discriminant - required literal type */
+  static: true;
+  
+  // Exclude motion-specific properties to ensure type safety
+  variants?: never;
+  initial?: never;
+  animate?: never;
+  exit?: never;
+  transition?: never;
+  whileHover?: never;
+  whileTap?: never;
+  whileInView?: never;
 }
 
 export type CardProps = MotionCardProps | StaticCardProps;
 
-// Type guard to check if props include motion
+// Type guards for discriminated union
+const isStaticCard = (props: CardProps): props is StaticCardProps => {
+  return 'static' in props && props.static === true;
+};
+
 const isMotionCard = (props: CardProps): props is MotionCardProps => {
-  return !('static' in props) || !props.static;
+  return !isStaticCard(props);
 };
 
 /**
@@ -173,15 +190,16 @@ const isMotionCard = (props: CardProps): props is MotionCardProps => {
  * Dependency Inversion: Depends on design system abstractions
  */
 export const Card = forwardRef<HTMLDivElement, CardProps>(
-  ({ 
-    children,
-    size = 'md',
-    variant = 'default',
-    interactive = false,
-    focusable = false,
-    className,
-    ...props
-  }, ref) => {
+  (allProps, ref) => {
+    const { 
+      children,
+      size = 'md',
+      variant = 'default',
+      interactive = false,
+      focusable = false,
+      className,
+      ...props
+    } = allProps;
     // Build class names using design system
     const sizeStyles = `p-${cardSizes[size].padding.replace('rem', '').replace('.', '-')}`;
     const variantConfig = cardVariants[variant];
@@ -192,14 +210,14 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
       variantConfig.background,
       variantConfig.border,
       variantConfig.shadow,
-      variantConfig.extra,
+      'extra' in variantConfig ? variantConfig.extra : '',
       interactive && cardConfig.interactive,
       focusable && cardConfig.focusable,
       className
     );
 
     // For motion cards, use motion.div
-    if (isMotionCard(props)) {
+    if (isMotionCard(allProps)) {
       const {
         variants = presets.card,
         initial = 'initial',
@@ -208,7 +226,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
         whileTap = interactive ? 'tap' : undefined,
         transition = { duration: 0.2 },
         ...motionProps
-      } = props;
+      } = props as MotionCardProps;
 
       return (
         <motion.div
@@ -228,7 +246,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
     }
 
     // For static cards, use regular div
-    const { static: _, ...staticProps } = props as StaticCardProps;
+    const { static: _, ...staticProps } = allProps as StaticCardProps;
     return (
       <div
         ref={ref}
@@ -243,11 +261,15 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(
 
 Card.displayName = 'Card';
 
+// Type for InteractiveCard - force it to be static to avoid motion/HTML event conflicts
+type InteractiveCardProps = Omit<StaticCardProps, 'interactive' | 'focusable' | 'static'>;
+
 // Specialized card components following Single Responsibility
-export const InteractiveCard = forwardRef<HTMLDivElement, Omit<CardProps, 'interactive' | 'focusable'>>(
+export const InteractiveCard = forwardRef<HTMLDivElement, InteractiveCardProps>(
   (props, ref) => (
     <Card 
       ref={ref} 
+      static
       interactive 
       focusable 
       role="button"
@@ -378,7 +400,7 @@ export const createCardClasses = (
     variantConfig.background,
     variantConfig.border,
     variantConfig.shadow,
-    variantConfig.extra,
+    'extra' in variantConfig ? variantConfig.extra : '',
     interactive && cardConfig.interactive,
     focusable && cardConfig.focusable,
     customClasses
@@ -386,4 +408,4 @@ export const createCardClasses = (
 };
 
 // Export types for external use
-export type { CardProps, MotionCardProps, StaticCardProps, BaseCardProps };
+export type { MotionCardProps, StaticCardProps, BaseCardProps };

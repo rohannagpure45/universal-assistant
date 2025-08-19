@@ -2,7 +2,22 @@
 export * from './authStore';
 export * from './meetingStore';
 export * from './appStore';
-export * from './costStore';
+
+// Export cost store with specific naming to avoid conflicts
+export { 
+  useCostStore,
+  validateAPICall,
+  validateBudget,
+  validatePeriod,
+  VALIDATION_ERRORS,
+  selectBudgetUtilization,
+  selectPerformanceMetrics,
+  selectCostAlerts,
+  PerformanceCache,
+  VirtualScrollHelper,
+  RequestDeduplicator,
+  BatchProcessor
+} from './costStore';
 
 // ============ HOOK EXPORTS ============
 // Export specific hooks to avoid naming conflicts

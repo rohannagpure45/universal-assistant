@@ -6,6 +6,7 @@ import {
   PlayCircle, PauseCircle, StopCircle, DollarSign, Settings, Home,
   Bell, LogOut, User, X, Menu, Zap, Target, RefreshCw
 } from 'lucide-react';
+import { TestButtonProps } from '@/components/ui/test-button-props';
 
 // Demo Dashboard Card Component
 const DashboardCard = ({ title, value, icon: Icon, trend, className = '' }: {
@@ -365,6 +366,13 @@ export default function UIDemoPage() {
                 <p className="text-fluid-sm text-gray-500 dark:text-gray-500">
                   Fluid Small Text - For secondary information
                 </p>
+              </div>
+            </section>
+            
+            {/* Section: Button Prop Testing */}
+            <section>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                <TestButtonProps />
               </div>
             </section>
           </div>

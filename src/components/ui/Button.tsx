@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { presets } from '@/lib/motion-variants';
 import { spacing, colors, typography, accessibility } from '@/lib/design-system';
+import { processComponentProps } from '@/utils/propUtils';
 
 // Button configuration following design system
 const buttonConfig = {
@@ -478,14 +479,31 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     // Use type discrimination with proper type guards (TypeScript best practice)
     if (isStaticButtonProps(props)) {
       // TypeScript now knows this is StaticButtonProps - no motion properties available
-      const { static: _, ...cleanStaticProps } = props;
+      const { 
+        static: _, 
+        children: _children,
+        size: _size,
+        variant: _variant,
+        disabled: _disabled,
+        loading: _loading,
+        leftIcon: _leftIcon,
+        rightIcon: _rightIcon,
+        fullWidth: _fullWidth,
+        className: _className,
+        'aria-label': _ariaLabel,
+        'aria-describedby': _ariaDescribedBy,
+        ...cleanStaticProps 
+      } = props;
+      
+      // Process props to filter out custom props for DOM safety
+      const { filteredProps: domSafeProps } = processComponentProps(cleanStaticProps);
       
       return (
         <button
           ref={ref}
           className={classes}
           {...accessibilityProps}
-          {...cleanStaticProps}
+          {...domSafeProps}
         >
           {buttonContent}
         </button>
@@ -498,8 +516,22 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       whileHover, 
       whileTap, 
       static: _,
+      children: _children,
+      size: _size,
+      variant: _variant,
+      disabled: _disabled,
+      loading: _loading,
+      leftIcon: _leftIcon,
+      rightIcon: _rightIcon,
+      fullWidth: _fullWidth,
+      className: _className,
+      'aria-label': _ariaLabel,
+      'aria-describedby': _ariaDescribedBy,
       ...restMotionProps 
     } = props;
+
+    // Process props to filter out custom props for DOM safety
+    const { filteredProps: domSafeMotionProps } = processComponentProps(restMotionProps);
 
     return (
       <motion.button
@@ -509,7 +541,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         whileHover={whileHover ?? (!isDisabled ? 'hover' : undefined)}
         whileTap={whileTap ?? (!isDisabled ? 'tap' : undefined)}
         {...accessibilityProps}
-        {...restMotionProps}
+        {...domSafeMotionProps}
       >
         {buttonContent}
       </motion.button>

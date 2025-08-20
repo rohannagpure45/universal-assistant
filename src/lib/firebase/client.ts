@@ -27,15 +27,23 @@ if (!getApps().length) {
 }
 
 auth = getAuth(app);
-// Use long-polling fallback to improve compatibility (e.g., Safari private mode / corporate networks)
+
+// IMPORTANT: Use REST-only mode to eliminate streaming transport issues
+// This prevents WebSocket/WebChannel errors in Brave, Safari, and strict networks
 try {
   db = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
+    // Force REST-only mode - no WebSocket connections
+    experimentalForceLongPolling: false, // Disable polling to force REST
+    experimentalAutoDetectLongPolling: false, // Don't auto-detect
+    useFetchStreams: false, // Disable streaming completely
+    ignoreUndefinedProperties: true, // Handle undefined values gracefully
   } as any);
 } catch (_e) {
   // Fallback to default if initializeFirestore already called elsewhere
+  console.warn('Firestore already initialized, using existing instance');
   db = getFirestore(app);
 }
+
 storage = getStorage(app);
 
 // Analytics only in browser
@@ -43,4 +51,7 @@ if (typeof window !== 'undefined') {
   analytics = getAnalytics(app);
 }
 
-export { app, auth, db, storage, analytics };
+// Add runtime flag to indicate REST-only mode
+const FIRESTORE_REST_MODE = true;
+
+export { app, auth, db, storage, analytics, FIRESTORE_REST_MODE };

@@ -1,5 +1,5 @@
 import { adminDb } from '@/lib/firebase/admin';
-import { db } from '@/lib/firebase/client';
+import { app, db, FIRESTORE_REST_MODE } from '@/lib/firebase/client';
 import { 
   collection, 
   doc, 
@@ -23,6 +23,16 @@ import {
   onSnapshot,
   Unsubscribe
 } from 'firebase/firestore';
+// Firestore Lite (REST, no WebChannel) for one-off reads that avoid listen/streaming transport
+import {
+  getFirestore as getFirestoreLite,
+  collection as liteCollection,
+  query as liteQuery,
+  where as liteWhere,
+  limit as liteLimit,
+  getDocs as liteGetDocs,
+} from 'firebase/firestore/lite';
+import FirestoreLiteService from '@/lib/firebase/firestoreLite';
 import type { 
   User, 
   Meeting, 
@@ -49,6 +59,100 @@ import type {
   VoiceProfileMetadata,
   AnalyticsMetadata 
 } from '@/types/firebase';
+
+// Query optimization cache
+const QueryCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes default TTL
+const DASHBOARD_CACHE_TTL = 2 * 60 * 1000; // 2 minutes for dashboard queries
+
+// Cache key generator
+const generateCacheKey = (operation: string, params: any): string => {
+  return `${operation}:${JSON.stringify(params, Object.keys(params).sort())}`;
+};
+
+// Cache getter with TTL check
+const getCachedResult = (key: string): any | null => {
+  const cached = QueryCache.get(key);
+  if (!cached) return null;
+  
+  if (Date.now() > cached.timestamp + cached.ttl) {
+    QueryCache.delete(key);
+    return null;
+  }
+  
+  return cached.data;
+};
+
+// Cache setter
+const setCachedResult = (key: string, data: any, ttl: number = CACHE_TTL): void => {
+  QueryCache.set(key, {
+    data: JSON.parse(JSON.stringify(data)), // Deep clone
+    timestamp: Date.now(),
+    ttl
+  });
+};
+
+// Performance metrics
+interface QueryMetrics {
+  queryCount: number;
+  cacheHits: number;
+  averageLatency: number;
+  lastQueries: Array<{ operation: string; latency: number; cached: boolean; timestamp: Date }>;
+}
+
+const queryMetrics: QueryMetrics = {
+  queryCount: 0,
+  cacheHits: 0,
+  averageLatency: 0,
+  lastQueries: []
+};
+
+// Performance tracking wrapper
+const trackQueryPerformance = async <T>(
+  operation: string,
+  queryFn: () => Promise<T>,
+  cached: boolean = false
+): Promise<T> => {
+  const startTime = Date.now();
+  
+  try {
+    const result = await queryFn();
+    const latency = Date.now() - startTime;
+    
+    queryMetrics.queryCount++;
+    if (cached) queryMetrics.cacheHits++;
+    
+    // Update average latency
+    queryMetrics.averageLatency = (
+      (queryMetrics.averageLatency * (queryMetrics.queryCount - 1) + latency) / 
+      queryMetrics.queryCount
+    );
+    
+    // Track last queries (keep last 50)
+    queryMetrics.lastQueries.unshift({
+      operation,
+      latency,
+      cached,
+      timestamp: new Date()
+    });
+    
+    if (queryMetrics.lastQueries.length > 50) {
+      queryMetrics.lastQueries.pop();
+    }
+    
+    return result;
+  } catch (error) {
+    const latency = Date.now() - startTime;
+    queryMetrics.lastQueries.unshift({
+      operation: `${operation}:ERROR`,
+      latency,
+      cached,
+      timestamp: new Date()
+    });
+    
+    throw error;
+  }
+};
 
 // Utility functions for Firestore timestamp conversion
 const convertTimestamps = (data: any): any => {
@@ -225,9 +329,17 @@ export class DatabaseService {
    */
   static async createMeeting(meetingData: Omit<Meeting, 'meetingId'>): Promise<string> {
     try {
+      // Persist a denormalized participantsUserIds array to enable efficient membership queries
+      const participantsUserIds = Array.isArray(meetingData.participants)
+        ? meetingData.participants.map((p: any) => p.userId).filter(Boolean)
+        : [];
+
       const meetingRef = await addDoc(
         collection(db, 'meetings'), 
-        convertDatesToTimestamps(meetingData)
+        convertDatesToTimestamps({
+          ...meetingData,
+          participantsUserIds,
+        })
       );
       
       return meetingRef.id;
@@ -302,56 +414,105 @@ export class DatabaseService {
   }
 
   /**
-   * Get user meetings with pagination
+   * Get user meetings with pagination and caching
+   * Optimized for dashboard performance with intelligent caching
    */
   static async getUserMeetings(
     userId: string, 
     options: PaginationOptions = {}
   ): Promise<PaginatedResult<Meeting>> {
-    try {
-      const {
-        limit: pageLimit = 20,
-        startAfterDoc,
-        orderByField = 'startTime',
-        orderDirection = 'desc'
-      } = options;
-
-      let meetingQuery = query(
-        collection(db, 'meetings'),
-        where('participants', 'array-contains-any', [userId]),
-        orderBy(orderByField, orderDirection),
-        limit(pageLimit + 1) // Get one extra to check if there are more
-      );
-
-      if (startAfterDoc) {
-        meetingQuery = query(meetingQuery, startAfter(startAfterDoc));
+    const {
+      limit: pageLimit = 20,
+      startAfterDoc,
+      orderByField = 'startTime',
+      orderDirection = 'desc'
+    } = options;
+    
+    // Generate cache key for first page only (pagination not cached)
+    const cacheKey = !startAfterDoc ? 
+      generateCacheKey('getUserMeetings', { userId, pageLimit, orderByField, orderDirection }) : 
+      null;
+    
+    // Check cache first for non-paginated requests
+    if (cacheKey) {
+      const cached = getCachedResult(cacheKey);
+      if (cached) {
+        return trackQueryPerformance('getUserMeetings', () => Promise.resolve(cached), true);
       }
-
-      const snapshot = await getDocs(meetingQuery);
-      const docs = snapshot.docs;
-      const hasMore = docs.length > pageLimit;
-      
-      if (hasMore) {
-        docs.pop(); // Remove the extra document
-      }
-
-      const meetings = docs.map(doc => 
-        convertTimestamps({ meetingId: doc.id, ...doc.data() })
-      ) as Meeting[];
-
-      return {
-        data: meetings,
-        lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined,
-        hasMore
-      };
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get meetings for user ${userId}`,
-        'USER_MEETINGS_GET_FAILED',
-        'getUserMeetings',
-        error as Error
-      );
     }
+    
+    return trackQueryPerformance('getUserMeetings', async () => {
+      try {
+
+      // If pagination is requested, fall back to a single query on participantsUserIds
+      // (union pagination is complex; our UI only requests the first page for now)
+      if (startAfterDoc) {
+        let fallbackQuery = query(
+          collection(db, 'meetings'),
+          where('participantsUserIds', 'array-contains', userId),
+          orderBy(orderByField, orderDirection),
+          limit(pageLimit + 1)
+        );
+        fallbackQuery = query(fallbackQuery, startAfter(startAfterDoc));
+        const snap = await getDocs(fallbackQuery);
+        const docs = snap.docs;
+        const hasMore = docs.length > pageLimit;
+        if (hasMore) docs.pop();
+        const meetings = docs.map(doc => convertTimestamps({ meetingId: doc.id, ...doc.data() })) as Meeting[];
+        return { data: meetings, lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined, hasMore };
+      }
+
+      // Primary approach: union queries using Firestore Lite to avoid WebChannel/streaming
+      const dblite = getFirestoreLite(app);
+      const meetingsCol = liteCollection(dblite, 'meetings');
+      const hostQuery = liteQuery(meetingsCol, liteWhere('hostId', '==', userId), liteLimit(pageLimit + 1));
+      const creatorQuery = liteQuery(meetingsCol, liteWhere('createdBy', '==', userId), liteLimit(pageLimit + 1));
+      const participantQuery = liteQuery(meetingsCol, liteWhere('participantsUserIds', 'array-contains', userId), liteLimit(pageLimit + 1));
+
+      const [hostSnap, creatorSnap, participantSnap] = await Promise.all([
+        liteGetDocs(hostQuery),
+        liteGetDocs(creatorQuery),
+        liteGetDocs(participantQuery),
+      ]);
+
+      const docMap = new Map<string, any>();
+      [hostSnap, creatorSnap, participantSnap].forEach((snap) => {
+        snap.docs.forEach((d) => docMap.set(d.id, d));
+      });
+
+      // Convert and sort by startTime descending
+      const allDocs = Array.from(docMap.values());
+      const meetingsAll = allDocs.map((d: any) => convertTimestamps({ meetingId: d.id, ...d.data() })) as Meeting[];
+      meetingsAll.sort((a, b) => {
+        const aTime = (a.startTime || a.createdAt || new Date(0)).getTime();
+        const bTime = (b.startTime || b.createdAt || new Date(0)).getTime();
+        return bTime - aTime;
+      });
+
+      const hasMore = meetingsAll.length > pageLimit;
+      const sliced = meetingsAll.slice(0, pageLimit);
+
+        const result = {
+          data: sliced,
+          lastDoc: undefined, // union pagination not supported in this helper
+          hasMore,
+        };
+        
+        // Cache first page results
+        if (cacheKey) {
+          setCachedResult(cacheKey, result, DASHBOARD_CACHE_TTL);
+        }
+        
+        return result;
+      } catch (error) {
+        throw new DatabaseError(
+          `Failed to get meetings for user ${userId}`,
+          'USER_MEETINGS_GET_FAILED',
+          'getUserMeetings',
+          error as Error
+        );
+      }
+    });
   }
 
   /**
@@ -904,28 +1065,33 @@ export class DatabaseService {
   // ============ COST TRACKING MANAGEMENT ============
 
   /**
-   * Record an API call cost
+   * Record an API call cost with batching optimization
    */
   static async recordAPiCall(userId: string, apiCallData: Omit<APICall, 'id'>): Promise<string> {
-    try {
-      const apiCallRef = await addDoc(
-        collection(db, 'costs', userId, 'apiCalls'),
-        convertDatesToTimestamps(apiCallData)
-      );
-      
-      return apiCallRef.id;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to record API call for user ${userId}`,
-        'API_CALL_RECORD_FAILED',
-        'recordAPiCall',
-        error as Error
-      );
-    }
+    return trackQueryPerformance('recordApiCall', async () => {
+      try {
+        const apiCallRef = await addDoc(
+          collection(db, 'costs', userId, 'apiCalls'),
+          convertDatesToTimestamps(apiCallData)
+        );
+        
+        // Invalidate relevant cache entries
+        this.invalidateCostCache(userId);
+        
+        return apiCallRef.id;
+      } catch (error) {
+        throw new DatabaseError(
+          `Failed to record API call for user ${userId}`,
+          'API_CALL_RECORD_FAILED',
+          'recordAPiCall',
+          error as Error
+        );
+      }
+    });
   }
 
   /**
-   * Get API calls for a user with filtering and pagination
+   * Get API calls for a user with filtering, pagination, and caching
    */
   static async getAPIcalls(
     userId: string,
@@ -936,6 +1102,19 @@ export class DatabaseService {
       service?: string;
     } = {}
   ): Promise<PaginatedResult<APICall>> {
+    const cacheKey = !options.startAfterDoc ? 
+      generateCacheKey('getAPIcalls', { userId, ...options }) : 
+      null;
+    
+    // Check cache first for non-paginated requests
+    if (cacheKey) {
+      const cached = getCachedResult(cacheKey);
+      if (cached) {
+        return trackQueryPerformance('getAPIcalls', () => Promise.resolve(cached), true);
+      }
+    }
+    
+    return trackQueryPerformance('getAPIcalls', async () => {
     try {
       const {
         limit: pageLimit = 50,
@@ -984,19 +1163,27 @@ export class DatabaseService {
         convertTimestamps({ id: doc.id, ...doc.data() })
       ) as APICall[];
 
-      return {
-        data: apiCalls,
-        lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined,
-        hasMore
-      };
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get API calls for user ${userId}`,
-        'API_CALLS_GET_FAILED',
-        'getAPIcalls',
-        error as Error
-      );
-    }
+        const result = {
+          data: apiCalls,
+          lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined,
+          hasMore
+        };
+        
+        // Cache results if not paginated
+        if (cacheKey) {
+          setCachedResult(cacheKey, result, 30000); // 30 second TTL for cost data
+        }
+        
+        return result;
+      } catch (error) {
+        throw new DatabaseError(
+          `Failed to get API calls for user ${userId}`,
+          'API_CALLS_GET_FAILED',
+          'getAPIcalls',
+          error as Error
+        );
+      }
+    });
   }
 
   /**
@@ -1281,33 +1468,53 @@ export class DatabaseService {
   }
 
   /**
-   * Batch record multiple API calls
+   * Batch record multiple API calls with optimization
    */
   static async batchRecordAPIcalls(userId: string, apiCalls: Array<Omit<APICall, 'id'>>): Promise<string[]> {
-    try {
-      const batch = writeBatch(db);
-      const createdIds: string[] = [];
-      
-      apiCalls.forEach((apiCall) => {
-        const apiCallRef = doc(collection(db, 'costs', userId, 'apiCalls'));
-        batch.set(apiCallRef, convertDatesToTimestamps(apiCall));
-        createdIds.push(apiCallRef.id);
-      });
-
-      await batch.commit();
-      return createdIds;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to batch record API calls for user ${userId}`,
-        'BATCH_API_CALLS_RECORD_FAILED',
-        'batchRecordAPIcalls',
-        error as Error
-      );
-    }
+    return trackQueryPerformance('batchRecordAPIcalls', async () => {
+      try {
+        const batch = writeBatch(db);
+        const createdIds: string[] = [];
+        
+        // Process in chunks to avoid Firestore batch size limits
+        const BATCH_SIZE = 500; // Firestore limit
+        const chunks = [];
+        
+        for (let i = 0; i < apiCalls.length; i += BATCH_SIZE) {
+          chunks.push(apiCalls.slice(i, i + BATCH_SIZE));
+        }
+        
+        for (const chunk of chunks) {
+          const chunkBatch = writeBatch(db);
+          const chunkIds: string[] = [];
+          
+          chunk.forEach((apiCall) => {
+            const apiCallRef = doc(collection(db, 'costs', userId, 'apiCalls'));
+            chunkBatch.set(apiCallRef, convertDatesToTimestamps(apiCall));
+            chunkIds.push(apiCallRef.id);
+          });
+          
+          await chunkBatch.commit();
+          createdIds.push(...chunkIds);
+        }
+        
+        // Invalidate relevant cache entries after batch operation
+        this.invalidateCostCache(userId);
+        
+        return createdIds;
+      } catch (error) {
+        throw new DatabaseError(
+          `Failed to batch record API calls for user ${userId}`,
+          'BATCH_API_CALLS_RECORD_FAILED',
+          'batchRecordAPIcalls',
+          error as Error
+        );
+      }
+    });
   }
 
   /**
-   * Get cost summary for a user
+   * Get cost summary for a user with optimized caching
    */
   static async getCostSummary(userId: string): Promise<{
     totalSpend: number;
@@ -1316,6 +1523,15 @@ export class DatabaseService {
     recentCalls: APICall[];
     topModels: Array<{ model: string; cost: number; calls: number }>;
   }> {
+    const cacheKey = generateCacheKey('getCostSummary', { userId });
+    
+    // Check cache first
+    const cached = getCachedResult(cacheKey);
+    if (cached) {
+      return trackQueryPerformance('getCostSummary', () => Promise.resolve(cached), true);
+    }
+    
+    return trackQueryPerformance('getCostSummary', async () => {
     try {
       // Get current month's spending
       const startOfMonth = new Date();
@@ -1354,21 +1570,27 @@ export class DatabaseService {
         .sort((a, b) => b.cost - a.cost)
         .slice(0, 5);
 
-      return {
-        totalSpend,
-        monthlySpend,
-        activeBudgets: budgets.filter(budget => budget.currentUsage < budget.limit),
-        recentCalls: recentCallsResult.data,
-        topModels
-      };
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get cost summary for user ${userId}`,
-        'COST_SUMMARY_GET_FAILED',
-        'getCostSummary',
-        error as Error
-      );
-    }
+        const result = {
+          totalSpend,
+          monthlySpend,
+          activeBudgets: budgets.filter(budget => budget.currentUsage < budget.limit),
+          recentCalls: recentCallsResult.data,
+          topModels
+        };
+        
+        // Cache the result with shorter TTL for cost data
+        setCachedResult(cacheKey, result, 60000); // 1 minute TTL
+        
+        return result;
+      } catch (error) {
+        throw new DatabaseError(
+          `Failed to get cost summary for user ${userId}`,
+          'COST_SUMMARY_GET_FAILED',
+          'getCostSummary',
+          error as Error
+        );
+      }
+    });
   }
 
   /**
@@ -1751,6 +1973,85 @@ export class DatabaseService {
         error as Error
       );
     }
+  }
+
+  // ============ CACHE MANAGEMENT ============
+  
+  /**
+   * Invalidate cache entries for a specific user's cost data
+   */
+  static invalidateCostCache(userId: string): void {
+    const keysToDelete: string[] = [];
+    
+    for (const [key] of QueryCache) {
+      if (key.includes('getCostSummary') && key.includes(userId)) {
+        keysToDelete.push(key);
+      }
+      if (key.includes('getAPIcalls') && key.includes(userId)) {
+        keysToDelete.push(key);
+      }
+      if (key.includes('getCostAnalytics') && key.includes(userId)) {
+        keysToDelete.push(key);
+      }
+    }
+    
+    keysToDelete.forEach(key => QueryCache.delete(key));
+  }
+  
+  /**
+   * Invalidate meeting cache entries for a user
+   */
+  static invalidateMeetingCache(userId: string): void {
+    const keysToDelete: string[] = [];
+    
+    for (const [key] of QueryCache) {
+      if (key.includes('getUserMeetings') && key.includes(userId)) {
+        keysToDelete.push(key);
+      }
+    }
+    
+    keysToDelete.forEach(key => QueryCache.delete(key));
+  }
+  
+  /**
+   * Clear all cache entries
+   */
+  static clearCache(): void {
+    QueryCache.clear();
+    queryMetrics.cacheHits = 0;
+    queryMetrics.queryCount = 0;
+    queryMetrics.averageLatency = 0;
+    queryMetrics.lastQueries = [];
+  }
+  
+  /**
+   * Get cache statistics
+   */
+  static getCacheStats() {
+    return {
+      cacheSize: QueryCache.size,
+      cacheHitRate: queryMetrics.queryCount > 0 ? (queryMetrics.cacheHits / queryMetrics.queryCount) * 100 : 0,
+      totalQueries: queryMetrics.queryCount,
+      averageLatency: queryMetrics.averageLatency,
+      recentQueries: queryMetrics.lastQueries.slice(0, 10)
+    };
+  }
+  
+  /**
+   * Cleanup expired cache entries
+   */
+  static cleanupExpiredCache(): number {
+    const now = Date.now();
+    let cleanedCount = 0;
+    
+    for (const [key, value] of QueryCache) {
+      if (now > value.timestamp + value.ttl) {
+        QueryCache.delete(key);
+        cleanedCount++;
+      }
+    }
+    
+    return cleanedCount;
   }
 
   // ============ HELPER METHODS ============

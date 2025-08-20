@@ -16,11 +16,12 @@ import {
   CustomRule 
 } from '@/types';
 import { DatabaseService } from '@/services/firebase/DatabaseService';
-import { RealtimeService } from '@/services/firebase/RealtimeService';
+import { UnifiedRealtimeService as RealtimeService } from '@/services/firebase/UnifiedRealtimeService';
+import { dashboardCache } from '@/lib/cache/DashboardCache';
 import type { 
   RealtimeUpdate, 
   DocumentChange 
-} from '@/services/firebase/RealtimeService';
+} from '@/services/firebase/UnifiedRealtimeService';
 
 // Meeting-specific error types
 export interface MeetingError {
@@ -618,14 +619,19 @@ export const useMeetingStore = create<MeetingStore>()(
           });
         },
 
-        // Recent meetings actions
+        // Recent meetings actions with caching
         loadRecentMeetings: async (userId, limit = 20) => {
           set((state) => {
             state.isLoadingRecentMeetings = true;
           });
 
           try {
-            const result = await DatabaseService.getUserMeetings(userId, { limit });
+            // Use dashboard cache for recent meetings
+            const result = await dashboardCache.get(
+              `recent-meetings:${userId}:${limit}`,
+              () => DatabaseService.getUserMeetings(userId, { limit }),
+              'high'
+            );
 
             set((state) => {
               state.recentMeetings = result.data;

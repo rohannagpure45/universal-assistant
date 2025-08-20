@@ -1,4 +1,4 @@
-import { AIModel } from '@/types';
+import { AIModel } from './index';
 
 // Cost tracking types for AI model usage and analytics
 export interface TokenUsage {

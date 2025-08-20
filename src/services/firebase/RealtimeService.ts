@@ -176,10 +176,11 @@ export class RealtimeService {
         orderDirection = 'desc'
       } = options;
 
+      // Prefer denormalized participantsUserIds for membership lookups
+      // Avoid orderBy here to prevent composite index requirements; sort client-side instead
       const meetingsQuery = query(
         collection(db, 'meetings'),
-        where('participants', 'array-contains-any', [userId]),
-        orderBy(orderField, orderDirection),
+        where('participantsUserIds', 'array-contains', userId),
         limit(queryLimit)
       );
 
@@ -208,6 +209,11 @@ export class RealtimeService {
               meetingId: doc.id, 
               ...doc.data() 
             }) as Meeting);
+          });
+          meetings.sort((a, b) => {
+            const aTime = (a.startTime || a.createdAt || new Date(0)).getTime();
+            const bTime = (b.startTime || b.createdAt || new Date(0)).getTime();
+            return bTime - aTime;
           });
 
           callback({

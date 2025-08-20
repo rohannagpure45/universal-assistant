@@ -11,8 +11,8 @@
  */
 
 import { DatabaseService } from '@/services/firebase/DatabaseService';
-import type { Meeting, User, APICall, CostBudget } from '@/types';
-import type { CostAnalytics, UsageMetrics } from '@/types/cost';
+import type { Meeting, User } from '@/types';
+// Cost tracking types removed
 
 // Cache configuration
 interface CacheConfig {
@@ -64,13 +64,13 @@ export interface DashboardData {
   costSummary: {
     totalSpend: number;
     monthlySpend: number;
-    activeBudgets: CostBudget[];
-    recentCalls: APICall[];
+    activeBudgets: any[]; // Cost tracking removed
+    recentCalls: any[]; // Cost tracking removed
     topModels: Array<{ model: string; cost: number; calls: number }>;
   };
   userProfile: User;
-  costAnalytics: CostAnalytics | null;
-  usageMetrics: UsageMetrics | null;
+  costAnalytics: any | null; // Cost tracking removed
+  usageMetrics: any | null; // Cost tracking removed
 }
 
 // Type aliases for cleaner code
@@ -240,11 +240,14 @@ export class DashboardCache {
       ),
       
       // Preload cost summary
-      this.get(
-        `cost-summary:${userId}`,
-        () => DatabaseService.getCostSummary(userId),
-        'high'
-      ),
+      // Cost summary removed - returning empty data
+      Promise.resolve({
+        totalSpend: 0,
+        monthlySpend: 0,
+        activeBudgets: [],
+        recentCalls: [],
+        topModels: []
+      }),
       
       // Preload user profile
       this.get(
@@ -307,11 +310,14 @@ export class DashboardCache {
         'high'
       ).catch(() => []),
       
-      this.get(
-        `cost-summary:${userId}`,
-        () => DatabaseService.getCostSummary(userId),
-        'high'
-      ).catch(() => null),
+      // Cost summary removed - returning empty data
+      Promise.resolve({
+        totalSpend: 0,
+        monthlySpend: 0,
+        activeBudgets: [],
+        recentCalls: [],
+        topModels: []
+      }),
       
       this.get(
         `user:${userId}`,

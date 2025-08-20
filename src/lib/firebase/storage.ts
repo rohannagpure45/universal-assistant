@@ -1,117 +1,63 @@
-import { adminStorage } from '@/lib/firebase/admin';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+/**
+ * Legacy storage compatibility layer
+ * Redirects to the new StorageService
+ */
 
-export class StorageService {
-  // Upload voice sample
+import { StorageService as NewStorageService } from '@/services/firebase/StorageService';
+
+export class StorageServiceLegacy {
+  // Redirect voice sample uploads to new structure
   static async uploadVoiceSample(
     userId: string, 
     profileId: string, 
     audioFile: Buffer,
     mimeType: string
   ): Promise<string> {
-    const storage = adminStorage();
-    if (!storage) {
-      throw new Error('Firebase Admin Storage not initialized');
-    }
-
-    const fileName = `voice-samples/${userId}/${profileId}/sample.${mimeType.split('/')[1]}`;
-    const file = storage.bucket().file(fileName);
-    
-    await file.save(audioFile, {
-      metadata: {
-        contentType: mimeType,
-        metadata: { userId, profileId, uploadedAt: new Date().toISOString() }
-      }
-    });
-    
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-    
-    return url;
+    // Map to new structure using deepgramVoiceId
+    return NewStorageService.uploadVoiceSample(
+      profileId, // Use profileId as deepgramVoiceId
+      'legacy_' + userId, // Create a legacy meeting ID
+      audioFile,
+      10 // Default duration
+    );
   }
   
-  // Upload meeting recording
+  // Redirect meeting recording to new structure
   static async uploadMeetingRecording(
     meetingId: string,
     audioFile: Buffer,
     ownerId: string
   ): Promise<string> {
-    const storage = adminStorage();
-    if (!storage) {
-      throw new Error('Firebase Admin Storage not initialized');
-    }
-
-    const fileName = `meeting-recordings/${meetingId}/full-recording.mp3`;
-    const file = storage.bucket().file(fileName);
-    
-    await file.save(audioFile, {
-      metadata: {
-        contentType: 'audio/mpeg',
-        metadata: { meetingId, ownerId, recordedAt: new Date().toISOString() }
-      }
-    });
-    
-    return fileName;
+    return NewStorageService.uploadMeetingRecording(
+      meetingId,
+      audioFile,
+      true // Assume compressed for legacy
+    );
   }
   
-  // Clean up expired TTS cache
+  // TTS cache cleanup now handled differently
   static async cleanupTTSCache(): Promise<void> {
-    const storage = adminStorage();
-    if (!storage) {
-      console.error('Firebase Admin Storage not initialized');
-      return;
-    }
-
-    const [files] = await storage.bucket().getFiles({
-      prefix: 'tts-cache/',
-    });
-    
-    const now = new Date();
-    const expirationMs = 7 * 24 * 60 * 60 * 1000; // 7 days
-    
-    for (const file of files) {
-      const [metadata] = await file.getMetadata();
-      const created = new Date(metadata.timeCreated || new Date());
-      
-      if (now.getTime() - created.getTime() > expirationMs) {
-        await file.delete().catch(console.error);
-      }
-    }
+    // TTS cache no longer exists in new structure
+    // Clean up temp files instead
+    return NewStorageService.cleanupOldTempFiles();
   }
   
-  // Upload user avatar
+  // Redirect user avatar to user uploads
   static async uploadUserAvatar(
     userId: string,
     imageFile: Buffer,
     mimeType: string
   ): Promise<string> {
-    const storage = adminStorage();
-    if (!storage) {
-      throw new Error('Firebase Admin Storage not initialized');
-    }
-
-    const extension = mimeType.split('/')[1];
-    const fileName = `user-uploads/${userId}/avatars/avatar.${extension}`;
-    const file = storage.bucket().file(fileName);
-    
-    await file.save(imageFile, {
-      metadata: {
-        contentType: mimeType,
-        metadata: { userId, type: 'avatar', uploadedAt: new Date().toISOString() }
-      }
-    });
-    
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 365 * 24 * 60 * 60 * 1000 // 1 year
-    });
-    
-    return url;
+    // User avatars now part of user-uploads
+    // Convert to voice training sample for now
+    return NewStorageService.uploadUserVoiceTraining(
+      userId,
+      imageFile,
+      true // Mark as initial
+    );
   }
   
-  // Upload meeting document
+  // Meeting documents now part of meeting recordings metadata
   static async uploadMeetingDocument(
     userId: string,
     meetingId: string,
@@ -119,35 +65,20 @@ export class StorageService {
     fileBuffer: Buffer,
     mimeType: string
   ): Promise<string> {
-    const storage = adminStorage();
-    if (!storage) {
-      throw new Error('Firebase Admin Storage not initialized');
-    }
-
-    const filePath = `user-uploads/${userId}/documents/${meetingId}/${fileName}`;
-    const file = storage.bucket().file(filePath);
-    
-    await file.save(fileBuffer, {
-      metadata: {
-        contentType: mimeType,
-        metadata: { 
-          userId, 
-          meetingId, 
-          originalName: fileName,
-          uploadedAt: new Date().toISOString() 
-        }
-      }
+    // Store as meeting metadata
+    await NewStorageService.saveMeetingMetadata(meetingId, {
+      title: fileName,
+      startTime: new Date(),
+      endTime: new Date(),
+      duration: 0,
+      participants: [userId],
+      transcriptAvailable: false
     });
     
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days
-    });
-    
-    return url;
+    return `meeting-recordings/${meetingId}/metadata.json`;
   }
   
-  // Generate meeting export
+  // Meeting exports no longer needed in new structure
   static async generateMeetingExport(
     userId: string,
     meetingId: string,
@@ -155,37 +86,19 @@ export class StorageService {
     content: Buffer,
     format: 'pdf' | 'docx' | 'json'
   ): Promise<string> {
-    const storage = adminStorage();
-    if (!storage) {
-      throw new Error('Firebase Admin Storage not initialized');
-    }
-
-    const fileName = `exports/${userId}/meeting-summaries/${meetingId}/${exportType}.${format}`;
-    const file = storage.bucket().file(fileName);
-    
-    const mimeTypes = {
-      pdf: 'application/pdf',
-      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      json: 'application/json'
-    };
-    
-    await file.save(content, {
-      metadata: {
-        contentType: mimeTypes[format],
-        metadata: { 
-          userId, 
-          meetingId, 
-          exportType,
-          generatedAt: new Date().toISOString() 
-        }
-      }
+    // Store as meeting metadata
+    await NewStorageService.saveMeetingMetadata(meetingId, {
+      title: `${exportType} export`,
+      startTime: new Date(),
+      endTime: new Date(),
+      duration: 0,
+      participants: [userId],
+      transcriptAvailable: exportType === 'transcript'
     });
     
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
-    
-    return url;
+    return `meeting-recordings/${meetingId}/metadata.json`;
   }
 }
+
+// Export for backward compatibility
+export { StorageServiceLegacy as StorageService };

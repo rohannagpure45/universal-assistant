@@ -1,0 +1,181 @@
+
+users/
+└── {userId}/
+    ├── email: string
+    ├── displayName: string
+    ├── createdAt: timestamp
+    ├── isAdmin: boolean
+    ├── primaryVoiceId: string | null                                                             // Links to voice_library
+    └── settings: {
+          ttsSpeed: number,
+          llmModel: string,
+          maxResponseTokens: number,
+          preferredLanguage: string,
+          timezone: string
+      }
+
+
+voice_library/
+└── {deepgramVoiceId}/                                                             // Use Deepgram's voice ID as key
+    ├── userId: string | null                                                             // null until confirmed
+    ├── userName: string | null                                                             // Display name for this voice
+    ├── confirmed: boolean                                                             // Whether identity is confirmed
+    ├── confidence: number                                                             // 0-1 confidence score
+    ├── firstHeard: timestamp
+    ├── lastHeard: timestamp
+    ├── meetingsCount: number
+    ├── totalSpeakingTime: number                                                             // in seconds
+    ├── audioSamples: array[{                                                             // Keep 3-5 best samples
+    │    		 url: string,                                                             // Firebase Storage URL
+    │     		transcript: string,                                                             // What was said
+    │     		quality: number,                                                             // Audio quality score
+    │     		duration: number,                                                             // Length in seconds
+    │    		 timestamp: timestamp
+    │  		}]
+    └── identificationHistory: array[{                                                             // How voice was identified
+          method: 'self' | 'mentioned' | 'manual' | 'pattern',
+          timestamp: timestamp,
+          meetingId: string,
+          confidence: number,
+          details: string                                                             // e.g., "User confirmed post-meeting"
+      }]
+
+
+meeting_types/
+└── {meetingTypeId}/
+    ├── name: string                               // e.g., "Daily Standup", "Client Review"
+    ├── ownerId: string                               // User who created this type
+    ├── regularParticipants: array[string]                               // Expected userIds (max ~5)
+    ├── systemPrompt: string                               // AI behavior for this meeting type
+    ├── contextRules: string                               // Simple text rules/context
+    ├── files: array[string]                               // Document URLs or empty array
+    ├── aiSettings: {
+    │   		  enableTranscription: boolean,
+    │    		 enableSummaries: boolean,
+    │    		 summaryStyle: string,                               // "bullets" | "narrative" | "action-items"
+    │     		autoIdentifySpeakers: boolean
+    │   }
+    ├── defaultModel: string 		// Preferred model for this type 
+    ├── modelOverrides: { 		// User-specific preferences 
+                 [userId]: { 
+    │ 			  preferredModel: string, 
+    │			  lastUsed: timestamp 
+    │               } 
+    │            } 
+   ├── modelSpecificPrompts: { 			// Different prompts per model 
+    │ 			"gpt-4o": string,
+    │ 			"gpt-4o-mini": string, 
+    │ 			"gpt-5": string,
+    │ 			"gpt-5-mini": string,
+    │ 			"gpt-5-nano": string,
+    │ 			"claude-3-5-sonnet": string,
+    │ 			"claude-3-5-opus": string,
+    │ 			"claude-3-7-sonnet": string,
+    │ 			"claude-3-7-opus": string
+    │ 		} 
+  └── modelCompatibility: { 			// Track what works best 
+		    recommendedModel: string, 
+		    performanceHistory: array[{
+		     model: string,
+		     avgResponseTime: number, 
+		     successRate: number, 
+		     userSatisfaction: number 
+		}]
+	     }
+    └── createdAt: timestamp
+
+
+meetings/
+└── {meetingId}/
+    ├── meetingTypeId: string
+    ├── hostId: string                               // Meeting organizer
+    ├── participantIds: array[string]                // All userIds who participated (for access control)
+    ├── title: string
+    ├── date: timestamp
+    ├── duration: number                               // in minutes
+    ├── status: 'scheduled' | 'active' | 'ended' | 'processed'
+    ├── aiModelHistory: array[{                     // Track model changes 
+     │                              model: string,                                // e.g., "gpt-4", "claude-3", "gemini-pro" 
+     │                              switchedAt: timestamp, │ switchedBy: string,                              // userId 
+     │                              reason: string | null,                                                             // Optional reason for switch 
+     │                              transcriptIndex: number                                                        // Where in transcript the switch occurred }] 
+    ├── currentModel: string                                                            // Active model for this meeting 
+    └── modelContext: {                                                           // Preserve context across model switches 
+                    summary: string,                                                           // What's been discussed so far 
+                    speakers: object,                                                           // Speaker identification up to this point
+                    topics: array[string],                                                           // Key topics covered
+                    lastPrompt: string                                                           // Last system prompt used
+   
+    ├── participants: {                                                           // Participant tracking by voice                             
+    │     [deepgramVoiceId]: {
+    │         userId: string | null,                                       // null if unidentified
+    │         name: string,                                       // "John" or "Unknown Speaker 1"
+    │         confirmed: boolean,
+    │         confidence: number,                                       // 0-1
+    │         joinTime: timestamp,
+    │         lastActiveTime: timestamp,
+    │         totalSpoken: number,                                       // seconds
+    │         wordCount: number
+    │     }
+    │   }
+    ├── notes: string                                                             // AI-generated summary/notes in markdown                       // Meeting content
+    ├── keyPoints: array[string]                                                             // Max 10 bullet points
+    ├── actionItems: array[{
+    │     text: string,
+    │     assignedTo: string | null,                                                             // userId or name
+    │     dueDate: timestamp | null,
+    │     completed: boolean
+    │   }]
+    └── transcript: array[{                                                             // Full transcript
+          voiceId: string,                                                             // deepgramVoiceId
+          speakerName: string,                                                             // Display name at time of meeting
+          text: string,
+          timestamp: timestamp,
+          confidence: number                                                             // Transcription confidence
+      }]
+
+
+
+needs_identification/
+└── {meetingId}_{deepgramVoiceId}/
+    ├── meetingId: string
+    ├── meetingTitle: string
+    ├── meetingDate: timestamp
+    ├── meetingTypeId: string
+    ├── hostId: string                                       // Who to notify for review
+    ├── voiceId: string                                       // deepgramVoiceId
+    ├── speakerLabel: string  			// Current label (e.g., "Unknown Speaker 2")
+    ├── sampleTranscripts: array[{  				// 2-3 clear examples
+    │     text: string,
+    │     timestamp: timestamp
+    │   }]
+    ├── audioUrl: string  // Best quality clip
+    ├── suggestedMatches: array[{  // AI suggestions
+    │     userId: string,
+    │     userName: string,
+    │     confidence: number,
+    │     reason: string  // Why AI thinks this
+    │   }]
+    ├── status: 'pending' | 'identified' | 'skipped'
+    └── createdAt: timestamp
+
+
+
+// ============================================
+// VOICE MATCHING CACHE (Optional optimization)
+// ============================================
+voice_matches/
+└── {deepgramVoiceId}/
+    ├── confirmedUserId: string | null
+    ├── lastUpdated: timestamp
+    └── meetingHistory: array[{  // Last 10 meetings
+          meetingId: string,
+          confidence: number,
+          date: timestamp
+      }]
+
+
+
+
+
+

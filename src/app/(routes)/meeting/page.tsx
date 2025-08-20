@@ -349,6 +349,8 @@ export default function MeetingPage() {
         id: '',
         title: `Meeting - ${new Date().toLocaleString()}`,
         type: MeetingType.TEAM_STANDUP,
+        meetingTypeId: 'default-meeting-type', // Added required field
+        participantIds: [user.uid], // Added required field
         status: 'active' as const,
         hostId: user.uid,
         createdBy: user.uid,

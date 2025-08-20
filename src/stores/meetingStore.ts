@@ -12,8 +12,7 @@ import {
   TranscriptEntry, 
   Participant, 
   SpeakerProfile, 
-  MeetingType,
-  CustomRule 
+  MeetingType
 } from '@/types';
 import { DatabaseService } from '@/services/firebase/DatabaseService';
 import { UnifiedRealtimeService as RealtimeService } from '@/services/firebase/UnifiedRealtimeService';

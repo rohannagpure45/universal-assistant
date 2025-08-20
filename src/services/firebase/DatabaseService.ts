@@ -1,5 +1,5 @@
 import { adminDb } from '@/lib/firebase/admin';
-import { app, db, FIRESTORE_REST_MODE } from '@/lib/firebase/client';
+import { db } from '@/lib/firebase/client';
 import { 
   collection, 
   doc, 
@@ -20,45 +20,16 @@ import {
   QueryDocumentSnapshot,
   serverTimestamp,
   increment,
-  onSnapshot,
-  Unsubscribe
 } from 'firebase/firestore';
-// Firestore Lite (REST, no WebChannel) for one-off reads that avoid listen/streaming transport
-import {
-  getFirestore as getFirestoreLite,
-  collection as liteCollection,
-  query as liteQuery,
-  where as liteWhere,
-  limit as liteLimit,
-  getDocs as liteGetDocs,
-} from 'firebase/firestore/lite';
-import FirestoreLiteService from '@/lib/firebase/firestoreLite';
+// Firestore Lite removed - not needed with new schema
 import type { 
   User, 
   Meeting, 
   TranscriptEntry, 
-  SpeakerProfile, 
-  CustomRule, 
   MeetingType,
-  UserPreferences,
-  Participant
+  UserPreferences
 } from '@/types';
-import type {
-  APICall,
-  CostBudget,
-  CostAnalytics,
-  UsageMetrics,
-  TimeBasedUsage,
-  CostEvent,
-  CostPeriod,
-  CostGranularity
-} from '@/types/cost';
-import type { 
-  UserMetadata, 
-  MeetingMetadata, 
-  VoiceProfileMetadata,
-  AnalyticsMetadata 
-} from '@/types/firebase';
+// Firebase metadata types removed - not needed
 
 // Query optimization cache
 const QueryCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
@@ -261,9 +232,9 @@ export class DatabaseService {
   }
 
   /**
-   * Get user by ID
+   * Get user by ID with access control check
    */
-  static async getUser(userId: string): Promise<User | null> {
+  static async getUser(userId: string, requestingUserId?: string): Promise<User | null> {
     try {
       const userDoc = await getDoc(doc(db, 'users', userId));
       
@@ -271,7 +242,21 @@ export class DatabaseService {
         return null;
       }
 
-      return convertTimestamps({ uid: userDoc.id, ...userDoc.data() }) as User;
+      const userData = convertTimestamps({ uid: userDoc.id, ...userDoc.data() }) as User;
+      
+      // Access control: users can only see their own full data unless they're admin
+      if (requestingUserId && requestingUserId !== userId) {
+        const requestingUser = await getDoc(doc(db, 'users', requestingUserId));
+        if (!requestingUser.exists() || !requestingUser.data()?.isAdmin) {
+          // Return limited data for non-admin users viewing others
+          return {
+            ...userData,
+            preferences: {} as UserPreferences // Hide preferences from other users
+          };
+        }
+      }
+
+      return userData;
     } catch (error) {
       throw new DatabaseError(
         `Failed to get user ${userId}`,
@@ -329,16 +314,19 @@ export class DatabaseService {
    */
   static async createMeeting(meetingData: Omit<Meeting, 'meetingId'>): Promise<string> {
     try {
-      // Persist a denormalized participantsUserIds array to enable efficient membership queries
-      const participantsUserIds = Array.isArray(meetingData.participants)
-        ? meetingData.participants.map((p: any) => p.userId).filter(Boolean)
-        : [];
+      // Ensure participantIds is set for access control
+      const participantIds = meetingData.participantIds || [];
+      
+      // Add the host to participants if not already included
+      if (meetingData.hostId && !participantIds.includes(meetingData.hostId)) {
+        participantIds.push(meetingData.hostId);
+      }
 
       const meetingRef = await addDoc(
         collection(db, 'meetings'), 
         convertDatesToTimestamps({
           ...meetingData,
-          participantsUserIds,
+          participantIds,
         })
       );
       
@@ -354,9 +342,9 @@ export class DatabaseService {
   }
 
   /**
-   * Get meeting by ID
+   * Get meeting by ID with access control
    */
-  static async getMeeting(meetingId: string): Promise<Meeting | null> {
+  static async getMeeting(meetingId: string, requestingUserId?: string): Promise<Meeting | null> {
     try {
       const meetingDoc = await getDoc(doc(db, 'meetings', meetingId));
       
@@ -364,10 +352,23 @@ export class DatabaseService {
         return null;
       }
 
-      return convertTimestamps({ 
+      const meetingData = convertTimestamps({ 
         meetingId: meetingDoc.id, 
         ...meetingDoc.data() 
       }) as Meeting;
+
+      // Access control check
+      if (requestingUserId) {
+        const user = await getDoc(doc(db, 'users', requestingUserId));
+        const isAdmin = user.exists() && user.data()?.isAdmin;
+        
+        // Check if user has access (is admin or is a participant)
+        if (!isAdmin && !meetingData.participantIds?.includes(requestingUserId)) {
+          return null; // No access
+        }
+      }
+
+      return meetingData;
     } catch (error) {
       throw new DatabaseError(
         `Failed to get meeting ${meetingId}`,
@@ -383,6 +384,12 @@ export class DatabaseService {
    */
   static async updateMeeting(meetingId: string, updates: Partial<Meeting>): Promise<void> {
     try {
+      // Ensure participantIds is updated if participants change
+      if (updates.participants) {
+        const participantIds = updates.participants.map(p => p.userId);
+        updates.participantIds = participantIds;
+      }
+
       await updateDoc(
         doc(db, 'meetings', meetingId), 
         convertDatesToTimestamps(updates)
@@ -414,23 +421,23 @@ export class DatabaseService {
   }
 
   /**
-   * Get user meetings with pagination and caching
-   * Optimized for dashboard performance with intelligent caching
+   * Get user meetings with pagination and access control
    */
   static async getUserMeetings(
     userId: string, 
-    options: PaginationOptions = {}
+    options: PaginationOptions & { includeAdminView?: boolean } = {}
   ): Promise<PaginatedResult<Meeting>> {
     const {
       limit: pageLimit = 20,
       startAfterDoc,
       orderByField = 'startTime',
-      orderDirection = 'desc'
+      orderDirection = 'desc',
+      includeAdminView = false
     } = options;
     
     // Generate cache key for first page only (pagination not cached)
     const cacheKey = !startAfterDoc ? 
-      generateCacheKey('getUserMeetings', { userId, pageLimit, orderByField, orderDirection }) : 
+      generateCacheKey('getUserMeetings', { userId, pageLimit, orderByField, orderDirection, includeAdminView }) : 
       null;
     
     // Check cache first for non-paginated requests
@@ -443,59 +450,88 @@ export class DatabaseService {
     
     return trackQueryPerformance('getUserMeetings', async () => {
       try {
+        // Check if user is admin
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        const isAdmin = userDoc.exists() && userDoc.data()?.isAdmin;
 
-      // If pagination is requested, fall back to a single query on participantsUserIds
-      // (union pagination is complex; our UI only requests the first page for now)
-      if (startAfterDoc) {
-        let fallbackQuery = query(
+        // If admin and includeAdminView is true, get all meetings
+        if (isAdmin && includeAdminView) {
+          let meetingQuery = query(
+            collection(db, 'meetings'),
+            orderBy(orderByField, orderDirection),
+            limit(pageLimit + 1)
+          );
+
+          if (startAfterDoc) {
+            meetingQuery = query(meetingQuery, startAfter(startAfterDoc));
+          }
+
+          const snapshot = await getDocs(meetingQuery);
+          const docs = snapshot.docs;
+          const hasMore = docs.length > pageLimit;
+          
+          if (hasMore) {
+            docs.pop();
+          }
+
+          const meetings = docs.map(doc => 
+            convertTimestamps({ meetingId: doc.id, ...doc.data() })
+          ) as Meeting[];
+
+          const result = {
+            data: meetings,
+            lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined,
+            hasMore
+          };
+
+          if (cacheKey) {
+            setCachedResult(cacheKey, result, DASHBOARD_CACHE_TTL);
+          }
+
+          return result;
+        }
+
+        // For non-admin users or when not using admin view, use participantIds
+        if (startAfterDoc) {
+          let meetingQuery = query(
+            collection(db, 'meetings'),
+            where('participantIds', 'array-contains', userId),
+            orderBy(orderByField, orderDirection),
+            limit(pageLimit + 1)
+          );
+          meetingQuery = query(meetingQuery, startAfter(startAfterDoc));
+          const snap = await getDocs(meetingQuery);
+          const docs = snap.docs;
+          const hasMore = docs.length > pageLimit;
+          if (hasMore) docs.pop();
+          const meetings = docs.map(doc => convertTimestamps({ meetingId: doc.id, ...doc.data() })) as Meeting[];
+          return { data: meetings, lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined, hasMore };
+        }
+
+        // Use participantIds for access control
+        const meetingQuery = query(
           collection(db, 'meetings'),
-          where('participantsUserIds', 'array-contains', userId),
+          where('participantIds', 'array-contains', userId),
           orderBy(orderByField, orderDirection),
           limit(pageLimit + 1)
         );
-        fallbackQuery = query(fallbackQuery, startAfter(startAfterDoc));
-        const snap = await getDocs(fallbackQuery);
-        const docs = snap.docs;
+
+        const snapshot = await getDocs(meetingQuery);
+        const docs = snapshot.docs;
         const hasMore = docs.length > pageLimit;
-        if (hasMore) docs.pop();
-        const meetings = docs.map(doc => convertTimestamps({ meetingId: doc.id, ...doc.data() })) as Meeting[];
-        return { data: meetings, lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined, hasMore };
-      }
+        
+        if (hasMore) {
+          docs.pop();
+        }
 
-      // Primary approach: union queries using Firestore Lite to avoid WebChannel/streaming
-      const dblite = getFirestoreLite(app);
-      const meetingsCol = liteCollection(dblite, 'meetings');
-      const hostQuery = liteQuery(meetingsCol, liteWhere('hostId', '==', userId), liteLimit(pageLimit + 1));
-      const creatorQuery = liteQuery(meetingsCol, liteWhere('createdBy', '==', userId), liteLimit(pageLimit + 1));
-      const participantQuery = liteQuery(meetingsCol, liteWhere('participantsUserIds', 'array-contains', userId), liteLimit(pageLimit + 1));
-
-      const [hostSnap, creatorSnap, participantSnap] = await Promise.all([
-        liteGetDocs(hostQuery),
-        liteGetDocs(creatorQuery),
-        liteGetDocs(participantQuery),
-      ]);
-
-      const docMap = new Map<string, any>();
-      [hostSnap, creatorSnap, participantSnap].forEach((snap) => {
-        snap.docs.forEach((d) => docMap.set(d.id, d));
-      });
-
-      // Convert and sort by startTime descending
-      const allDocs = Array.from(docMap.values());
-      const meetingsAll = allDocs.map((d: any) => convertTimestamps({ meetingId: d.id, ...d.data() })) as Meeting[];
-      meetingsAll.sort((a, b) => {
-        const aTime = (a.startTime || a.createdAt || new Date(0)).getTime();
-        const bTime = (b.startTime || b.createdAt || new Date(0)).getTime();
-        return bTime - aTime;
-      });
-
-      const hasMore = meetingsAll.length > pageLimit;
-      const sliced = meetingsAll.slice(0, pageLimit);
+        const meetings = docs.map(doc => 
+          convertTimestamps({ meetingId: doc.id, ...doc.data() })
+        ) as Meeting[];
 
         const result = {
-          data: sliced,
-          lastDoc: undefined, // union pagination not supported in this helper
-          hasMore,
+          data: meetings,
+          lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined,
+          hasMore
         };
         
         // Cache first page results
@@ -775,236 +811,6 @@ export class DatabaseService {
     }
   }
 
-  // ============ VOICE PROFILE MANAGEMENT ============
-
-  /**
-   * Create voice profile
-   */
-  static async createVoiceProfile(
-    userId: string,
-    profileData: Omit<SpeakerProfile, 'speakerId' | 'lastSeen'>
-  ): Promise<string> {
-    try {
-      const profileRef = await addDoc(
-        collection(db, 'users', userId, 'voiceProfiles'),
-        convertDatesToTimestamps({
-          ...profileData,
-          lastSeen: new Date()
-        })
-      );
-      
-      return profileRef.id;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to create voice profile for user ${userId}`,
-        'VOICE_PROFILE_CREATE_FAILED',
-        'createVoiceProfile',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get voice profile
-   */
-  static async getVoiceProfile(userId: string, profileId: string): Promise<SpeakerProfile | null> {
-    try {
-      const profileDoc = await getDoc(doc(db, 'users', userId, 'voiceProfiles', profileId));
-      
-      if (!profileDoc.exists()) {
-        return null;
-      }
-
-      return convertTimestamps({ 
-        speakerId: profileDoc.id, 
-        ...profileDoc.data() 
-      }) as SpeakerProfile;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get voice profile ${profileId}`,
-        'VOICE_PROFILE_GET_FAILED',
-        'getVoiceProfile',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get all voice profiles for a user
-   */
-  static async getUserVoiceProfiles(userId: string): Promise<SpeakerProfile[]> {
-    try {
-      const snapshot = await getDocs(collection(db, 'users', userId, 'voiceProfiles'));
-      
-      return snapshot.docs.map(doc => 
-        convertTimestamps({ speakerId: doc.id, ...doc.data() })
-      ) as SpeakerProfile[];
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get voice profiles for user ${userId}`,
-        'USER_VOICE_PROFILES_GET_FAILED',
-        'getUserVoiceProfiles',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Update voice profile
-   */
-  static async updateVoiceProfile(
-    userId: string,
-    profileId: string,
-    updates: Partial<SpeakerProfile>
-  ): Promise<void> {
-    try {
-      await updateDoc(
-        doc(db, 'users', userId, 'voiceProfiles', profileId),
-        convertDatesToTimestamps({
-          ...updates,
-          lastSeen: new Date()
-        })
-      );
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to update voice profile ${profileId}`,
-        'VOICE_PROFILE_UPDATE_FAILED',
-        'updateVoiceProfile',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Delete voice profile
-   */
-  static async deleteVoiceProfile(userId: string, profileId: string): Promise<void> {
-    try {
-      await deleteDoc(doc(db, 'users', userId, 'voiceProfiles', profileId));
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to delete voice profile ${profileId}`,
-        'VOICE_PROFILE_DELETE_FAILED',
-        'deleteVoiceProfile',
-        error as Error
-      );
-    }
-  }
-
-  // ============ CUSTOM RULES MANAGEMENT ============
-
-  /**
-   * Create custom rule
-   */
-  static async createCustomRule(ruleData: Omit<CustomRule, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    try {
-      const now = new Date();
-      const ruleRef = await addDoc(
-        collection(db, 'customRules'),
-        convertDatesToTimestamps({
-          ...ruleData,
-          createdAt: now,
-          updatedAt: now
-        })
-      );
-      
-      return ruleRef.id;
-    } catch (error) {
-      throw new DatabaseError(
-        'Failed to create custom rule',
-        'CUSTOM_RULE_CREATE_FAILED',
-        'createCustomRule',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get custom rule
-   */
-  static async getCustomRule(ruleId: string): Promise<CustomRule | null> {
-    try {
-      const ruleDoc = await getDoc(doc(db, 'customRules', ruleId));
-      
-      if (!ruleDoc.exists()) {
-        return null;
-      }
-
-      return convertTimestamps({ id: ruleDoc.id, ...ruleDoc.data() }) as CustomRule;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get custom rule ${ruleId}`,
-        'CUSTOM_RULE_GET_FAILED',
-        'getCustomRule',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get user custom rules
-   */
-  static async getUserCustomRules(userId: string): Promise<CustomRule[]> {
-    try {
-      const snapshot = await getDocs(
-        query(
-          collection(db, 'customRules'),
-          where('userId', '==', userId),
-          orderBy('priority', 'desc')
-        )
-      );
-      
-      return snapshot.docs.map(doc => 
-        convertTimestamps({ id: doc.id, ...doc.data() })
-      ) as CustomRule[];
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get custom rules for user ${userId}`,
-        'USER_CUSTOM_RULES_GET_FAILED',
-        'getUserCustomRules',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Update custom rule
-   */
-  static async updateCustomRule(ruleId: string, updates: Partial<CustomRule>): Promise<void> {
-    try {
-      await updateDoc(
-        doc(db, 'customRules', ruleId),
-        convertDatesToTimestamps({
-          ...updates,
-          updatedAt: new Date()
-        })
-      );
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to update custom rule ${ruleId}`,
-        'CUSTOM_RULE_UPDATE_FAILED',
-        'updateCustomRule',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Delete custom rule
-   */
-  static async deleteCustomRule(ruleId: string): Promise<void> {
-    try {
-      await deleteDoc(doc(db, 'customRules', ruleId));
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to delete custom rule ${ruleId}`,
-        'CUSTOM_RULE_DELETE_FAILED',
-        'deleteCustomRule',
-        error as Error
-      );
-    }
-  }
-
   // ============ BATCH OPERATIONS ============
 
   /**
@@ -1062,941 +868,7 @@ export class DatabaseService {
     }
   }
 
-  // ============ COST TRACKING MANAGEMENT ============
-
-  /**
-   * Record an API call cost with batching optimization
-   */
-  static async recordAPiCall(userId: string, apiCallData: Omit<APICall, 'id'>): Promise<string> {
-    return trackQueryPerformance('recordApiCall', async () => {
-      try {
-        const apiCallRef = await addDoc(
-          collection(db, 'costs', userId, 'apiCalls'),
-          convertDatesToTimestamps(apiCallData)
-        );
-        
-        // Invalidate relevant cache entries
-        this.invalidateCostCache(userId);
-        
-        return apiCallRef.id;
-      } catch (error) {
-        throw new DatabaseError(
-          `Failed to record API call for user ${userId}`,
-          'API_CALL_RECORD_FAILED',
-          'recordAPiCall',
-          error as Error
-        );
-      }
-    });
-  }
-
-  /**
-   * Get API calls for a user with filtering, pagination, and caching
-   */
-  static async getAPIcalls(
-    userId: string,
-    options: PaginationOptions & {
-      startDate?: Date;
-      endDate?: Date;
-      model?: string;
-      service?: string;
-    } = {}
-  ): Promise<PaginatedResult<APICall>> {
-    const cacheKey = !options.startAfterDoc ? 
-      generateCacheKey('getAPIcalls', { userId, ...options }) : 
-      null;
-    
-    // Check cache first for non-paginated requests
-    if (cacheKey) {
-      const cached = getCachedResult(cacheKey);
-      if (cached) {
-        return trackQueryPerformance('getAPIcalls', () => Promise.resolve(cached), true);
-      }
-    }
-    
-    return trackQueryPerformance('getAPIcalls', async () => {
-    try {
-      const {
-        limit: pageLimit = 50,
-        startAfterDoc,
-        orderByField = 'timestamp',
-        orderDirection = 'desc',
-        startDate,
-        endDate,
-        model,
-        service
-      } = options;
-
-      let apiCallQuery = query(
-        collection(db, 'costs', userId, 'apiCalls'),
-        orderBy(orderByField, orderDirection),
-        limit(pageLimit + 1)
-      );
-
-      // Add date range filters
-      if (startDate) {
-        apiCallQuery = query(apiCallQuery, where('timestamp', '>=', Timestamp.fromDate(startDate)));
-      }
-      if (endDate) {
-        apiCallQuery = query(apiCallQuery, where('timestamp', '<=', Timestamp.fromDate(endDate)));
-      }
-      if (model) {
-        apiCallQuery = query(apiCallQuery, where('model', '==', model));
-      }
-      if (service) {
-        apiCallQuery = query(apiCallQuery, where('service', '==', service));
-      }
-
-      if (startAfterDoc) {
-        apiCallQuery = query(apiCallQuery, startAfter(startAfterDoc));
-      }
-
-      const snapshot = await getDocs(apiCallQuery);
-      const docs = snapshot.docs;
-      const hasMore = docs.length > pageLimit;
-      
-      if (hasMore) {
-        docs.pop();
-      }
-
-      const apiCalls = docs.map(doc => 
-        convertTimestamps({ id: doc.id, ...doc.data() })
-      ) as APICall[];
-
-        const result = {
-          data: apiCalls,
-          lastDoc: docs.length > 0 ? docs[docs.length - 1] : undefined,
-          hasMore
-        };
-        
-        // Cache results if not paginated
-        if (cacheKey) {
-          setCachedResult(cacheKey, result, 30000); // 30 second TTL for cost data
-        }
-        
-        return result;
-      } catch (error) {
-        throw new DatabaseError(
-          `Failed to get API calls for user ${userId}`,
-          'API_CALLS_GET_FAILED',
-          'getAPIcalls',
-          error as Error
-        );
-      }
-    });
-  }
-
-  /**
-   * Create or update a cost budget
-   */
-  static async createCostBudget(budgetData: Omit<CostBudget, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    try {
-      const now = new Date();
-      const budgetRef = await addDoc(
-        collection(db, 'costs', budgetData.userId, 'budgets'),
-        convertDatesToTimestamps({
-          ...budgetData,
-          createdAt: now,
-          updatedAt: now
-        })
-      );
-      
-      return budgetRef.id;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to create cost budget for user ${budgetData.userId}`,
-        'COST_BUDGET_CREATE_FAILED',
-        'createCostBudget',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get cost budget
-   */
-  static async getCostBudget(userId: string, budgetId: string): Promise<CostBudget | null> {
-    try {
-      const budgetDoc = await getDoc(doc(db, 'costs', userId, 'budgets', budgetId));
-      
-      if (!budgetDoc.exists()) {
-        return null;
-      }
-
-      return convertTimestamps({ id: budgetDoc.id, ...budgetDoc.data() }) as CostBudget;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get cost budget ${budgetId}`,
-        'COST_BUDGET_GET_FAILED',
-        'getCostBudget',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get all cost budgets for a user
-   */
-  static async getUserCostBudgets(userId: string): Promise<CostBudget[]> {
-    try {
-      const snapshot = await getDocs(
-        query(
-          collection(db, 'costs', userId, 'budgets'),
-          orderBy('createdAt', 'desc')
-        )
-      );
-      
-      return snapshot.docs.map(doc => 
-        convertTimestamps({ id: doc.id, ...doc.data() })
-      ) as CostBudget[];
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get cost budgets for user ${userId}`,
-        'USER_COST_BUDGETS_GET_FAILED',
-        'getUserCostBudgets',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Update cost budget
-   */
-  static async updateCostBudget(userId: string, budgetId: string, updates: Partial<CostBudget>): Promise<void> {
-    try {
-      await updateDoc(
-        doc(db, 'costs', userId, 'budgets', budgetId),
-        convertDatesToTimestamps({
-          ...updates,
-          updatedAt: new Date()
-        })
-      );
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to update cost budget ${budgetId}`,
-        'COST_BUDGET_UPDATE_FAILED',
-        'updateCostBudget',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Delete cost budget
-   */
-  static async deleteCostBudget(userId: string, budgetId: string): Promise<void> {
-    try {
-      await deleteDoc(doc(db, 'costs', userId, 'budgets', budgetId));
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to delete cost budget ${budgetId}`,
-        'COST_BUDGET_DELETE_FAILED',
-        'deleteCostBudget',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Store aggregated cost analytics
-   */
-  static async storeCostAnalytics(
-    userId: string, 
-    period: string, 
-    analytics: TimeBasedUsage
-  ): Promise<void> {
-    try {
-      await setDoc(
-        doc(db, 'costs', userId, 'analytics', period),
-        convertDatesToTimestamps(analytics),
-        { merge: true }
-      );
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to store cost analytics for user ${userId}, period ${period}`,
-        'COST_ANALYTICS_STORE_FAILED',
-        'storeCostAnalytics',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get cost analytics for a user and period
-   */
-  static async getCostAnalytics(userId: string, period: string): Promise<TimeBasedUsage | null> {
-    try {
-      const analyticsDoc = await getDoc(doc(db, 'costs', userId, 'analytics', period));
-      
-      if (!analyticsDoc.exists()) {
-        return null;
-      }
-
-      return convertTimestamps(analyticsDoc.data()) as TimeBasedUsage;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get cost analytics for user ${userId}, period ${period}`,
-        'COST_ANALYTICS_GET_FAILED',
-        'getCostAnalytics',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get cost analytics for a date range
-   */
-  static async getCostAnalyticsRange(
-    userId: string,
-    startPeriod: string,
-    endPeriod: string
-  ): Promise<TimeBasedUsage[]> {
-    try {
-      const snapshot = await getDocs(
-        query(
-          collection(db, 'costs', userId, 'analytics'),
-          where('period', '>=', startPeriod),
-          where('period', '<=', endPeriod),
-          orderBy('period', 'asc')
-        )
-      );
-      
-      return snapshot.docs.map(doc => 
-        convertTimestamps(doc.data())
-      ) as TimeBasedUsage[];
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get cost analytics range for user ${userId}`,
-        'COST_ANALYTICS_RANGE_GET_FAILED',
-        'getCostAnalyticsRange',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Calculate usage metrics from API calls
-   */
-  static async calculateUsageMetrics(
-    userId: string,
-    startDate: Date,
-    endDate: Date
-  ): Promise<UsageMetrics> {
-    try {
-      const apiCalls = await this.getAPIcalls(userId, {
-        startDate,
-        endDate,
-        limit: 10000 // Large limit to get all data for calculation
-      });
-
-      const metrics: UsageMetrics = {
-        totalAPICalls: apiCalls.data.length,
-        totalTokens: {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0
-        },
-        totalCost: 0,
-        averageLatency: 0,
-        averageCostPerCall: 0,
-        costByModel: {} as any,
-        costByService: {} as any,
-        costByOperation: {} as any
-      };
-
-      let totalLatency = 0;
-
-      apiCalls.data.forEach(call => {
-        // Aggregate tokens
-        metrics.totalTokens.inputTokens += call.tokenUsage.inputTokens;
-        metrics.totalTokens.outputTokens += call.tokenUsage.outputTokens;
-        metrics.totalTokens.totalTokens += call.tokenUsage.totalTokens;
-
-        // Aggregate costs
-        metrics.totalCost += call.cost;
-        totalLatency += call.latency;
-
-        // Cost by model
-        if (!metrics.costByModel[call.model]) {
-          metrics.costByModel[call.model] = {
-            inputCost: 0,
-            outputCost: 0,
-            totalCost: 0,
-            currency: 'USD'
-          };
-        }
-        metrics.costByModel[call.model].totalCost += call.cost;
-
-        // Cost by service
-        if (!metrics.costByService[call.service]) {
-          metrics.costByService[call.service] = {
-            inputCost: 0,
-            outputCost: 0,
-            totalCost: 0,
-            currency: 'USD'
-          };
-        }
-        metrics.costByService[call.service].totalCost += call.cost;
-
-        // Cost by operation
-        if (!metrics.costByOperation[call.operation]) {
-          metrics.costByOperation[call.operation] = {
-            inputCost: 0,
-            outputCost: 0,
-            totalCost: 0,
-            currency: 'USD'
-          };
-        }
-        metrics.costByOperation[call.operation].totalCost += call.cost;
-      });
-
-      // Calculate averages
-      if (metrics.totalAPICalls > 0) {
-        metrics.averageLatency = totalLatency / metrics.totalAPICalls;
-        metrics.averageCostPerCall = metrics.totalCost / metrics.totalAPICalls;
-      }
-
-      return metrics;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to calculate usage metrics for user ${userId}`,
-        'USAGE_METRICS_CALCULATE_FAILED',
-        'calculateUsageMetrics',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Batch record multiple API calls with optimization
-   */
-  static async batchRecordAPIcalls(userId: string, apiCalls: Array<Omit<APICall, 'id'>>): Promise<string[]> {
-    return trackQueryPerformance('batchRecordAPIcalls', async () => {
-      try {
-        const batch = writeBatch(db);
-        const createdIds: string[] = [];
-        
-        // Process in chunks to avoid Firestore batch size limits
-        const BATCH_SIZE = 500; // Firestore limit
-        const chunks = [];
-        
-        for (let i = 0; i < apiCalls.length; i += BATCH_SIZE) {
-          chunks.push(apiCalls.slice(i, i + BATCH_SIZE));
-        }
-        
-        for (const chunk of chunks) {
-          const chunkBatch = writeBatch(db);
-          const chunkIds: string[] = [];
-          
-          chunk.forEach((apiCall) => {
-            const apiCallRef = doc(collection(db, 'costs', userId, 'apiCalls'));
-            chunkBatch.set(apiCallRef, convertDatesToTimestamps(apiCall));
-            chunkIds.push(apiCallRef.id);
-          });
-          
-          await chunkBatch.commit();
-          createdIds.push(...chunkIds);
-        }
-        
-        // Invalidate relevant cache entries after batch operation
-        this.invalidateCostCache(userId);
-        
-        return createdIds;
-      } catch (error) {
-        throw new DatabaseError(
-          `Failed to batch record API calls for user ${userId}`,
-          'BATCH_API_CALLS_RECORD_FAILED',
-          'batchRecordAPIcalls',
-          error as Error
-        );
-      }
-    });
-  }
-
-  /**
-   * Get cost summary for a user with optimized caching
-   */
-  static async getCostSummary(userId: string): Promise<{
-    totalSpend: number;
-    monthlySpend: number;
-    activeBudgets: CostBudget[];
-    recentCalls: APICall[];
-    topModels: Array<{ model: string; cost: number; calls: number }>;
-  }> {
-    const cacheKey = generateCacheKey('getCostSummary', { userId });
-    
-    // Check cache first
-    const cached = getCachedResult(cacheKey);
-    if (cached) {
-      return trackQueryPerformance('getCostSummary', () => Promise.resolve(cached), true);
-    }
-    
-    return trackQueryPerformance('getCostSummary', async () => {
-    try {
-      // Get current month's spending
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-      
-      const endOfMonth = new Date();
-      endOfMonth.setMonth(endOfMonth.getMonth() + 1);
-      endOfMonth.setDate(0);
-      endOfMonth.setHours(23, 59, 59, 999);
-
-      const [monthlyCallsResult, budgets, recentCallsResult] = await Promise.all([
-        this.getAPIcalls(userId, { startDate: startOfMonth, endDate: endOfMonth, limit: 10000 }),
-        this.getUserCostBudgets(userId),
-        this.getAPIcalls(userId, { limit: 10 })
-      ]);
-
-      const monthlySpend = monthlyCallsResult.data.reduce((sum, call) => sum + call.cost, 0);
-      
-      // Calculate total spend from all-time calls (you might want to optimize this)
-      const allCallsResult = await this.getAPIcalls(userId, { limit: 10000 });
-      const totalSpend = allCallsResult.data.reduce((sum, call) => sum + call.cost, 0);
-
-      // Calculate top models
-      const modelStats: Record<string, { cost: number; calls: number }> = {};
-      monthlyCallsResult.data.forEach(call => {
-        if (!modelStats[call.model]) {
-          modelStats[call.model] = { cost: 0, calls: 0 };
-        }
-        modelStats[call.model].cost += call.cost;
-        modelStats[call.model].calls += 1;
-      });
-
-      const topModels = Object.entries(modelStats)
-        .map(([model, stats]) => ({ model, ...stats }))
-        .sort((a, b) => b.cost - a.cost)
-        .slice(0, 5);
-
-        const result = {
-          totalSpend,
-          monthlySpend,
-          activeBudgets: budgets.filter(budget => budget.currentUsage < budget.limit),
-          recentCalls: recentCallsResult.data,
-          topModels
-        };
-        
-        // Cache the result with shorter TTL for cost data
-        setCachedResult(cacheKey, result, 60000); // 1 minute TTL
-        
-        return result;
-      } catch (error) {
-        throw new DatabaseError(
-          `Failed to get cost summary for user ${userId}`,
-          'COST_SUMMARY_GET_FAILED',
-          'getCostSummary',
-          error as Error
-        );
-      }
-    });
-  }
-
-  /**
-   * Clean up old cost data beyond retention period
-   */
-  static async cleanupCostData(userId: string, retentionDays: number = 90): Promise<void> {
-    try {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
-
-      const oldCallsQuery = query(
-        collection(db, 'costs', userId, 'apiCalls'),
-        where('timestamp', '<', Timestamp.fromDate(cutoffDate))
-      );
-
-      const snapshot = await getDocs(oldCallsQuery);
-      const batch = writeBatch(db);
-      
-      snapshot.docs.forEach(doc => {
-        batch.delete(doc.ref);
-      });
-
-      if (snapshot.docs.length > 0) {
-        await batch.commit();
-      }
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to cleanup cost data for user ${userId}`,
-        'COST_DATA_CLEANUP_FAILED',
-        'cleanupCostData',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get aggregated daily cost analytics
-   */
-  static async getDailyCostAnalytics(
-    userId: string,
-    numberOfDays: number = 30
-  ): Promise<Array<{ date: string; totalCost: number; callCount: number; topModel: string }>> {
-    try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - numberOfDays);
-      startDate.setHours(0, 0, 0, 0);
-
-      const apiCalls = await this.getAPIcalls(userId, {
-        startDate,
-        limit: 10000
-      });
-
-      // Group by date
-      const dailyStats: Record<string, { totalCost: number; callCount: number; models: Record<string, number> }> = {};
-
-      apiCalls.data.forEach(call => {
-        const dateStr = call.timestamp.toISOString().split('T')[0];
-        
-        if (!dailyStats[dateStr]) {
-          dailyStats[dateStr] = {
-            totalCost: 0,
-            callCount: 0,
-            models: {}
-          };
-        }
-        
-        dailyStats[dateStr].totalCost += call.cost;
-        dailyStats[dateStr].callCount += 1;
-        dailyStats[dateStr].models[call.model] = (dailyStats[dateStr].models[call.model] || 0) + 1;
-      });
-
-      // Convert to array and find top models
-      return Object.entries(dailyStats).map(([date, stats]) => {
-        const topModel = Object.entries(stats.models)
-          .sort(([, a], [, b]) => b - a)[0]?.[0] || 'none';
-        
-        return {
-          date,
-          totalCost: stats.totalCost,
-          callCount: stats.callCount,
-          topModel
-        };
-      }).sort((a, b) => a.date.localeCompare(b.date));
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get daily cost analytics for user ${userId}`,
-        'DAILY_COST_ANALYTICS_GET_FAILED',
-        'getDailyCostAnalytics',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get weekly cost analytics
-   */
-  static async getWeeklyCostAnalytics(
-    userId: string,
-    numberOfWeeks: number = 12
-  ): Promise<Array<{ week: string; totalCost: number; callCount: number; averageCostPerCall: number }>> {
-    try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - (numberOfWeeks * 7));
-      startDate.setHours(0, 0, 0, 0);
-
-      const apiCalls = await this.getAPIcalls(userId, {
-        startDate,
-        limit: 10000
-      });
-
-      // Group by week (ISO week format)
-      const weeklyStats: Record<string, { totalCost: number; callCount: number }> = {};
-
-      apiCalls.data.forEach(call => {
-        const date = new Date(call.timestamp);
-        const year = date.getFullYear();
-        const week = this.getWeekNumber(date);
-        const weekStr = `${year}-W${week.toString().padStart(2, '0')}`;
-        
-        if (!weeklyStats[weekStr]) {
-          weeklyStats[weekStr] = {
-            totalCost: 0,
-            callCount: 0
-          };
-        }
-        
-        weeklyStats[weekStr].totalCost += call.cost;
-        weeklyStats[weekStr].callCount += 1;
-      });
-
-      return Object.entries(weeklyStats).map(([week, stats]) => ({
-        week,
-        totalCost: stats.totalCost,
-        callCount: stats.callCount,
-        averageCostPerCall: stats.callCount > 0 ? stats.totalCost / stats.callCount : 0
-      })).sort((a, b) => a.week.localeCompare(b.week));
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get weekly cost analytics for user ${userId}`,
-        'WEEKLY_COST_ANALYTICS_GET_FAILED',
-        'getWeeklyCostAnalytics',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Get monthly cost analytics
-   */
-  static async getMonthlyCostAnalytics(
-    userId: string,
-    numberOfMonths: number = 12
-  ): Promise<Array<{ month: string; totalCost: number; callCount: number; topService: string }>> {
-    try {
-      const startDate = new Date();
-      startDate.setMonth(startDate.getMonth() - numberOfMonths);
-      startDate.setDate(1);
-      startDate.setHours(0, 0, 0, 0);
-
-      const apiCalls = await this.getAPIcalls(userId, {
-        startDate,
-        limit: 10000
-      });
-
-      // Group by month
-      const monthlyStats: Record<string, { totalCost: number; callCount: number; services: Record<string, number> }> = {};
-
-      apiCalls.data.forEach(call => {
-        const date = new Date(call.timestamp);
-        const monthStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-        
-        if (!monthlyStats[monthStr]) {
-          monthlyStats[monthStr] = {
-            totalCost: 0,
-            callCount: 0,
-            services: {}
-          };
-        }
-        
-        monthlyStats[monthStr].totalCost += call.cost;
-        monthlyStats[monthStr].callCount += 1;
-        monthlyStats[monthStr].services[call.service] = (monthlyStats[monthStr].services[call.service] || 0) + 1;
-      });
-
-      return Object.entries(monthlyStats).map(([month, stats]) => {
-        const topService = Object.entries(stats.services)
-          .sort(([, a], [, b]) => b - a)[0]?.[0] || 'none';
-        
-        return {
-          month,
-          totalCost: stats.totalCost,
-          callCount: stats.callCount,
-          topService
-        };
-      }).sort((a, b) => a.month.localeCompare(b.month));
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to get monthly cost analytics for user ${userId}`,
-        'MONTHLY_COST_ANALYTICS_GET_FAILED',
-        'getMonthlyCostAnalytics',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Check and update budget alerts
-   */
-  static async checkBudgetAlerts(userId: string): Promise<CostBudget[]> {
-    try {
-      const budgets = await this.getUserCostBudgets(userId);
-      const alertedBudgets: CostBudget[] = [];
-
-      for (const budget of budgets) {
-        const usagePercentage = (budget.currentUsage / budget.limit) * 100;
-        
-        for (const threshold of budget.alerts.thresholds) {
-          if (usagePercentage >= threshold && !budget.alerts.notified.includes(threshold)) {
-            // Update the budget to mark this threshold as notified
-            await this.updateCostBudget(userId, budget.id, {
-              alerts: {
-                ...budget.alerts,
-                notified: [...budget.alerts.notified, threshold]
-              }
-            });
-            
-            alertedBudgets.push(budget);
-            break; // Only trigger one alert per budget check
-          }
-        }
-      }
-
-      return alertedBudgets;
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to check budget alerts for user ${userId}`,
-        'BUDGET_ALERTS_CHECK_FAILED',
-        'checkBudgetAlerts',
-        error as Error
-      );
-    }
-  }
-
-  // ============ REAL-TIME COST TRACKING ============
-
-  /**
-   * Listen to real-time API call updates
-   */
-  static listenToAPICalls(
-    userId: string,
-    callback: (apiCalls: APICall[]) => void,
-    options: { limit?: number; startDate?: Date } = {}
-  ): Unsubscribe {
-    try {
-      const { limit: queryLimit = 50, startDate } = options;
-      
-      let apiCallQuery = query(
-        collection(db, 'costs', userId, 'apiCalls'),
-        orderBy('timestamp', 'desc'),
-        limit(queryLimit)
-      );
-
-      if (startDate) {
-        apiCallQuery = query(apiCallQuery, where('timestamp', '>=', Timestamp.fromDate(startDate)));
-      }
-
-      return onSnapshot(
-        apiCallQuery,
-        (snapshot) => {
-          const apiCalls = snapshot.docs.map(doc => 
-            convertTimestamps({ id: doc.id, ...doc.data() })
-          ) as APICall[];
-          callback(apiCalls);
-        },
-        (error) => {
-          throw new DatabaseError(
-            `Real-time API calls listener failed for user ${userId}`,
-            'REALTIME_API_CALLS_FAILED',
-            'listenToAPICalls',
-            error
-          );
-        }
-      );
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to setup API calls listener for user ${userId}`,
-        'API_CALLS_LISTENER_FAILED',
-        'listenToAPICalls',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Listen to real-time budget updates
-   */
-  static listenToCostBudgets(
-    userId: string,
-    callback: (budgets: CostBudget[]) => void
-  ): Unsubscribe {
-    try {
-      const budgetQuery = query(
-        collection(db, 'costs', userId, 'budgets'),
-        orderBy('createdAt', 'desc')
-      );
-
-      return onSnapshot(
-        budgetQuery,
-        (snapshot) => {
-          const budgets = snapshot.docs.map(doc => 
-            convertTimestamps({ id: doc.id, ...doc.data() })
-          ) as CostBudget[];
-          callback(budgets);
-        },
-        (error) => {
-          throw new DatabaseError(
-            `Real-time cost budgets listener failed for user ${userId}`,
-            'REALTIME_BUDGETS_FAILED',
-            'listenToCostBudgets',
-            error
-          );
-        }
-      );
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to setup cost budgets listener for user ${userId}`,
-        'BUDGETS_LISTENER_FAILED',
-        'listenToCostBudgets',
-        error as Error
-      );
-    }
-  }
-
-  /**
-   * Listen to real-time cost analytics updates
-   */
-  static listenToCostAnalytics(
-    userId: string,
-    callback: (analytics: TimeBasedUsage[]) => void,
-    options: { startPeriod?: string; endPeriod?: string } = {}
-  ): Unsubscribe {
-    try {
-      const { startPeriod, endPeriod } = options;
-      
-      let analyticsQuery = query(
-        collection(db, 'costs', userId, 'analytics'),
-        orderBy('period', 'desc')
-      );
-
-      if (startPeriod && endPeriod) {
-        analyticsQuery = query(
-          analyticsQuery,
-          where('period', '>=', startPeriod),
-          where('period', '<=', endPeriod)
-        );
-      }
-
-      return onSnapshot(
-        analyticsQuery,
-        (snapshot) => {
-          const analytics = snapshot.docs.map(doc => 
-            convertTimestamps(doc.data())
-          ) as TimeBasedUsage[];
-          callback(analytics);
-        },
-        (error) => {
-          throw new DatabaseError(
-            `Real-time cost analytics listener failed for user ${userId}`,
-            'REALTIME_ANALYTICS_FAILED',
-            'listenToCostAnalytics',
-            error
-          );
-        }
-      );
-    } catch (error) {
-      throw new DatabaseError(
-        `Failed to setup cost analytics listener for user ${userId}`,
-        'ANALYTICS_LISTENER_FAILED',
-        'listenToCostAnalytics',
-        error as Error
-      );
-    }
-  }
-
   // ============ CACHE MANAGEMENT ============
-  
-  /**
-   * Invalidate cache entries for a specific user's cost data
-   */
-  static invalidateCostCache(userId: string): void {
-    const keysToDelete: string[] = [];
-    
-    for (const [key] of QueryCache) {
-      if (key.includes('getCostSummary') && key.includes(userId)) {
-        keysToDelete.push(key);
-      }
-      if (key.includes('getAPIcalls') && key.includes(userId)) {
-        keysToDelete.push(key);
-      }
-      if (key.includes('getCostAnalytics') && key.includes(userId)) {
-        keysToDelete.push(key);
-      }
-    }
-    
-    keysToDelete.forEach(key => QueryCache.delete(key));
-  }
   
   /**
    * Invalidate meeting cache entries for a user
@@ -2054,20 +926,7 @@ export class DatabaseService {
     return cleanedCount;
   }
 
-  // ============ HELPER METHODS ============
-
-  /**
-   * Get week number from date (ISO week)
-   */
-  private static getWeekNumber(date: Date): number {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  }
-
-  // ============ ANALYTICS & REPORTING ============
+  // ============ MEETING STATISTICS ============
 
   /**
    * Get meeting statistics
@@ -2082,7 +941,7 @@ export class DatabaseService {
       const snapshot = await getDocs(
         query(
           collection(db, 'meetings'),
-          where('hostId', '==', userId)
+          where('participantIds', 'array-contains', userId)
         )
       );
 
@@ -2136,12 +995,27 @@ export class DatabaseService {
         orderDirection = 'desc'
       } = options;
 
-      let meetingQuery = query(
-        collection(db, 'meetings'),
-        where('participants', 'array-contains-any', [userId]),
-        orderBy(orderByField, orderDirection),
-        limit(pageLimit * 3) // Get more to filter client-side
-      );
+      // Check if user is admin
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      const isAdmin = userDoc.exists() && userDoc.data()?.isAdmin;
+
+      let meetingQuery;
+      if (isAdmin) {
+        // Admin can search all meetings
+        meetingQuery = query(
+          collection(db, 'meetings'),
+          orderBy(orderByField, orderDirection),
+          limit(pageLimit * 3) // Get more to filter client-side
+        );
+      } else {
+        // Regular users can only search their meetings
+        meetingQuery = query(
+          collection(db, 'meetings'),
+          where('participantIds', 'array-contains', userId),
+          orderBy(orderByField, orderDirection),
+          limit(pageLimit * 3) // Get more to filter client-side
+        );
+      }
 
       if (startAfterDoc) {
         meetingQuery = query(meetingQuery, startAfter(startAfterDoc));

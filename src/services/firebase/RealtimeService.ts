@@ -571,9 +571,9 @@ export class RealtimeService {
   ): Unsubscribe {
     try {
       const rulesQuery = query(
-        collection(db, 'customRules'),
-        where('userId', '==', userId),
-        orderBy('priority', 'desc')
+        collection(db, 'meeting_types'),  // Updated from customRules
+        where('ownerId', '==', userId),  // Changed from userId to ownerId
+        orderBy('createdAt', 'desc')  // Changed from priority to createdAt
       );
 
       return onSnapshot(

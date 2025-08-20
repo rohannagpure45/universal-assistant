@@ -4,6 +4,8 @@ export interface User {
     email: string;
     displayName: string;
     photoURL?: string | null;
+    isAdmin: boolean;                        // NEW: Admin flag for access control
+    primaryVoiceId?: string | null;          // NEW: Links to voice_library
     preferences: UserPreferences;
     createdAt: Date;
     lastActive: Date;
@@ -97,12 +99,14 @@ export interface User {
   export interface Meeting {
     id: string;
     meetingId: string;
+    meetingTypeId: string;                    // NEW: Links to meeting_types collection
     hostId: string;
+    participantIds: string[];                 // NEW: For access control - all userIds who participated
     createdBy: string;
     title: string;
     description?: string;
     type: MeetingType;
-    participants: Participant[];
+    participants: Participant[];              // Detailed participant info
     transcript: TranscriptEntry[];
     notes: string[];
     keywords: string[];
@@ -112,7 +116,7 @@ export interface User {
     startedAt?: Date;
     endedAt?: Date;
     scheduledFor?: Date;
-    status: 'scheduled' | 'active' | 'ended' | 'cancelled';
+    status: 'scheduled' | 'active' | 'ended' | 'cancelled' | 'processed';  // Added 'processed'
     duration?: number;
     recording?: {
       url: string;
@@ -124,6 +128,20 @@ export interface User {
       autoTranscribe: boolean;
       language: string;
       maxParticipants: number;
+    };
+    aiModelHistory?: Array<{                  // NEW: Track model changes
+      model: string;
+      switchedAt: Date;
+      switchedBy: string;
+      reason?: string | null;
+      transcriptIndex: number;
+    }>;
+    currentModel?: string;                    // NEW: Active AI model
+    modelContext?: {                          // NEW: Context across model switches
+      summary: string;
+      speakers: object;
+      topics: string[];
+      lastPrompt: string;
     };
     metadata?: {
       totalWords: number;
@@ -226,8 +244,7 @@ export interface User {
     parameters?: Record<string, any>;
   }
 
-  // Re-export cost tracking types
-  export * from './cost';
+  // Cost tracking types removed
 
   // Re-export Firebase-specific types
   export * from './firebase';

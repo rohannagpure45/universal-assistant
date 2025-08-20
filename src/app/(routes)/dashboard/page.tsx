@@ -13,7 +13,7 @@ import {
   AlertCircle,
   RefreshCw
 } from 'lucide-react';
-import { CostTracker } from '@/components/dashboard/CostTracker';
+import CostTracker from '@/components/dashboard/CostTracker';
 import { MotionCard, MotionList, MotionCounter, fadeInUpVariants } from '@/components/ui/Motion';
 import { SkeletonDashboardCard } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/utils';

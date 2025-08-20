@@ -28,7 +28,19 @@
     "test:all": "npm run test:unit && npm run test:integration",
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
-    "test:ci": "jest --ci --coverage --maxWorkers=2"
+    "test:ci": "jest --ci --coverage --maxWorkers=2",
+    "migrate-storage:dry": "npx tsx src/scripts/run-storage-migration.ts --dry",
+    "migrate-storage:live": "npx tsx src/scripts/run-storage-migration.ts --live",
+    "migrate-db:backup": "npx tsx src/scripts/run-db-migration.ts --backup",
+    "migrate-db:dry": "npx tsx src/scripts/run-db-migration.ts",
+    "migrate-db:live": "npx tsx src/scripts/run-db-migration.ts --live",
+    "db:reset": "npx tsx src/scripts/clear-and-setup-db.ts",
+    "db:clear": "npx tsx src/scripts/clear-firestore-admin.ts",
+    "db:setup": "npx tsx src/scripts/setup-new-schema.ts",
+    "db:schema": "npx tsx src/scripts/create-schema-only.ts",
+    "db:nuclear": "npx tsx src/scripts/nuclear-reset.ts",
+    "db:complete": "npx tsx src/scripts/create-complete-schema.ts",
+    "db:cleanup": "npx tsx src/scripts/remove-unwanted-collections.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.60.0",

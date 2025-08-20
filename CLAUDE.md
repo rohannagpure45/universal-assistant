@@ -1,14 +1,16 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides project-specific guidance to Claude Code (claude.ai/code) when working with the Universal Assistant codebase. For general development preferences and universal commands, see `/Users/rohan/CLAUDE.md`.
 
-## Development Commands
+## Project-Specific Commands
 
 ### Core Development
 - `npm run dev` - Start development server (runs on http://localhost:3000)
 - `npm run build` - Build the Next.js application
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint code linting
+
+*See `/Users/rohan/CLAUDE.md` for universal development commands and preferences.*
 
 ### Testing Structure
 - Tests are organized in `/tests/` directory with three levels:
@@ -106,11 +108,52 @@ Core types are defined in `/src/types/index.ts`:
 /transcripts/{meetingId}/entries/{entryId} - Conversation transcripts
 ```
 
+### Firebase Storage Structure
+```
+storage-bucket/
+├── voice-samples/                          // Individual voice clips for identification
+│   └── {deepgramVoiceId}/
+│       └── {timestamp}_{meetingId}_{duration}s.webm
+│           // Example: "1705315200000_mtg_abc123_8s.webm"
+│
+├── meeting-recordings/                     // Full meeting recordings
+│   └── {meetingId}/
+│       ├── full_recording.webm            // Complete meeting audio
+│       ├── full_recording_compressed.mp3   // Compressed version
+│       └── metadata.json                   // Recording metadata
+│
+├── meeting-clips/                          // Specific segments from meetings
+│   └── {meetingId}/
+│       └── {timestamp}_{speakerId}_{duration}s.webm
+│           // Example: "1705315200000_dg_voice_xyz_15s.webm"
+│
+├── identification-samples/                 // Clips pending identification
+│   └── {meetingId}/
+│       └── {deepgramVoiceId}/
+│           ├── best_sample.webm           // Highest quality clip
+│           ├── sample_1.webm              // Alternative samples
+│           └── sample_2.webm
+│
+├── user-uploads/                          // User-provided voice samples
+│   └── {userId}/
+│       └── voice-training/
+│           ├── initial_sample.webm        // First voice sample
+│           └── {timestamp}_sample.webm    // Additional samples
+│
+├── tts-cache/                             // Text-to-speech cached audio files
+│   └── {sha256Hash}.mp3                   // Cached TTS audio (7-day expiration)
+│
+└── temp/                                   // Temporary processing files
+    └── {sessionId}/
+        └── {timestamp}_chunk.webm          // Live streaming chunks
+```
+
 ### Real-Time Processing Flow
 1. Audio capture via AudioManager
 2. Transcription through DeepgramSTT  
 3. Fragment analysis and buffering
 4. Context-aware response generation
+
 5. Rule-based filtering via GatekeeperEngine
 6. AI response synthesis
 7. Text-to-speech playback
@@ -123,10 +166,30 @@ Core types are defined in `/src/types/index.ts`:
 ## Important Development Notes
 
 ### Environment Configuration
-- Requires Firebase configuration for authentication and database
+- Requires Firebase configuration for authentication, database, and storage
 - AI API keys needed for OpenAI and Anthropic services
 - Deepgram API key for speech-to-text
 - ElevenLabs API key for text-to-speech
+
+### Firebase Storage Guidelines
+**File Organization:**
+- Use the predefined storage hierarchy for all audio file operations
+- Voice samples are organized by Deepgram voice IDs for speaker identification
+- Meeting recordings include both original and compressed versions
+- TTS cache uses SHA-256 hashes for efficient lookup and deduplication
+- Temporary files in `/temp/` should be cleaned up after processing
+
+**Naming Conventions:**
+- Timestamps use Unix milliseconds for consistent ordering
+- Duration suffixes (e.g., `_8s`, `_15s`) indicate clip length
+- Include meeting IDs and speaker IDs for traceability
+- Use `.webm` for original recordings, `.mp3` for compressed versions
+
+**File Management:**
+- Implement automatic cleanup for temporary files older than 24 hours
+- TTS cache files expire after 7 days (handled by existing TTSCacheManager)
+- Voice samples should be retained for speaker identification accuracy
+- Meeting recordings follow user data retention preferences
 
 ### Phase 2 Core Infrastructure (COMPLETED)
 **Authentication System:**
@@ -158,12 +221,14 @@ Current Phase 2 completion includes:
 - Real-time synchronization across all data types
 - Comprehensive integration testing and validation
 
-### Code Architecture Patterns
+### Project-Specific Code Patterns
 - Event-driven architecture with ConversationEvent types
 - Plugin-based rule system for meeting customization
 - Multi-modal AI integration with cost optimization
 - Service-oriented design with clear boundaries
-- Type-safe development with comprehensive TypeScript types
+- Real-time audio processing with Web Audio API
+
+*General code style preferences and TypeScript patterns are defined in `/Users/rohan/CLAUDE.md`.*
 
 ### Improvement areas
  // SDK (more features)
@@ -173,8 +238,10 @@ Current Phase 2 completion includes:
   });
 
 
-### Model Configuration
-When working with AI models, the system supports both OpenAI and Anthropic providers. Google/Gemini references have been removed from the codebase. Use the modelConfigs system for adding new models or modifying existing ones.
+### Project-Specific Model Configuration
+This project supports both OpenAI and Anthropic providers via the modelConfigs system in `/src/config/modelConfigs.ts`. Google/Gemini references have been removed. Use the modelConfigs system for adding new models or modifying existing ones.
+
+*General AI assistant behavior preferences are defined in `/Users/rohan/CLAUDE.md`.*
 
 ## TTS System Architecture (Production-Ready)
 

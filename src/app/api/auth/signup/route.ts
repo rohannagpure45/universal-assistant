@@ -95,6 +95,7 @@ async function createUserProfile(uid: string, userData: any) {
     email: userData.email,
     displayName: userData.displayName || 'User',
     photoURL: userData.photoURL || null,
+    isAdmin: false,  // Added required field for new schema
     preferences: {
       defaultModel: 'gpt-4o' as const,
       ttsVoice: 'alloy',

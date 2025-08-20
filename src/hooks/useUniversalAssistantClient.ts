@@ -2,17 +2,23 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getServiceContainer, initializeTranscription } from '@/services/universal-assistant/ClientServiceContainer';
+import { UniversalAssistantCoordinator, createUniversalAssistantCoordinator } from '@/services/universal-assistant/UniversalAssistantCoordinator';
 import type { AudioManager } from '@/services/universal-assistant/AudioManager';
 import type { DeepgramSTT } from '@/services/universal-assistant/DeepgramSTT';
 import type { FragmentProcessor } from '@/services/universal-assistant/FragmentProcessor';
 import type { ConversationProcessor } from '@/services/universal-assistant/ConversationProcessor';
-import { useMeetingStore } from '@/stores/meetingStore';
+import { useMeetingStore, useAppStore } from '@/stores';
 
 interface TranscriptionServices {
   audioManager: AudioManager;
   deepgramSTT: DeepgramSTT;
   fragmentProcessor: FragmentProcessor;
   conversationProcessor: ConversationProcessor;
+}
+
+interface CoordinatorServices {
+  coordinator: UniversalAssistantCoordinator;
+  services: TranscriptionServices;
 }
 
 /**
@@ -28,11 +34,14 @@ export function useUniversalAssistantClient() {
   const [isInitialized, setIsInitialized] = useState(false);
   
   const servicesRef = useRef<TranscriptionServices | null>(null);
+  const coordinatorRef = useRef<UniversalAssistantCoordinator | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const initializationAttempted = useRef(false);
   
-  // Get meeting store for transcript updates
-  const { currentMeeting, addTranscriptEntry } = useMeetingStore();
+  // Get stores for integration
+  const meetingStore = useMeetingStore();
+  const appStore = useAppStore();
+  const { currentMeeting, addTranscriptEntry } = meetingStore;
 
   useEffect(() => {
     // Only initialize on client side and only once
@@ -130,8 +139,24 @@ export function useUniversalAssistantClient() {
       
       console.log('Services connected and ready for transcription');
       
+      // Initialize the coordinator with the services
+      const coordinator = createUniversalAssistantCoordinator(
+        {
+          model: 'claude-3-5-sonnet',
+          maxTokens: 1000,
+          voiceId: '21m00Tcm4TlvDq8ikWAM',
+          ttsSpeed: 1.0,
+          enableConcurrentProcessing: true,
+          enableSpeakerIdentification: true,
+        },
+        useMeetingStore,
+        useAppStore
+      );
+      
+      coordinatorRef.current = coordinator;
+      
       setIsInitialized(true);
-      console.log('Universal Assistant services initialized successfully');
+      console.log('Universal Assistant services and coordinator initialized successfully');
     } catch (err) {
       console.error('Failed to initialize Universal Assistant services:', err);
       setError(err instanceof Error ? err.message : 'Failed to initialize audio system');
@@ -206,30 +231,30 @@ export function useUniversalAssistantClient() {
   }, []);
 
   const handleVocalInterrupt = useCallback(() => {
-    if (!isClient || !isInitialized || !servicesRef.current) {
-      console.warn('Vocal interrupt requires initialized services');
+    if (!isClient || !isInitialized || !coordinatorRef.current) {
+      console.warn('Vocal interrupt requires initialized coordinator');
       return;
     }
     
     try {
       setIsProcessing(true);
-      const { audioManager } = servicesRef.current;
+      const coordinator = coordinatorRef.current;
       
-      // Stop any current audio playback
-      audioManager.stopAllAudio();
+      // Use coordinator's vocal interrupt handling
+      coordinator.handleVocalInterrupt();
       
-      // Simulate processing delay
+      // Subscribe to coordinator state changes
+      const unsubscribe = coordinator.subscribe((state) => {
+        setIsPlaying(state.isPlaying);
+        setIsProcessing(state.isProcessing);
+      });
+      
+      // Clean up subscription after a short delay
       setTimeout(() => {
-        setIsProcessing(false);
-        setIsPlaying(true);
-        
-        // Simulate response playback
-        setTimeout(() => {
-          setIsPlaying(false);
-        }, 2000);
-      }, 1000);
+        unsubscribe();
+      }, 5000);
       
-      console.log('Triggered vocal interrupt');
+      console.log('Triggered vocal interrupt via coordinator');
     } catch (err) {
       console.error('Error handling vocal interrupt:', err);
       setError(err instanceof Error ? err.message : 'Error handling interrupt');
@@ -268,6 +293,13 @@ export function useUniversalAssistantClient() {
           streamRef.current = null;
         }
         
+        // Clean up coordinator first
+        if (coordinatorRef.current) {
+          console.log('Cleaning up coordinator...');
+          coordinatorRef.current.cleanup();
+          coordinatorRef.current = null;
+        }
+        
         // Clean up all services through the container
         if (servicesRef.current) {
           console.log('Cleaning up service container...');
@@ -283,6 +315,24 @@ export function useUniversalAssistantClient() {
     };
   }, []); // Empty dependency array - only run on mount/unmount
 
+  // Add triggerAIResponse function
+  const triggerAIResponse = useCallback(async (text?: string) => {
+    if (!isClient || !isInitialized || !coordinatorRef.current) {
+      console.warn('AI response trigger requires initialized coordinator');
+      setError('Services not ready. Please wait.');
+      return;
+    }
+    
+    try {
+      setError(null);
+      const coordinator = coordinatorRef.current;
+      await coordinator.triggerAIResponse(text);
+    } catch (err) {
+      console.error('Error triggering AI response:', err);
+      setError(err instanceof Error ? err.message : 'Failed to generate AI response');
+    }
+  }, [isClient, isInitialized]);
+
   return {
     isRecording,
     isPlaying,
@@ -292,6 +342,8 @@ export function useUniversalAssistantClient() {
     startRecording,
     stopRecording,
     handleVocalInterrupt,
+    triggerAIResponse,
+    coordinator: coordinatorRef.current,
     isReady: isClient && isInitialized,
   };
 }

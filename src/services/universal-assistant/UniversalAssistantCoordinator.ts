@@ -1,6 +1,7 @@
 import { conversationProcessor } from './ConversationProcessor';
 import { audioManager } from './AudioManager';
 import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor';
+import { TTSApiClient } from './TTSApiClient';
 import type { TranscriptEntry } from '@/types';
 import { useMeetingStore, useAppStore } from '@/stores';
 
@@ -45,6 +46,8 @@ export class UniversalAssistantCoordinator {
   private stateListeners: Set<(state: CoordinatorState) => void> = new Set();
   private meetingStore: MeetingStoreInstance | null = null;
   private appStore: AppStoreInstance | null = null;
+  private ttsClient: TTSApiClient;
+  private authToken: string | null = null;
   private state: CoordinatorState = {
     isRecording: false,
     isPlaying: false,
@@ -61,6 +64,7 @@ export class UniversalAssistantCoordinator {
     this.config = config;
     this.meetingStore = meetingStore || null;
     this.appStore = appStore || null;
+    this.ttsClient = new TTSApiClient();
     
     // Initialize concurrent processing if enabled
     if (config.enableConcurrentProcessing) {
@@ -73,6 +77,34 @@ export class UniversalAssistantCoordinator {
     
     // Set up store synchronization if available
     this.setupStoreSynchronization();
+    
+    // Initialize authentication
+    this.initializeAuth();
+  }
+
+  // Authentication initialization
+  private async initializeAuth(): Promise<void> {
+    try {
+      if (typeof window !== 'undefined') {
+        const { auth } = await import('@/lib/firebase/client');
+        const { onAuthStateChanged } = await import('firebase/auth');
+        
+        onAuthStateChanged(auth, async (user) => {
+          if (user) {
+            try {
+              this.authToken = await user.getIdToken();
+            } catch (error) {
+              console.error('Failed to get auth token:', error);
+              this.authToken = null;
+            }
+          } else {
+            this.authToken = null;
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Failed to initialize auth:', error);
+    }
   }
 
   // Store synchronization setup
@@ -320,33 +352,34 @@ export class UniversalAssistantCoordinator {
   // Speaker Management
   private extractSpeakerId(words?: any[]): string {
     if (!words || words.length === 0) {
-      return 'unknown_speaker';
+      return 'Speaker 1';
     }
 
     // Get most common speaker in this chunk
     const speakerCounts = new Map<number, number>();
     words.forEach(word => {
-      if (word.speaker !== undefined) {
+      if (word.speaker !== undefined && word.speaker !== null) {
         speakerCounts.set(word.speaker, (speakerCounts.get(word.speaker) || 0) + 1);
       }
     });
 
     if (speakerCounts.size === 0) {
-      return 'unknown_speaker';
+      return 'Speaker 1';
     }
 
     const dominantSpeaker = Array.from(speakerCounts.entries())
       .sort((a, b) => b[1] - a[1])[0][0];
 
-    return `speaker_${dominantSpeaker}`;
+    // Return human-readable speaker name instead of speaker_0
+    return `Speaker ${dominantSpeaker + 1}`;
   }
 
   private processDiarization(words: any[]): void {
     const speakerMap = new Map(this.state.speakers);
 
     words.forEach(word => {
-      if (word.speaker !== undefined) {
-        const speakerId = `speaker_${word.speaker}`;
+      if (word.speaker !== undefined && word.speaker !== null) {
+        const speakerId = `Speaker ${word.speaker + 1}`; // Human-readable speaker name
         const existing = speakerMap.get(speakerId);
 
         if (existing) {
@@ -356,6 +389,7 @@ export class UniversalAssistantCoordinator {
         } else {
           speakerMap.set(speakerId, {
             id: speakerId,
+            name: speakerId, // Set human-readable name
             confidence: word.confidence || 0.5,
             lastSeen: new Date(),
             utteranceCount: 1,
@@ -372,25 +406,52 @@ export class UniversalAssistantCoordinator {
     try {
       this.setState({ isProcessing: true });
 
+      if (!this.authToken) {
+        console.error('No auth token available for AI response');
+        this.setState({ isProcessing: false });
+        return;
+      }
+
       const response = await fetch('/api/universal-assistant/ai-response', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
+        },
         body: JSON.stringify({
-          prompt,
+          text: prompt, // Use 'text' instead of 'prompt' to match API expectation
           model: this.config.model,
           maxTokens: this.config.maxTokens,
           context: this.getConversationContext(),
+          meetingId: this.meetingStore?.getState().currentMeeting?.meetingId,
         }),
       });
 
-      const { text } = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`AI response API error: ${errorData.error || response.statusText}`);
+      }
 
-      if (text) {
-        await this.generateTTS(text);
+      const data = await response.json();
+      const responseText = data.response?.text || data.text;
+
+      if (responseText) {
+        await this.generateTTS(responseText);
       }
     } catch (error) {
       console.error('Error generating AI response:', error);
       performanceMonitor.recordError('ai_response_generation', error);
+      
+      // Show error notification if app store available
+      if (this.appStore) {
+        const appActions = this.appStore.getState();
+        appActions.addNotification({
+          type: 'error',
+          title: 'AI Response Error',
+          message: 'Failed to generate AI response. Please try again.',
+          persistent: false,
+        });
+      }
     } finally {
       this.setState({ isProcessing: false });
     }
@@ -401,25 +462,35 @@ export class UniversalAssistantCoordinator {
     try {
       this.setState({ isPlaying: true });
 
-      const response = await fetch('/api/universal-assistant/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          voiceId: this.config.voiceId,
+      // Use the TTSApiClient instead of direct fetch
+      const response = await this.ttsClient.generateSpeech(text, {
+        voiceId: this.config.voiceId,
+        options: {
           speed: this.config.ttsSpeed,
-        }),
+          useCache: true,
+        }
       });
 
-      const { audioUrl } = await response.json();
-      
-      if (audioUrl) {
-        await this.playAudio(audioUrl);
+      if (response.success && response.audioUrl) {
+        await this.playAudio(response.audioUrl);
+      } else {
+        throw new Error(response.error || 'TTS generation failed');
       }
     } catch (error) {
       console.error('Error generating TTS:', error);
       performanceMonitor.recordError('tts_generation', error);
       this.setState({ isPlaying: false });
+      
+      // Show error notification if app store available
+      if (this.appStore) {
+        const appActions = this.appStore.getState();
+        appActions.addNotification({
+          type: 'error',
+          title: 'Speech Generation Error',
+          message: 'Failed to generate speech. Please try again.',
+          persistent: false,
+        });
+      }
     }
   }
 
@@ -558,12 +629,20 @@ export class UniversalAssistantCoordinator {
     return { ...this.config };
   }
 
+  // Public method to trigger AI response (for manual triggers)
+  public async triggerAIResponse(text?: string): Promise<void> {
+    const prompt = text || this.state.transcript || 'Please provide a brief response to the current conversation.';
+    await this.generateAIResponse(prompt);
+  }
+
   // Cleanup
   public cleanup(): void {
     this.stopRecording();
     audioManager.stopAllAudio();
+    this.ttsClient.cancelAllRequests();
     this.stateListeners.clear();
     this.deepgramConnection = null;
+    this.authToken = null;
   }
 }
 

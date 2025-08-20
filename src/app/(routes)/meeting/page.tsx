@@ -120,15 +120,25 @@ const PastMeetings: React.FC = () => {
   const { recentMeetings, isLoadingRecentMeetings, loadRecentMeetings } = useMeetingStore();
 
   useEffect(() => {
-    if (user?.uid && recentMeetings.length === 0 && !isLoadingRecentMeetings) {
-      loadRecentMeetings(user.uid, 10);
+    // Always load recent meetings when component mounts if user is available
+    if (user?.uid && !isLoadingRecentMeetings) {
+      loadRecentMeetings(user.uid, 10).catch(error => {
+        console.error('Failed to load recent meetings:', error);
+      });
     }
-  }, [user?.uid, recentMeetings.length, isLoadingRecentMeetings, loadRecentMeetings]);
+  }, [user?.uid, loadRecentMeetings]); // Removed recentMeetings.length dependency to allow refresh
 
   return (
     <div className="glass-morphism dark:glass-morphism-dark rounded-xl border border-white/30 dark:border-gray-700/30 overflow-hidden shadow-soft">
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => {
+          const next = !isExpanded;
+          setIsExpanded(next);
+          if (next && user?.uid && recentMeetings.length === 0 && !isLoadingRecentMeetings) {
+            // Lazy-load recent meetings on first expand if not already loaded
+            loadRecentMeetings(user.uid, 10);
+          }
+        }}
         className="w-full p-6 flex items-center justify-between text-left hover:bg-white/30 dark:hover:bg-gray-800/30 transition-all duration-200 button-press"
         aria-expanded={isExpanded}
         aria-controls="past-meetings-content"
@@ -166,7 +176,7 @@ const PastMeetings: React.FC = () => {
                 <div
                   key={meeting.meetingId}
                   className="group relative p-5 border-b border-white/10 dark:border-gray-700/30 last:border-b-0 hover:bg-white/30 dark:hover:bg-gray-800/30 cursor-pointer transition-all duration-200 card-hover"
-                  onClick={() => console.log('View meeting:', meeting.meetingId)}
+                  onClick={() => {/* TODO: navigate to meeting details if needed */}}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
@@ -480,6 +490,13 @@ export default function MeetingPage() {
       
       // End the meeting in the store
       await endMeeting();
+      // Refresh recent meetings after ending to reflect latest state in dropdown
+      try {
+        if (user?.uid) {
+          // Force a reload of recent meetings
+          await useMeetingStore.getState().loadRecentMeetings(user.uid, 10);
+        }
+      } catch {}
       await new Promise(resolve => setTimeout(resolve, 800));
       
       // Step 3: Cleanup

@@ -249,7 +249,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               Signup Unavailable
             </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <p className="text-gray-700 dark:text-gray-400 mb-4">
               The signup form encountered an error. Please refresh the page or try again later.
             </p>
             <button
@@ -268,7 +268,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
             Create Account
           </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} method="post" className="space-y-4">
           {/* Display Name Field */}
           <div>
             <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -434,7 +434,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
           )}
 
           {/* Terms and Conditions */}
-          <div className="text-xs text-gray-600 dark:text-gray-400">
+          <div className="text-xs text-gray-700 dark:text-gray-400">
             By creating an account, you agree to our{' '}
             <a href="/terms" className="text-blue-600 dark:text-blue-400 hover:underline">
               Terms of Service
@@ -487,7 +487,7 @@ export const SignupForm: React.FC<SignupFormProps> = ({
         {/* Switch to Login */}
         {onSwitchToLogin && (
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-sm text-gray-700 dark:text-gray-400">
               Already have an account?{' '}
               <button
                 onClick={onSwitchToLogin}

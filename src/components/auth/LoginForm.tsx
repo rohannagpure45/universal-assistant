@@ -75,8 +75,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
     if (!formData.password) {
       errors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      errors.password = 'Password must be at least 6 characters';
+    } else if (formData.password.length < 8) {
+      errors.password = 'Password must be at least 8 characters';
     }
 
     setFormErrors(errors);
@@ -193,7 +193,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               Login Unavailable
             </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <p className="text-gray-700 dark:text-gray-400 mb-4">
               The login form encountered an error. Please refresh the page or try again later.
             </p>
             <button
@@ -232,7 +232,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleResetPassword} className="space-y-4">
+              <form onSubmit={handleResetPassword} method="post" className="space-y-4">
                 <div>
                   <label htmlFor="resetEmail" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Email Address
@@ -292,12 +292,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </div>
       ) : (
         <div className={`w-full max-w-md mx-auto ${className}`}>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+          <div className={`${className.includes('bg-transparent') ? '' : 'bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6'}`}>
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">
               Sign In
             </h2>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} method="post" className="space-y-4">
               {/* Email Field */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -433,7 +433,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             {/* Switch to Sign Up */}
             {onSwitchToSignup && (
               <div className="mt-6 text-center">
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="text-sm text-gray-700 dark:text-gray-400">
                   Don't have an account?{' '}
                   <button
                     onClick={onSwitchToSignup}

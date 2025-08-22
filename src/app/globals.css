@@ -1,9 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import '../styles/theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Design System Typography Classes */
+/* Modern Design System Base */
 @layer base {
+  /* Set Inter as the default font */
+  * {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Open Sans', 'Helvetica Neue', sans-serif;
+  }
+  
+  /* Smooth scrolling for better UX */
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  /* Better font rendering */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
   /* Display Typography - Headlines and hero text */
   .text-display-5xl {
     font-size: 3rem;           /* 48px */
@@ -122,27 +141,56 @@
 }
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  /* Light mode: Use solid grey background with proper contrast */
+  --foreground-rgb: 15, 23, 42; /* slate-900 for high contrast */
+  --background-start-rgb: 248, 250, 252; /* gray-50 - lighter static grey */
+  --background-end-rgb: 248, 250, 252; /* gray-50 - same as start for solid background */
+  
+  /* Light mode text colors for improved readability */
+  --text-primary: rgb(15, 23, 42); /* slate-900 - very dark for high contrast */
+  --text-secondary: rgb(31, 41, 55); /* gray-800 - very dark for better contrast */
+  --text-muted: rgb(55, 65, 81); /* gray-700 - dark enough to be readable */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    --foreground-rgb: 248, 250, 252; /* slate-50 for dark mode */
+    --background-start-rgb: 15, 23, 42; /* slate-900 */
+    --background-end-rgb: 30, 41, 59; /* slate-800 */
+    
+    /* Dark mode text colors */
+    --text-primary: rgb(248, 250, 252); /* slate-50 */
+    --text-secondary: rgb(226, 232, 240); /* slate-200 */
+    --text-muted: rgb(148, 163, 184); /* slate-400 */
   }
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: rgb(15, 23, 42); /* slate-900 for light mode - high contrast */
+  /* Clean solid grey background - no gradient */
+  background: rgb(248, 250, 252); /* static gray-50 */
+  /* Remove textured background pattern that creates visual noise */
+}
+
+/* Ensure proper text colors in light mode */
+@media (prefers-color-scheme: light) {
+  body {
+    color: rgb(15, 23, 42); /* slate-900 - ensure dark text in light mode */
+  }
+}
+
+/* Dark mode text colors */
+@media (prefers-color-scheme: dark) {
+  body {
+    color: rgb(248, 250, 252); /* slate-50 for dark mode */
+  }
+}
+
+/* Dark mode background adjustments - keep clean solid background */
+@media (prefers-color-scheme: dark) {
+  body {
+    /* Remove textured pattern for dark mode as well */
+  }
 }
 
 @layer utilities {
@@ -264,22 +312,46 @@ body {
     font-size: clamp(1.875rem, 1.6rem + 1.375vw, 2.5rem);
   }
   
-  /* Wave animation background */
-  .wave-bg {
-    background: linear-gradient(-45deg, #667eea, #764ba2, #667eea, #764ba2);
-    background-size: 400% 400%;
-    animation: wave 15s ease-in-out infinite;
+  /* Theme transition utilities for smooth dark/light mode switching */
+  .theme-transition * {
+    transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                fill 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                stroke 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
   
-  @keyframes wave {
-    0% {
-      background-position: 0% 50%;
+  .theme-transition *::before,
+  .theme-transition *::after {
+    transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                color 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  /* Static background for light mode - no wave animation */
+  .wave-bg {
+    background: rgb(248, 250, 252); /* static gray-50 background */
+  }
+  
+  /* Keep wave animation for dark mode only */
+  @media (prefers-color-scheme: dark) {
+    .wave-bg {
+      background: linear-gradient(-45deg, #667eea, #764ba2, #667eea, #764ba2);
+      background-size: 400% 400%;
+      animation: wave 15s ease-in-out infinite;
     }
-    50% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0% 50%;
+    
+    @keyframes wave {
+      0% {
+        background-position: 0% 50%;
+      }
+      50% {
+        background-position: 100% 50%;
+      }
+      100% {
+        background-position: 0% 50%;
+      }
     }
   }
   
@@ -414,6 +486,34 @@ body {
     @apply text-contrast-accessible;
   }
   
+  /* Utility classes for quick text color fixes */
+  .text-light-mode-safe {
+    color: rgb(15, 23, 42); /* slate-900 for light mode */
+  }
+  
+  @media (prefers-color-scheme: dark) {
+    .text-light-mode-safe {
+      color: rgb(248, 250, 252); /* slate-50 for dark mode */
+    }
+  }
+  
+  /* Ensure headings have proper contrast */
+  h1, h2, h3, h4, h5, h6 {
+    color: inherit; /* Inherit from parent for consistency */
+  }
+  
+  /* Button text should be readable */
+  button:not([class*="bg-"]) {
+    color: rgb(15, 23, 42); /* Default to dark text */
+  }
+  
+  @media (prefers-color-scheme: dark) {
+    button:not([class*="bg-"]) {
+      color: rgb(248, 250, 252); /* Light text in dark mode */
+    }
+  }
+  
+  
   /* Reduced motion preferences */
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -440,6 +540,168 @@ body {
     button,
     [role="button"] {
       border: 2px solid currentColor;
+    }
+  }
+  
+  /* Skip link for screen readers and keyboard navigation */
+  .skip-link {
+    position: fixed;
+    top: -40px;
+    left: 6px;
+    background: #000;
+    color: #fff;
+    padding: 8px 16px;
+    text-decoration: none;
+    border-radius: 4px;
+    z-index: 9999;
+    font-weight: 600;
+    transition: top 0.3s ease;
+  }
+  
+  .skip-link:focus {
+    top: 6px;
+    outline: 3px solid #0ea5e9;
+    outline-offset: 2px;
+  }
+  
+  /* Focus trap styles for modals */
+  .focus-trap {
+    position: relative;
+  }
+  
+  .focus-trap::before,
+  .focus-trap::after {
+    content: '';
+    position: fixed;
+    pointer-events: none;
+  }
+  
+  /* Visually hidden but accessible to screen readers */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  
+  /* Live region for dynamic content announcements */
+  .sr-live {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  
+  /* Enhanced keyboard navigation for custom components */
+  [role="tablist"] [role="tab"]:focus-visible {
+    outline: 2px solid #0284c7;
+    outline-offset: -2px;
+    background-color: rgba(2, 132, 199, 0.1);
+  }
+  
+  [role="menu"] [role="menuitem"]:focus-visible,
+  [role="listbox"] [role="option"]:focus-visible {
+    outline: 2px solid #0284c7;
+    outline-offset: -2px;
+    background-color: rgba(2, 132, 199, 0.1);
+  }
+  
+  /* Focus management for modals and dialogs */
+  [role="dialog"] {
+    position: relative;
+  }
+  
+  [role="dialog"]:focus-visible {
+    outline: none; /* Remove default outline on dialog container */
+  }
+  
+  /* Enhanced error states for form validation */
+  [aria-invalid="true"] {
+    border-color: #dc2626 !important; /* red-600 */
+    box-shadow: 0 0 0 1px #dc2626;
+  }
+  
+  [aria-invalid="true"]:focus-visible {
+    outline-color: #dc2626 !important;
+    ring-color: #dc2626;
+  }
+  
+  /* Required field indicators */
+  [aria-required="true"] + label::after,
+  label[aria-required="true"]::after,
+  .required::after {
+    content: " *";
+    color: #dc2626;
+    font-weight: bold;
+  }
+  
+  /* Focus indicators for form groups and fieldsets */
+  fieldset:focus-within {
+    outline: 2px solid #0284c7;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  
+  /* Enhanced toggle switch accessibility */
+  [role="switch"]:focus-visible {
+    outline: 3px solid #0284c7;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+  }
+  
+  [role="switch"][aria-checked="true"] {
+    background-color: #0284c7;
+  }
+  
+  [role="switch"][aria-checked="false"] {
+    background-color: #6b7280; /* gray-500 */
+  }
+  
+  /* Dark mode adjustments for accessibility */
+  @media (prefers-color-scheme: dark) {
+    .skip-link {
+      background: #fff;
+      color: #000;
+    }
+    
+    .skip-link:focus {
+      outline-color: #0ea5e9;
+    }
+    
+    [role="tablist"] [role="tab"]:focus-visible,
+    [role="menu"] [role="menuitem"]:focus-visible,
+    [role="listbox"] [role="option"]:focus-visible {
+      outline-color: #0ea5e9;
+      background-color: rgba(14, 165, 233, 0.15);
+    }
+    
+    [aria-invalid="true"] {
+      border-color: #ef4444; /* red-500 for dark mode */
+      box-shadow: 0 0 0 1px #ef4444;
+    }
+    
+    [aria-invalid="true"]:focus-visible {
+      outline-color: #ef4444;
+      ring-color: #ef4444;
+    }
+    
+    [role="switch"]:focus-visible {
+      outline-color: #0ea5e9;
+      box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+    }
+    
+    [role="switch"][aria-checked="true"] {
+      background-color: #0ea5e9;
+    }
+    
+    [role="switch"][aria-checked="false"] {
+      background-color: #4b5563; /* gray-600 for dark mode */
     }
   }
 }

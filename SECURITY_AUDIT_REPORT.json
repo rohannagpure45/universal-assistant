@@ -1,0 +1,213 @@
+{
+  "auditTimestamp": "2025-08-22T22:25:32.482Z",
+  "projectPath": "/Users/rohan/universal-assistant",
+  "securityStatus": {
+    "criticalIssues": 0,
+    "warnings": 3,
+    "passes": 24,
+    "overallStatus": "NEEDS_ATTENTION"
+  },
+  "findings": {
+    "critical": [],
+    "warnings": [
+      {
+        "type": "WARNING",
+        "category": "SECURITY_RULES",
+        "message": "Voice library accessible via admin SDK (expected)",
+        "fix": "This is normal for admin SDK access",
+        "timestamp": "2025-08-22T22:25:31.436Z"
+      },
+      {
+        "type": "WARNING",
+        "category": "AUTO_FIX",
+        "message": "Could not set admin claims for ribt2218@gmail.com: //console.developers.google.com/iam-admin/iam/project?project=universal-assis and then retry. Propagation of the new permission may take a few minutes. Raw server response: \"{\"error\":{\"code\":403,\"message\":\"Caller does not have required permission to use project universal-assis. Grant the caller the roles/serviceusage.serviceUsageConsumer role, or a custom role with the serviceusage.services.use permission, by visiting https://console.developers.google.com/iam-admin/iam/project?project=universal-assis and then retry. Propagation of the new permission may take a few minutes.\",\"errors\":[{\"message\":\"Caller does not have required permission to use project universal-assis. Grant the caller the roles/serviceusage.serviceUsageConsumer role, or a custom role with the serviceusage.services.use permission, by visiting https://console.developers.google.com/iam-admin/iam/project?project=universal-assis and then retry. Propagation of the new permission may take a few minutes.\",\"domain\":\"global\",\"reason\":\"forbidden\"}],\"status\":\"PERMISSION_DENIED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"USER_PROJECT_DENIED\",\"domain\":\"googleapis.com\",\"metadata\":{\"consumer\":\"projects/universal-assis\",\"containerInfo\":\"universal-assis\",\"service\":\"identitytoolkit.googleapis.com\"}},{\"@type\":\"type.googleapis.com/google.rpc.LocalizedMessage\",\"locale\":\"en-US\",\"message\":\"Caller does not have required permission to use project universal-assis. Grant the caller the roles/serviceusage.serviceUsageConsumer role, or a custom role with the serviceusage.services.use permission, by visiting https://console.developers.google.com/iam-admin/iam/project?project=universal-assis and then retry. Propagation of the new permission may take a few minutes.\"},{\"@type\":\"type.googleapis.com/google.rpc.Help\",\"links\":[{\"description\":\"Google developer console IAM admin\",\"url\":\"https://console.developers.google.com/iam-admin/iam/project?project=universal-assis\"}]}]}}\"",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:32.323Z"
+      },
+      {
+        "type": "WARNING",
+        "category": "AUTO_FIX",
+        "message": "Could not set admin claims for rohan@linkstudio.ai: //console.developers.google.com/iam-admin/iam/project?project=universal-assis and then retry. Propagation of the new permission may take a few minutes. Raw server response: \"{\"error\":{\"code\":403,\"message\":\"Caller does not have required permission to use project universal-assis. Grant the caller the roles/serviceusage.serviceUsageConsumer role, or a custom role with the serviceusage.services.use permission, by visiting https://console.developers.google.com/iam-admin/iam/project?project=universal-assis and then retry. Propagation of the new permission may take a few minutes.\",\"errors\":[{\"message\":\"Caller does not have required permission to use project universal-assis. Grant the caller the roles/serviceusage.serviceUsageConsumer role, or a custom role with the serviceusage.services.use permission, by visiting https://console.developers.google.com/iam-admin/iam/project?project=universal-assis and then retry. Propagation of the new permission may take a few minutes.\",\"domain\":\"global\",\"reason\":\"forbidden\"}],\"status\":\"PERMISSION_DENIED\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"USER_PROJECT_DENIED\",\"domain\":\"googleapis.com\",\"metadata\":{\"consumer\":\"projects/universal-assis\",\"service\":\"identitytoolkit.googleapis.com\",\"containerInfo\":\"universal-assis\"}},{\"@type\":\"type.googleapis.com/google.rpc.LocalizedMessage\",\"locale\":\"en-US\",\"message\":\"Caller does not have required permission to use project universal-assis. Grant the caller the roles/serviceusage.serviceUsageConsumer role, or a custom role with the serviceusage.services.use permission, by visiting https://console.developers.google.com/iam-admin/iam/project?project=universal-assis and then retry. Propagation of the new permission may take a few minutes.\"},{\"@type\":\"type.googleapis.com/google.rpc.Help\",\"links\":[{\"description\":\"Google developer console IAM admin\",\"url\":\"https://console.developers.google.com/iam-admin/iam/project?project=universal-assis\"}]}]}}\"",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:32.480Z"
+      }
+    ],
+    "passes": [
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "NEXT_PUBLIC_FIREBASE_API_KEY is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.865Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "NEXT_PUBLIC_FIREBASE_PROJECT_ID is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "FIREBASE_ADMIN_PROJECT_ID is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "FIREBASE_ADMIN_CLIENT_EMAIL is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "FIREBASE_ADMIN_PRIVATE_KEY is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "OPENAI_API_KEY is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "ANTHROPIC_API_KEY is configured",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "ENV_CONFIG",
+        "message": "FIREBASE_ADMIN_PRIVATE_KEY format appears correct",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.866Z"
+      },
+      {
+        "type": "PASS",
+        "category": "FIREBASE_INIT",
+        "message": "Firebase Admin initialized successfully",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.884Z"
+      },
+      {
+        "type": "PASS",
+        "category": "RULES_VALIDATION",
+        "message": "Found Authentication check function",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.885Z"
+      },
+      {
+        "type": "PASS",
+        "category": "RULES_VALIDATION",
+        "message": "Found Admin check function",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.885Z"
+      },
+      {
+        "type": "PASS",
+        "category": "RULES_VALIDATION",
+        "message": "Found Ownership check function",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.885Z"
+      },
+      {
+        "type": "PASS",
+        "category": "RULES_VALIDATION",
+        "message": "Found Admin claims validation",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.885Z"
+      },
+      {
+        "type": "PASS",
+        "category": "RULES_VALIDATION",
+        "message": "Found Authentication-protected reads",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.885Z"
+      },
+      {
+        "type": "PASS",
+        "category": "STORAGE_SECURITY",
+        "message": "Found write restrictions in storage rules",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.885Z"
+      },
+      {
+        "type": "PASS",
+        "category": "STORAGE_VALIDATION",
+        "message": "Found audio file validation in storage rules",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.885Z"
+      },
+      {
+        "type": "PASS",
+        "category": "STORAGE_LIMITS",
+        "message": "Found file size limits in storage rules",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:30.885Z"
+      },
+      {
+        "type": "PASS",
+        "category": "COLLECTION_ACCESS",
+        "message": "Collection users accessible via admin SDK",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:31.810Z"
+      },
+      {
+        "type": "PASS",
+        "category": "COLLECTION_ACCESS",
+        "message": "Collection meetings accessible via admin SDK",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:31.954Z"
+      },
+      {
+        "type": "PASS",
+        "category": "COLLECTION_ACCESS",
+        "message": "Collection voice_library accessible via admin SDK",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:32.041Z"
+      },
+      {
+        "type": "PASS",
+        "category": "COLLECTION_ACCESS",
+        "message": "Collection needs_identification accessible via admin SDK",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:32.175Z"
+      },
+      {
+        "type": "PASS",
+        "category": "AUTO_FIX",
+        "message": "Created security configuration backup at /Users/rohan/universal-assistant/security-config.json",
+        "fix": null,
+        "timestamp": "2025-08-22T22:25:32.482Z"
+      }
+    ]
+  },
+  "recommendations": [
+    "Deploy Firebase security rules to production",
+    "Test authentication flows with real users",
+    "Set up monitoring for failed authentication attempts",
+    "Regularly rotate API keys and service account credentials",
+    "Enable Firebase Security Rules simulator for testing"
+  ]
+}

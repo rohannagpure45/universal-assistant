@@ -149,6 +149,19 @@ export interface User {
       averageWPM: number;
       topics: string[];
     };
+    // Voice tracking fields
+    speakerCount?: number;                    // Number of unique speakers detected
+    lastVoiceActivity?: Date;                 // Timestamp of last voice activity
+    voiceIdentification?: {
+      unidentifiedSpeakers: string[];         // deepgramVoiceIds needing identification
+      identifiedSpeakers: Record<string, {   // deepgramVoiceId -> user info
+        userId: string;
+        userName: string;
+        confidence: number;
+        method: 'self' | 'mentioned' | 'pattern' | 'manual';
+      }>;
+      totalSpeakingTime: Record<string, number>; // deepgramVoiceId -> seconds
+    };
     summary?: string;
     actionItems?: string[];
     createdAt: Date;
@@ -176,23 +189,26 @@ export interface User {
   export interface TranscriptEntry {
     id: string;
     meetingId: string;
-    content: string;
-    speaker: string;
-    speakerId: string;
-    speakerName: string;
-    text: string;
+    text: string;                        // Primary text field
+    content?: string;                    // Alias for text (deprecated, use text)
+    speakerId: string;                   // Deepgram voice ID (primary)
+    voiceId?: string;                    // Alias for speakerId (deprecated)
+    speaker?: string;                    // Display name (deprecated, use speakerName)
+    speakerName: string;                 // Current speaker display name
     timestamp: Date;
     duration: number;
-    confidence: number;
+    confidence: number;                  // Transcription confidence (0-1)
     language: string;
-    isFragment: boolean;
-    isComplete: boolean;
-    isProcessed: boolean;
+    isFragment: boolean;                 // Is this a partial transcript?
+    isComplete: boolean;                 // Is transcription complete?
+    isProcessed: boolean;                // Has been processed by AI?
     metadata?: {
       volume: number;
       pace: number;
       sentiment: string;
       keywords: string[];
+      audioUrl?: string;                 // URL to audio clip
+      quality?: number;                  // Audio quality score
     };
   }
   
@@ -200,15 +216,13 @@ export interface User {
   export type AIModel = 
     | 'gpt-4o'
     | 'gpt-4o-mini'
+    | 'gpt-4-turbo'
     | 'claude-3-5-sonnet'
+    | 'claude-3-haiku'
+    | 'claude-3-opus'
     | 'claude-3-5-opus'
     | 'claude-3-7-sonnet'
     | 'claude-3-7-opus'
-    | 'claude-3-7-sonnet'
-    | 'gpt-5-mini'
-    | 'gpt-5-nano'
-    | 'gpt-5'
-    | 'gpt-4.1-nano'
   
   export interface AIResponse {
     text: string;
@@ -244,7 +258,69 @@ export interface User {
     parameters?: Record<string, any>;
   }
 
+  // Voice Identification types
+  export interface IdentificationResult {
+    deepgramVoiceId: string;
+    userId: string;
+    userName: string;
+    confidence: number;
+    method: 'self' | 'mentioned' | 'pattern' | 'manual';
+    evidence: string;
+    timestamp?: Date;
+  }
+
+  export interface VoiceIdentificationStrategy {
+    name: string;
+    confidence: number;
+    execute(): Promise<IdentificationResult | null>;
+  }
+
+  export interface UnidentifiedSpeaker {
+    deepgramVoiceId: string;
+    sampleUrls: string[];
+    transcriptSamples: string[];
+    duration: number;
+    occurrences: number;
+    firstSeen: Date;
+    lastSeen: Date;
+  }
+
+  // Query result types for pagination
+  export interface QueryResult<T> {
+    data: T[];
+    hasMore: boolean;
+    nextCursor?: string;
+    total?: number;
+  }
+
+  export interface PaginatedResult<T> {
+    data: T[];
+    lastDoc?: any; // DocumentSnapshot from Firebase
+    hasMore: boolean;
+  }
+
+  export interface PaginationOptions {
+    limit?: number;
+    startAfterDoc?: any; // DocumentSnapshot from Firebase
+    orderByField?: string;
+    orderDirection?: 'asc' | 'desc';
+  }
+
+  export interface TranscriptQueryOptions {
+    limit?: number;
+    offset?: number;
+    orderBy?: 'timestamp' | 'confidence';
+    orderDirection?: 'asc' | 'desc';
+  }
+
+  export interface BatchUpdateEntry<T = any> {
+    id: string;
+    data: Partial<T>;
+  }
+
   // Cost tracking types removed
 
   // Re-export Firebase-specific types
   export * from './firebase';
+  export * from './database';
+  export * from './admin';

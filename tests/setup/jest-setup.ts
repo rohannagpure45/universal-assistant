@@ -11,6 +11,12 @@ import { setupFirebaseTestEnvironment } from './firebase-test-utils';
 global.TextEncoder = require('util').TextEncoder;
 global.TextDecoder = require('util').TextDecoder;
 
+// ReadableStream polyfill for Node.js
+if (typeof global.ReadableStream === 'undefined') {
+  const { ReadableStream } = require('stream/web');
+  global.ReadableStream = ReadableStream;
+}
+
 // Mock Firebase modules
 jest.mock('firebase/auth', () => ({
   getAuth: jest.fn(() => ({
@@ -177,6 +183,12 @@ Object.defineProperty(navigator, 'mediaDevices', {
           stop: jest.fn(),
           kind: 'audio',
           enabled: true,
+          label: 'Default Microphone',
+          getSettings: jest.fn(() => ({
+            sampleRate: 44100,
+            channelCount: 2,
+            deviceId: 'default',
+          })),
         },
       ],
     }),
@@ -234,6 +246,11 @@ global.URL = {
   createObjectURL: jest.fn(() => 'blob:mock-url'),
   revokeObjectURL: jest.fn(),
 } as any;
+
+// Mock nanoid
+jest.mock('nanoid', () => ({
+  nanoid: jest.fn(() => 'mock-nanoid-12345'),
+}));
 
 // Mock crypto for UUID generation
 Object.defineProperty(global, 'crypto', {
@@ -293,8 +310,5 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Increase timeout for integration tests
 jest.setTimeout(30000);
-
-// Mock timer functions
-jest.useFakeTimers();
 
 export {};

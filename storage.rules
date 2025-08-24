@@ -10,12 +10,99 @@ service firebase.storage {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
-    // Audio clips storage
+    function isValidAudioFile() {
+      return request.resource.contentType.matches('audio/.*') &&
+        request.resource.size < 50 * 1024 * 1024; // 50MB limit for audio
+    }
+    
+    function isMeetingParticipant(meetingId) {
+      // Note: This requires a Firestore lookup which isn't ideal for Storage rules
+      // In production, consider using custom claims or server-side validation
+      return isAuthenticated();
+    }
+    
+    // Voice samples for speaker identification
+    match /voice-samples/{deepgramVoiceId}/{fileName} {
+      // Read: Authenticated users can read voice samples (for identification)
+      allow read: if isAuthenticated();
+      
+      // Write: Any authenticated user can upload samples, system will validate ownership
+      allow write: if isAuthenticated() && 
+        isValidAudioFile() &&
+        fileName.matches('.*\\.(webm|mp3|wav|m4a)$');
+    }
+    
+    // Meeting recordings - Full meeting audio
+    match /meeting-recordings/{meetingId}/{fileName} {
+      // Read: Meeting participants only (simplified check)
+      allow read: if isAuthenticated();
+      
+      // Write: Authenticated users can upload meeting recordings
+      allow write: if isAuthenticated() && 
+        isValidAudioFile() &&
+        fileName.matches('.*\\.(webm|mp3|wav|m4a)$');
+    }
+    
+    // Identification samples - Clips pending identification
+    match /identification-samples/{meetingId}/{deepgramVoiceId}/{fileName} {
+      // Read: Authenticated users (for identification workflow)
+      allow read: if isAuthenticated();
+      
+      // Write: Meeting participants can upload identification samples
+      allow write: if isAuthenticated() && 
+        isValidAudioFile() &&
+        fileName.matches('.*\\.(webm|mp3|wav|m4a)$');
+    }
+    
+    // Meeting clips - Specific segments from meetings
+    match /meeting-clips/{meetingId}/{fileName} {
+      // Read: Authenticated users can read clips
+      allow read: if isAuthenticated();
+      
+      // Write: Authenticated users can upload clips
+      allow write: if isAuthenticated() && 
+        isValidAudioFile() &&
+        fileName.matches('.*\\.(webm|mp3|wav|m4a)$');
+    }
+    
+    // User-uploaded voice samples for training
+    match /user-uploads/{userId}/voice-training/{fileName} {
+      // Read: Owner can read their own voice training samples
+      allow read: if isOwner(userId);
+      
+      // Write: Owner can upload voice training samples
+      allow write: if isOwner(userId) && 
+        isValidAudioFile() &&
+        fileName.matches('.*\\.(webm|mp3|wav|m4a)$');
+    }
+    
+    // TTS cache - Cached text-to-speech audio
+    match /tts-cache/{fileName} {
+      // Read: All authenticated users can read TTS cache
+      allow read: if isAuthenticated();
+      
+      // Write: System/server only (via admin SDK)
+      allow write: if false; // Managed by server-side code
+    }
+    
+    // Temporary processing files
+    match /temp/{sessionId}/{fileName} {
+      // Read: Authenticated users can read temp files
+      allow read: if isAuthenticated();
+      
+      // Write: Authenticated users can upload temp files with size limits
+      allow write: if isAuthenticated() && 
+        request.resource.size < 20 * 1024 * 1024 && // 20MB limit for temp files
+        fileName.matches('.*\\.(webm|mp3|wav|m4a|json)$');
+      
+      // Delete: Authenticated users can delete temp files
+      allow delete: if isAuthenticated();
+    }
+    
+    // Legacy audio clips storage (keep for backward compatibility)
     match /audio-clips/{userId}/{meetingId}/{fileName} {
       allow read: if isOwner(userId);
-      allow write: if isOwner(userId) && 
-        request.resource.size < 10 * 1024 * 1024 && // 10MB limit
-        request.resource.contentType.matches('audio/.*');
+      allow write: if isOwner(userId) && isValidAudioFile();
     }
     
     // User profile images

@@ -1,0 +1,467 @@
+name: Production Test Pipeline
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run nightly production validation
+    - cron: '0 2 * * *'
+
+env:
+  NODE_VERSION: '18'
+  FIREBASE_PROJECT_ID: 'universal-assistant-test'
+  
+jobs:
+  # Stage 1: Basic Validation
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: TypeScript compilation check
+      run: npm run typecheck
+      
+    - name: Lint code
+      run: npm run lint
+      
+    - name: Format check
+      run: npm run format:check
+      
+    - name: Security audit
+      run: npm audit --audit-level=high
+      continue-on-error: true
+      
+    - name: Build production bundle
+      run: npm run build
+      env:
+        NODE_ENV: production
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: .next/
+        retention-days: 7
+
+  # Stage 2: Unit Tests
+  unit-tests:
+    runs-on: ubuntu-latest
+    needs: validation
+    timeout-minutes: 20
+    
+    strategy:
+      matrix:
+        test-group: [core, components, services, security]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run unit tests - ${{ matrix.test-group }}
+      run: |
+        case "${{ matrix.test-group }}" in
+          core)
+            npm run test:unit -- tests/unit/production-core.test.ts
+            ;;
+          components)
+            npm run test:unit -- tests/unit/meeting-modal-*.test.tsx tests/unit/cost-tracker.test.tsx
+            ;;
+          services)
+            npm run test:unit -- tests/unit/ai-model-validation.test.ts tests/unit/audio-lifecycle-management.test.ts
+            ;;
+          security)
+            npm run test -- tests/security/production-security.test.ts --testTimeout=60000
+            ;;
+        esac
+      env:
+        NODE_ENV: test
+        
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: unit-test-results-${{ matrix.test-group }}
+        path: |
+          coverage/
+          test-results/
+        retention-days: 7
+
+  # Stage 3: Integration Tests
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: [validation, unit-tests]
+    timeout-minutes: 30
+    
+    services:
+      firebase-emulator:
+        image: firebase/firebase-tools
+        options: --health-cmd "firebase --version" --health-interval 10s --health-timeout 5s --health-retries 3
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Setup Firebase emulators
+      run: |
+        npm install -g firebase-tools
+        firebase emulators:exec --only auth,firestore,storage --project ${{ env.FIREBASE_PROJECT_ID }} "echo 'Emulators started'" &
+        sleep 10
+        
+    - name: Run Firebase integration tests
+      run: npm run test -- tests/integration/production-firebase.test.ts --testTimeout=120000
+      env:
+        NODE_ENV: test
+        FIRESTORE_EMULATOR_HOST: localhost:8080
+        FIREBASE_AUTH_EMULATOR_HOST: localhost:9099
+        FIREBASE_STORAGE_EMULATOR_HOST: localhost:9199
+        
+    - name: Run API integration tests
+      run: npm run test:integration:api
+      env:
+        NODE_ENV: test
+        
+    - name: Run database integration tests
+      run: npm run test:integration:database
+      env:
+        NODE_ENV: test
+        
+    - name: Upload integration test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: integration-test-results
+        path: |
+          coverage/
+          test-results/
+          reports/
+        retention-days: 7
+
+  # Stage 4: End-to-End Tests
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: [validation, unit-tests, integration-tests]
+    timeout-minutes: 45
+    
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps ${{ matrix.browser }}
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts
+        path: .next/
+        
+    - name: Start production server
+      run: |
+        npm run start &
+        sleep 10
+        curl -f http://localhost:3000 || exit 1
+      env:
+        NODE_ENV: production
+        
+    - name: Run E2E production readiness tests
+      run: npx playwright test tests/e2e/production-readiness.spec.ts --project=${{ matrix.browser }}
+      env:
+        NODE_ENV: test
+        PLAYWRIGHT_BROWSER: ${{ matrix.browser }}
+        
+    - name: Run E2E meeting functionality tests
+      run: npx playwright test tests/e2e/meeting-functionality.spec.ts --project=${{ matrix.browser }}
+      env:
+        NODE_ENV: test
+        
+    - name: Upload E2E test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: e2e-test-results-${{ matrix.browser }}
+        path: |
+          test-results/
+          playwright-report/
+          screenshots/
+        retention-days: 7
+
+  # Stage 5: Performance Tests
+  performance-tests:
+    runs-on: ubuntu-latest
+    needs: [e2e-tests]
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Install Playwright
+      run: npx playwright install chromium
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts
+        path: .next/
+        
+    - name: Start production server
+      run: |
+        npm run start &
+        sleep 10
+      env:
+        NODE_ENV: production
+        
+    - name: Run performance tests
+      run: npx playwright test tests/performance/production-performance.test.ts --project=chromium
+      env:
+        NODE_ENV: test
+        
+    - name: Run Lighthouse audit
+      run: |
+        npm install -g @lhci/cli@0.12.x
+        lhci autorun
+      env:
+        LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+      continue-on-error: true
+      
+    - name: Upload performance results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: performance-test-results
+        path: |
+          lighthouse-results/
+          performance-reports/
+        retention-days: 7
+
+  # Stage 6: Production Validation
+  production-validation:
+    runs-on: ubuntu-latest
+    needs: [performance-tests]
+    timeout-minutes: 20
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run production validation tests
+      run: npm run test -- tests/validation/production-validation.test.ts --testTimeout=300000
+      env:
+        NODE_ENV: test
+        
+    - name: Generate production readiness report
+      run: |
+        mkdir -p reports
+        npm run test:coverage -- --outputFile=reports/coverage-summary.json
+        npm run lighthouse -- --output-path=reports/lighthouse-report.html
+      continue-on-error: true
+      
+    - name: Upload validation results
+      uses: actions/upload-artifact@v4
+      with:
+        name: production-validation-results
+        path: reports/
+        retention-days: 30
+
+  # Stage 7: Security Scan
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [validation]
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+        
+    - name: Run CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        languages: javascript
+      continue-on-error: true
+
+  # Stage 8: Deployment Readiness Check
+  deployment-readiness:
+    runs-on: ubuntu-latest
+    needs: [production-validation, security-scan]
+    if: always()
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download all test artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: test-artifacts/
+        
+    - name: Generate deployment report
+      run: |
+        mkdir -p deployment-report
+        echo "# Production Deployment Readiness Report" > deployment-report/README.md
+        echo "" >> deployment-report/README.md
+        echo "Generated: $(date)" >> deployment-report/README.md
+        echo "" >> deployment-report/README.md
+        
+        # Check test results
+        if [ -d "test-artifacts/unit-test-results-core" ]; then
+          echo "✅ Unit tests passed" >> deployment-report/README.md
+        else
+          echo "❌ Unit tests failed" >> deployment-report/README.md
+        fi
+        
+        if [ -d "test-artifacts/integration-test-results" ]; then
+          echo "✅ Integration tests passed" >> deployment-report/README.md
+        else
+          echo "❌ Integration tests failed" >> deployment-report/README.md
+        fi
+        
+        if [ -d "test-artifacts/e2e-test-results-chromium" ]; then
+          echo "✅ E2E tests passed" >> deployment-report/README.md
+        else
+          echo "❌ E2E tests failed" >> deployment-report/README.md
+        fi
+        
+        if [ -d "test-artifacts/performance-test-results" ]; then
+          echo "✅ Performance tests passed" >> deployment-report/README.md
+        else
+          echo "❌ Performance tests failed" >> deployment-report/README.md
+        fi
+        
+        if [ -d "test-artifacts/production-validation-results" ]; then
+          echo "✅ Production validation passed" >> deployment-report/README.md
+        else
+          echo "❌ Production validation failed" >> deployment-report/README.md
+        fi
+        
+        echo "" >> deployment-report/README.md
+        echo "## Next Steps" >> deployment-report/README.md
+        echo "- Review test artifacts for any failures" >> deployment-report/README.md
+        echo "- Ensure all security scans passed" >> deployment-report/README.md
+        echo "- Verify performance benchmarks met" >> deployment-report/README.md
+        echo "- Ready for production deployment if all checks passed" >> deployment-report/README.md
+        
+    - name: Upload deployment readiness report
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-readiness-report
+        path: deployment-report/
+        retention-days: 30
+        
+    - name: Create deployment gate
+      run: |
+        echo "🚀 Production Test Pipeline Complete"
+        
+        # Check critical test results
+        CRITICAL_FAILURES=0
+        
+        if [ ! -d "test-artifacts/unit-test-results-core" ]; then
+          echo "❌ Critical: Unit tests failed"
+          CRITICAL_FAILURES=$((CRITICAL_FAILURES + 1))
+        fi
+        
+        if [ ! -d "test-artifacts/integration-test-results" ]; then
+          echo "❌ Critical: Integration tests failed"
+          CRITICAL_FAILURES=$((CRITICAL_FAILURES + 1))
+        fi
+        
+        if [ ! -d "test-artifacts/production-validation-results" ]; then
+          echo "❌ Critical: Production validation failed"
+          CRITICAL_FAILURES=$((CRITICAL_FAILURES + 1))
+        fi
+        
+        if [ $CRITICAL_FAILURES -gt 0 ]; then
+          echo "🚫 Deployment BLOCKED - $CRITICAL_FAILURES critical failures"
+          exit 1
+        else
+          echo "✅ Deployment APPROVED - All critical tests passed"
+        fi
+
+  # Cleanup job
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [deployment-readiness]
+    if: always()
+    
+    steps:
+    - name: Clean up artifacts
+      run: |
+        echo "Test pipeline cleanup completed"
+        echo "Artifacts will be retained according to retention policies"

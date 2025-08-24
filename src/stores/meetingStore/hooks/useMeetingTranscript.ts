@@ -94,7 +94,7 @@ export const useTranscriptSearch = () => {
     searchTranscript: (searchTerm: string) => {
       return state.transcript.filter(entry =>
         entry.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        entry.speaker.toLowerCase().includes(searchTerm.toLowerCase())
+        (entry.speaker && entry.speaker.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     },
     getTranscriptBySpeaker: (speakerId: string) => {

@@ -36,7 +36,10 @@ export class VoiceLibraryService {
       const voiceSnap = await getDoc(voiceRef);
 
       if (voiceSnap.exists()) {
-        return this.convertFromFirestore(voiceSnap.data());
+        return {
+          deepgramVoiceId,
+          ...this.convertFromFirestore(voiceSnap.data())
+        };
       }
 
       // Create new entry
@@ -77,6 +80,7 @@ export class VoiceLibraryService {
     confidence: number = 1.0
   ): Promise<void> {
     try {
+      
       const voiceRef = doc(db, this.COLLECTION_NAME, deepgramVoiceId);
       
       await updateDoc(voiceRef, {
@@ -86,7 +90,7 @@ export class VoiceLibraryService {
         confidence,
         lastHeard: serverTimestamp(),
         identificationHistory: arrayUnion({
-          method,
+          method: method,
           timestamp: serverTimestamp(),
           meetingId,
           confidence,
@@ -189,15 +193,36 @@ export class VoiceLibraryService {
   }
 
   /**
+   * Get all voice profiles (for admin/directory view)
+   */
+  static async getAllVoiceProfiles(): Promise<VoiceLibraryEntry[]> {
+    try {
+      const q = query(
+        collection(db, this.COLLECTION_NAME),
+        orderBy('lastHeard', 'desc')
+      );
+
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({
+        deepgramVoiceId: doc.id,
+        ...this.convertFromFirestore(doc.data())
+      }));
+    } catch (error) {
+      console.error('Error getting all voice profiles:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get unconfirmed voices (for identification UI)
    */
-  static async getUnconfirmedVoices(limit: number = 10): Promise<VoiceLibraryEntry[]> {
+  static async getUnconfirmedVoices(maxResults: number = 10): Promise<VoiceLibraryEntry[]> {
     try {
       const q = query(
         collection(db, this.COLLECTION_NAME),
         where('confirmed', '==', false),
         orderBy('meetingsCount', 'desc'),
-        limit(limit)
+        limit(maxResults)
       );
 
       const snapshot = await getDocs(q);

@@ -24,6 +24,10 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase/client';
 import { User, UserPreferences } from '@/types';
+import { handleFirebaseError, reportFirebaseError, withFirebaseErrorHandling } from '@/utils/firebaseErrorHandler';
+import { processCatchError } from '@/utils/errorMessages';
+import { SecurityLogger } from '@/lib/security/monitoring';
+import { AdminValidator } from '@/lib/security/adminMiddleware';
 
 export interface AuthServiceConfig {
   redirectUrl?: string;
@@ -88,6 +92,8 @@ export class AuthService {
     displayName, 
     preferences 
   }: SignUpData): Promise<AuthResult> {
+    const startTime = Date.now();
+    
     try {
       const userCredential = await createUserWithEmailAndPassword(
         auth, 
@@ -109,9 +115,38 @@ export class AuthService {
       }
 
       const user = await this.convertFirebaseUserToUser(userCredential.user);
+      
+      // Log successful signup
+      await this.logAuthEvent(
+        'signup',
+        userCredential.user.uid,
+        userCredential.user.email,
+        user?.isAdmin,
+        true,
+        {
+          duration: Date.now() - startTime,
+          provider: 'email',
+          hasPreferences: !!preferences
+        }
+      );
+
       return { user };
 
     } catch (error) {
+      // Log failed signup
+      await this.logAuthEvent(
+        'signup',
+        'unknown',
+        email,
+        false,
+        false,
+        {
+          duration: Date.now() - startTime,
+          provider: 'email',
+          error: (error as any)?.code || 'unknown'
+        }
+      );
+
       return {
         user: null,
         error: this.handleAuthError(error as any),
@@ -123,6 +158,8 @@ export class AuthService {
    * Sign in with email and password
    */
   public async signIn({ email, password }: SignInData): Promise<AuthResult> {
+    const startTime = Date.now();
+    
     try {
       const userCredential = await signInWithEmailAndPassword(
         auth, 
@@ -133,10 +170,42 @@ export class AuthService {
       // Update last active timestamp
       await this.updateLastActive(userCredential.user.uid);
 
+      // Check if user should have admin claims and ensure they're set
+      await this.ensureAdminClaims(userCredential.user);
+
       const user = await this.convertFirebaseUserToUser(userCredential.user);
+      
+      // Log successful signin
+      await this.logAuthEvent(
+        'signin',
+        userCredential.user.uid,
+        userCredential.user.email,
+        user?.isAdmin,
+        true,
+        {
+          duration: Date.now() - startTime,
+          provider: 'email',
+          lastActive: user?.lastActive
+        }
+      );
+
       return { user };
 
     } catch (error) {
+      // Log failed signin
+      await this.logAuthEvent(
+        'signin',
+        'unknown',
+        email,
+        false,
+        false,
+        {
+          duration: Date.now() - startTime,
+          provider: 'email',
+          error: (error as any)?.code || 'unknown'
+        }
+      );
+
       return {
         user: null,
         error: this.handleAuthError(error as any),
@@ -148,13 +217,16 @@ export class AuthService {
    * Sign in with Google
    */
   public async signInWithGoogle(): Promise<AuthResult> {
+    const startTime = Date.now();
+    
     try {
       const userCredential = await signInWithPopup(auth, this.googleProvider);
       
       // Check if this is a new user and create document if needed
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      const isNewUser = !userDoc.exists();
       
-      if (!userDoc.exists() && this.config.createUserDocument) {
+      if (isNewUser && this.config.createUserDocument) {
         await this.createUserDocument(userCredential.user, {
           displayName: userCredential.user.displayName || 'Google User',
         });
@@ -163,10 +235,43 @@ export class AuthService {
         await this.updateLastActive(userCredential.user.uid);
       }
 
+      // Check if user should have admin claims and ensure they're set
+      await this.ensureAdminClaims(userCredential.user);
+
       const user = await this.convertFirebaseUserToUser(userCredential.user);
+      
+      // Log successful Google signin
+      await this.logAuthEvent(
+        isNewUser ? 'signup' : 'signin',
+        userCredential.user.uid,
+        userCredential.user.email,
+        user?.isAdmin,
+        true,
+        {
+          duration: Date.now() - startTime,
+          provider: 'google',
+          isNewUser,
+          lastActive: user?.lastActive
+        }
+      );
+
       return { user };
 
     } catch (error) {
+      // Log failed Google signin
+      await this.logAuthEvent(
+        'signin',
+        'unknown',
+        null,
+        false,
+        false,
+        {
+          duration: Date.now() - startTime,
+          provider: 'google',
+          error: (error as any)?.code || 'unknown'
+        }
+      );
+
       return {
         user: null,
         error: this.handleAuthError(error as any),
@@ -178,10 +283,46 @@ export class AuthService {
    * Sign out current user
    */
   public async signOut(): Promise<{ error?: LocalAuthError }> {
+    const currentUser = auth.currentUser;
+    const startTime = Date.now();
+    
     try {
       await signOut(auth);
+      
+      // Log successful signout
+      if (currentUser) {
+        await this.logAuthEvent(
+          'signout',
+          currentUser.uid,
+          currentUser.email,
+          undefined, // Admin status unknown during signout
+          true,
+          {
+            duration: Date.now() - startTime,
+            sessionDuration: currentUser.metadata.lastSignInTime ? 
+              Date.now() - new Date(currentUser.metadata.lastSignInTime).getTime() : 
+              undefined
+          }
+        );
+      }
+      
       return {};
     } catch (error) {
+      // Log failed signout
+      if (currentUser) {
+        await this.logAuthEvent(
+          'signout',
+          currentUser.uid,
+          currentUser.email,
+          undefined,
+          false,
+          {
+            duration: Date.now() - startTime,
+            error: (error as any)?.code || 'unknown'
+          }
+        );
+      }
+
       return {
         error: this.handleAuthError(error as any),
       };
@@ -209,22 +350,54 @@ export class AuthService {
     currentPassword: string,
     newPassword: string
   ): Promise<{ error?: LocalAuthError }> {
+    const startTime = Date.now();
+    const currentUser = auth.currentUser;
+    
     try {
-      if (!auth.currentUser) {
+      if (!currentUser) {
         throw new Error('No authenticated user');
       }
 
       // Reauthenticate user before password change
       const credential = EmailAuthProvider.credential(
-        auth.currentUser.email!,
+        currentUser.email!,
         currentPassword
       );
       
-      await reauthenticateWithCredential(auth.currentUser, credential);
-      await updatePassword(auth.currentUser, newPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+      await updatePassword(currentUser, newPassword);
+      
+      // Log successful password update
+      await this.logAuthEvent(
+        'password_update',
+        currentUser.uid,
+        currentUser.email,
+        undefined,
+        true,
+        {
+          duration: Date.now() - startTime,
+          requiresReauth: true
+        }
+      );
       
       return {};
     } catch (error) {
+      // Log failed password update
+      if (currentUser) {
+        await this.logAuthEvent(
+          'password_update',
+          currentUser.uid,
+          currentUser.email,
+          undefined,
+          false,
+          {
+            duration: Date.now() - startTime,
+            error: (error as any)?.code || 'unknown',
+            requiresReauth: true
+          }
+        );
+      }
+
       return {
         error: this.handleAuthError(error as any),
       };
@@ -239,8 +412,11 @@ export class AuthService {
     photoURL?: string;
     preferences?: Partial<UserPreferences>;
   }): Promise<AuthResult> {
+    const startTime = Date.now();
+    const currentUser = auth.currentUser;
+    
     try {
-      if (!auth.currentUser) {
+      if (!currentUser) {
         throw new Error('No authenticated user');
       }
 
@@ -248,7 +424,7 @@ export class AuthService {
       
       // Update Firebase Auth profile
       if (data.displayName || data.photoURL) {
-        await updateProfile(auth.currentUser, {
+        await updateProfile(currentUser, {
           displayName: data.displayName,
           photoURL: data.photoURL,
         });
@@ -265,13 +441,46 @@ export class AuthService {
 
       if (Object.keys(updates).length > 0) {
         updates.lastActive = serverTimestamp();
-        await updateDoc(doc(db, 'users', auth.currentUser.uid), updates);
+        await updateDoc(doc(db, 'users', currentUser.uid), updates);
       }
 
-      const user = await this.convertFirebaseUserToUser(auth.currentUser);
+      const user = await this.convertFirebaseUserToUser(currentUser);
+      
+      // Log successful profile update
+      await this.logAuthEvent(
+        'profile_update',
+        currentUser.uid,
+        currentUser.email,
+        user?.isAdmin,
+        true,
+        {
+          duration: Date.now() - startTime,
+          updatedFields: Object.keys(data),
+          hasDisplayName: !!data.displayName,
+          hasPhotoURL: !!data.photoURL,
+          hasPreferences: !!data.preferences
+        }
+      );
+
       return { user };
 
     } catch (error) {
+      // Log failed profile update
+      if (currentUser) {
+        await this.logAuthEvent(
+          'profile_update',
+          currentUser.uid,
+          currentUser.email,
+          undefined,
+          false,
+          {
+            duration: Date.now() - startTime,
+            error: (error as any)?.code || 'unknown',
+            attemptedFields: Object.keys(data)
+          }
+        );
+      }
+
       return {
         user: null,
         error: this.handleAuthError(error as any),
@@ -305,7 +514,7 @@ export class AuthService {
   }
 
   /**
-   * Create user document in Firestore
+   * Create user document in Firestore with admin detection
    */
   private async createUserDocument(
     firebaseUser: FirebaseUser,
@@ -314,6 +523,10 @@ export class AuthService {
       preferences?: Partial<UserPreferences>;
     }
   ): Promise<void> {
+    // Check if user is admin by email
+    const adminEmails = ['ribt2218@gmail.com', 'rohan@linkstudio.ai'];
+    const isAdmin = adminEmails.includes(firebaseUser.email?.toLowerCase() || '');
+
     const defaultPreferences: UserPreferences = {
       defaultModel: 'gpt-4o',
       ttsVoice: 'alloy',
@@ -365,6 +578,7 @@ export class AuthService {
       preferences: defaultPreferences,
       createdAt: new Date(),
       lastActive: new Date(),
+      isAdmin,
     };
 
     await setDoc(doc(db, 'users', firebaseUser.uid), {
@@ -388,10 +602,184 @@ export class AuthService {
   }
 
   /**
-   * Convert Firebase user to application user
+   * Log authentication events with security monitoring
+   */
+  private async logAuthEvent(
+    action: string,
+    userId: string,
+    email?: string | null,
+    isAdmin?: boolean,
+    success: boolean = true,
+    additionalDetails?: Record<string, any>
+  ): Promise<void> {
+    try {
+      await SecurityLogger.dataAccess(
+        'unknown', // clientIP not available in service layer
+        userId,
+        'authentication',
+        success ? 'read' : 'write',
+        success,
+        {
+          action,
+          email,
+          isAdmin,
+          timestamp: new Date().toISOString(),
+          ...additionalDetails
+        }
+      );
+    } catch (error) {
+      console.warn('Failed to log authentication event:', error);
+    }
+  }
+
+  /**
+   * Ensure admin claims are set for admin users (LEGACY - for backward compatibility)
+   * TODO: Remove after migration to new admin middleware is complete
+   */
+  private async ensureAdminClaims(firebaseUser: FirebaseUser): Promise<void> {
+    const startTime = Date.now();
+    
+    try {
+      // Use environment configuration for admin detection
+      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || 
+                         ['ribt2218@gmail.com', 'rohan@linkstudio.ai']; // Fallback
+      const isAdminByEmail = adminEmails.includes(firebaseUser.email?.toLowerCase() || '');
+      
+      // Log admin check attempt
+      await SecurityLogger.dataAccess(
+        'unknown',
+        firebaseUser.uid,
+        'admin_claims_check',
+        'read',
+        true,
+        {
+          email: firebaseUser.email,
+          isAdminByEmail,
+          adminEmailsCount: adminEmails.length,
+          timestamp: new Date().toISOString()
+        }
+      );
+      
+      if (isAdminByEmail) {
+        // Call admin API to set claims (legacy for backward compatibility)
+        const idToken = await firebaseUser.getIdToken();
+        
+        try {
+          const response = await fetch('/api/admin/set-claims', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              uid: firebaseUser.uid,
+              claims: {
+                admin: true,
+                adminLevel: 'super',
+                adminSince: new Date().toISOString(),
+              },
+            }),
+          });
+
+          const success = response.ok;
+          
+          // Log admin claims setting result
+          await SecurityLogger.adminAction(
+            'unknown',
+            firebaseUser.uid,
+            {
+              action: 'set_admin_claims',
+              success,
+              email: firebaseUser.email,
+              adminLevel: 'super',
+              duration: Date.now() - startTime,
+              apiResponse: success ? 'success' : `failed_${response.status}`,
+              timestamp: new Date().toISOString()
+            }
+          );
+
+          if (success) {
+            console.log('Admin claims set successfully (legacy mode)');
+            // NO force token refresh - avoid race conditions
+            // await firebaseUser.getIdToken(true);
+          } else {
+            console.warn('Failed to set admin claims via API (continuing with environment validation)');
+          }
+        } catch (apiError) {
+          console.warn('Failed to call admin claims API (continuing with environment validation):', apiError);
+          
+          // Log API call failure
+          await SecurityLogger.error(
+            'unknown',
+            firebaseUser.uid,
+            apiError as Error,
+            {
+              context: 'admin_claims_api_call',
+              email: firebaseUser.email,
+              duration: Date.now() - startTime
+            }
+          );
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to ensure admin claims (continuing with environment validation):', error);
+      
+      // Log general failure
+      await SecurityLogger.error(
+        'unknown',
+        firebaseUser.uid,
+        error as Error,
+        {
+          context: 'ensure_admin_claims',
+          email: firebaseUser.email,
+          duration: Date.now() - startTime
+        }
+      );
+    }
+  }
+
+  /**
+   * Convert Firebase user to application user with enhanced admin detection
    */
   private async convertFirebaseUserToUser(firebaseUser: FirebaseUser): Promise<User> {
+    const startTime = Date.now();
+    
     try {
+      // Get Firebase ID token WITHOUT force refresh to avoid race conditions
+      const idTokenResult = await firebaseUser.getIdTokenResult(false);
+      const customClaims = idTokenResult.claims;
+
+      // Dual validation approach for backward compatibility
+      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || 
+                         ['ribt2218@gmail.com', 'rohan@linkstudio.ai']; // Fallback
+      
+      const isAdminByEmail = adminEmails.includes(firebaseUser.email?.toLowerCase() || '');
+      const isAdminByClaims = customClaims.admin === true;
+      
+      // During migration: accept EITHER environment OR claims validation
+      const isAdmin = isAdminByClaims || isAdminByEmail;
+
+      // Log dual validation result
+      await SecurityLogger.dataAccess(
+        'unknown',
+        firebaseUser.uid,
+        'dual_admin_validation',
+        'read',
+        true,
+        {
+          email: firebaseUser.email,
+          isAdminByEmail,
+          isAdminByClaims,
+          finalAdminStatus: isAdmin,
+          validationSource: isAdminByClaims ? 'claims' : (isAdminByEmail ? 'environment' : 'none'),
+          adminEmailsCount: adminEmails.length,
+          hasCustomClaims: Object.keys(customClaims).length > 0,
+          duration: Date.now() - startTime,
+          timestamp: new Date().toISOString()
+        }
+      );
+
+      // Get user document from Firestore
       const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
       const userData = userDoc.data();
 
@@ -448,6 +836,7 @@ export class AuthService {
           preferences: defaultPreferences,
           createdAt: new Date(),
           lastActive: new Date(),
+          isAdmin,
         };
       }
 
@@ -463,6 +852,7 @@ export class AuthService {
         lastActive: userData.lastActive instanceof Timestamp 
           ? userData.lastActive.toDate() 
           : new Date(userData.lastActive),
+        isAdmin: userData.isAdmin || isAdmin, // Use detected admin status if not in Firestore
       };
     } catch (error) {
       console.error('Error converting Firebase user:', error);

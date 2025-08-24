@@ -70,7 +70,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onSignOut }) => {
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
-        className="group flex items-center space-x-3 p-2 rounded-xl hover:bg-gradient-to-r hover:from-gray-100 hover:to-blue-50 dark:hover:from-gray-700 dark:hover:to-blue-900/20 transition-all duration-200 button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        className="group flex items-center space-x-3 p-2 rounded-xl hover:bg-gradient-to-r hover:from-neutral-100 hover:to-blue-50 dark:hover:from-neutral-700 dark:hover:to-blue-900/20 transition-all duration-200 button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         aria-label={`User menu for ${user?.displayName || user?.email || 'User'}`}
         aria-expanded={isOpen}
         aria-haspopup="menu"
@@ -79,7 +79,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onSignOut }) => {
           <User className="w-4 h-4 text-white" />
           <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
         </div>
-        <span className="hidden lg:block text-sm font-semibold text-gray-800 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-200">
+        <span className="hidden lg:block text-sm font-semibold text-neutral-800 dark:text-neutral-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-200">
           {user?.displayName || user?.email?.split('@')[0] || 'User'}
         </span>
       </button>
@@ -93,15 +93,15 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onSignOut }) => {
           />
           <div 
             ref={menuRef}
-            className="absolute right-0 mt-3 w-52 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-gray-700/30 z-20 backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
+            className="absolute right-0 mt-3 w-52 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-20 backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
             role="menu"
             aria-labelledby="user-menu-button"
           >
-            <div className="p-4 border-b border-white/20 dark:border-gray-700/30">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+            <div className="p-4 border-b border-white/20 dark:border-neutral-700/30">
+              <p className="text-sm font-semibold text-neutral-900 dark:text-white">
                 {user?.displayName || 'User'}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                 {user?.email}
               </p>
             </div>
@@ -111,7 +111,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onSignOut }) => {
                   setIsOpen(false);
                   // Navigate to settings
                 }}
-                className="group w-full px-4 py-3 text-left text-sm text-gray-800 dark:text-gray-300 hover:bg-white/30 dark:hover:bg-gray-800/30 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
+                className="group w-full px-4 py-3 text-left text-sm text-neutral-800 dark:text-neutral-300 hover:bg-white/30 dark:hover:bg-neutral-800/30 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
                 role="menuitem"
                 tabIndex={0}
               >
@@ -178,28 +178,28 @@ const Header: React.FC<{
 
   return (
     <header 
-      className="glass-morphism dark:glass-morphism-dark border-b border-white/20 dark:border-gray-700/30 px-6 py-4 backdrop-blur-xl"
+      className="glass-morphism dark:glass-morphism-dark border-b border-white/20 dark:border-neutral-700/30 px-6 py-4 backdrop-blur-xl"
       role="banner"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-6">
           <button
             onClick={onToggleSidebar}
-            className="p-2.5 rounded-xl hover:bg-white/30 dark:hover:bg-gray-800/30 transition-all duration-200 lg:hidden button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="p-2.5 rounded-xl hover:bg-white/30 dark:hover:bg-neutral-800/30 transition-all duration-200 lg:hidden button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             aria-label={isSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={isSidebarOpen}
           >
             <div className={`transform transition-transform duration-200 ${isSidebarOpen ? 'rotate-180' : 'rotate-0'}`}>
               {isSidebarOpen ? (
-                <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <X className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
               ) : (
-                <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <Menu className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
               )}
             </div>
           </button>
           
           <div className="flex items-center space-x-4">
-            <h1 className="text-lg sm:text-xl lg:text-fluid-xl font-bold text-gray-900 dark:text-white hidden sm:block">
+            <h1 className="text-lg sm:text-xl lg:text-fluid-xl font-bold text-neutral-900 dark:text-white hidden sm:block">
               Universal Assistant
             </h1>
             {isInMeeting && currentMeeting && (
@@ -218,12 +218,12 @@ const Header: React.FC<{
               ref={notificationButtonRef}
               onClick={() => setShowNotifications(!showNotifications)}
               onKeyDown={handleNotificationKeyDown}
-              className="group p-2.5 rounded-xl hover:bg-white/30 dark:hover:bg-gray-800/30 transition-all duration-200 relative button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="group p-2.5 rounded-xl hover:bg-white/30 dark:hover:bg-neutral-800/30 transition-all duration-200 relative button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               aria-label={`Notifications ${notifications.length > 0 ? `(${notifications.length} unread)` : ''}`}
               aria-expanded={showNotifications}
               aria-haspopup="menu"
             >
-              <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400 group-hover:scale-110 transition-transform duration-200" />
+              <Bell className="w-5 h-5 text-neutral-600 dark:text-neutral-400 group-hover:scale-110 transition-transform duration-200" />
               {notifications.length > 0 && (
                 <span className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold rounded-full flex items-center justify-center shadow-glow pulse-soft">
                   {notifications.length > 9 ? '9+' : notifications.length}
@@ -240,41 +240,41 @@ const Header: React.FC<{
                 />
                 <div 
                   ref={notificationMenuRef}
-                  className="absolute right-0 mt-3 w-80 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-gray-700/30 z-20 max-h-96 overflow-y-auto backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
+                  className="absolute right-0 mt-3 w-80 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-20 max-h-96 overflow-y-auto backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
                   role="menu"
                   aria-labelledby="notifications-button"
                 >
-                  <div className="p-4 border-b border-white/20 dark:border-gray-700/30">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  <div className="p-4 border-b border-white/20 dark:border-neutral-700/30">
+                    <h3 className="text-sm font-semibold text-neutral-900 dark:text-white">
                       Notifications
                     </h3>
                   </div>
                   <div className="py-1">
                     {notifications.length === 0 ? (
-                      <div className="p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+                      <div className="p-4 text-center text-neutral-500 dark:text-neutral-400 text-sm">
                         No notifications
                       </div>
                     ) : (
                       notifications.map((notification) => (
                         <div
                           key={notification.id}
-                          className="group p-4 hover:bg-white/30 dark:hover:bg-gray-800/30 border-b border-white/10 dark:border-gray-700/30 last:border-b-0 transition-all duration-200"
+                          className="group p-4 hover:bg-white/30 dark:hover:bg-neutral-800/30 border-b border-white/10 dark:border-neutral-700/30 last:border-b-0 transition-all duration-200"
                         >
                           <div className="flex justify-between items-start">
                             <div className="flex-1 mr-3">
-                              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                              <p className="text-sm font-semibold text-neutral-900 dark:text-white">
                                 {notification.title}
                               </p>
-                              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
+                              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 leading-relaxed">
                                 {notification.message}
                               </p>
-                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-2">
                                 {new Date(notification.timestamp).toLocaleTimeString()}
                               </p>
                             </div>
                             <button
                               onClick={() => console.log('Clear notification:', notification.id)}
-                              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-600/50 rounded-lg transition-all duration-200 button-press opacity-0 group-hover:opacity-100"
+                              className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-neutral-600/50 rounded-lg transition-all duration-200 button-press opacity-0 group-hover:opacity-100"
                             >
                               <X className="w-4 h-4" />
                             </button>
@@ -397,19 +397,19 @@ const Sidebar: React.FC<{
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-0 z-30 h-full w-80 sm:w-72 md:w-64 glass-morphism dark:glass-morphism-dark border-r border-white/30 dark:border-gray-700/30 backdrop-blur-xl transform transition-all duration-500 ease-out lg:translate-x-0 lg:static lg:inset-0 ${
+        className={`fixed left-0 top-0 z-30 h-full w-80 sm:w-72 md:w-64 glass-morphism dark:glass-morphism-dark border-r border-white/30 dark:border-neutral-700/30 backdrop-blur-xl transform transition-all duration-500 ease-out lg:translate-x-0 lg:static lg:inset-0 ${
           isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full shadow-none'
         }`}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="p-6 border-b border-white/20 dark:border-gray-700/30">
+          <div className="p-6 border-b border-white/20 dark:border-neutral-700/30">
             <div className="group flex items-center space-x-4 cursor-pointer">
               <div className="relative w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow group-hover:scale-105 transition-transform duration-200">
                 <Mic className="w-5 h-5 text-white" />
                 <div className="absolute inset-0 rounded-xl bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
               </div>
-              <span className="text-base sm:text-lg lg:text-fluid-lg font-bold text-gray-900 dark:text-white">
+              <span className="text-base sm:text-lg lg:text-fluid-lg font-bold text-neutral-900 dark:text-white">
                 Universal Assistant
               </span>
             </div>
@@ -417,7 +417,7 @@ const Sidebar: React.FC<{
 
           {/* Meeting Status */}
           {isInMeeting && (
-            <div className="p-4 bg-gradient-to-r from-red-50/50 to-pink-50/50 dark:from-red-900/20 dark:to-pink-900/20 border-b border-white/20 dark:border-gray-700/30">
+            <div className="p-4 bg-gradient-to-r from-red-50/50 to-pink-50/50 dark:from-red-900/20 dark:to-pink-900/20 border-b border-white/20 dark:border-neutral-700/30">
               <div className="flex items-center space-x-3 text-red-700 dark:text-red-400">
                 <div className="w-3 h-3 bg-red-500 rounded-full pulse-soft shadow-glow" />
                 <span className="text-sm font-semibold">Meeting in Progress</span>
@@ -446,7 +446,7 @@ const Sidebar: React.FC<{
                     className={`group relative w-full flex items-center space-x-4 px-4 py-3.5 rounded-xl text-left transition-all duration-200 button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed ${
                       item.active
                         ? 'bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 text-blue-700 dark:text-blue-400 shadow-soft'
-                        : 'text-gray-800 dark:text-gray-300 hover:bg-white/30 dark:hover:bg-gray-800/30 hover:text-blue-600 dark:hover:text-blue-400'
+                        : 'text-neutral-800 dark:text-neutral-300 hover:bg-white/30 dark:hover:bg-neutral-800/30 hover:text-blue-600 dark:hover:text-blue-400'
                     } ${
                       isNavigatingToThisItem ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                     }`}
@@ -489,8 +489,8 @@ const Sidebar: React.FC<{
           </nav>
 
           {/* Footer */}
-          <div className="p-6 border-t border-white/20 dark:border-gray-700/30">
-            <div className="text-xs text-gray-500 dark:text-gray-400 text-center font-medium">
+          <div className="p-6 border-t border-white/20 dark:border-neutral-700/30">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 text-center font-medium">
               <div className="flex items-center justify-center space-x-2">
                 <div className="w-1.5 h-1.5 bg-green-500 rounded-full pulse-soft" />
                 <span>Universal Assistant v2.0</span>
@@ -535,13 +535,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   // Show loading spinner while checking authentication
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-100 dark:bg-neutral-900">
         <div className="flex flex-col items-center space-y-4">
           <div className="relative">
             <div className="animate-spin h-12 w-12 border-4 border-blue-200 dark:border-blue-800 border-t-blue-500 rounded-full" />
             <div className="absolute inset-0 animate-ping h-12 w-12 border-4 border-blue-400 rounded-full opacity-20" />
           </div>
-          <p className="text-gray-600 dark:text-gray-300 font-medium">Loading Universal Assistant...</p>
+          <p className="text-neutral-600 dark:text-neutral-300 font-medium">Loading Universal Assistant...</p>
         </div>
       </div>
     );
@@ -553,7 +553,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   }
 
   return (
-    <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 ${className}`}>
+    <div className={`min-h-screen bg-neutral-50 dark:bg-neutral-900 ${className}`}>
       {/* Skip Links for Screen Readers */}
       <div className="sr-only">
         <a 
@@ -584,7 +584,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
           {/* Main Content Area */}
           <main 
             id="main-content"
-            className="flex-1 overflow-auto relative"
+            className="flex-1 overflow-auto relative bg-neutral-200 dark:bg-neutral-900"
             role="main"
             aria-label="Main content"
           >
@@ -602,10 +602,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                 {children}
               </div>
               {pageLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/10 dark:bg-gray-900/10 backdrop-blur-sm">
-                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 flex items-center space-x-3">
+                <div className="absolute inset-0 flex items-center justify-center bg-white/10 dark:bg-neutral-900/10 backdrop-blur-sm">
+                  <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-lg p-4 flex items-center space-x-3">
                     <LoadingSpinner size="sm" color="primary" />
-                    <span className="text-gray-800 dark:text-gray-300 font-medium">Loading page...</span>
+                    <span className="text-neutral-800 dark:text-neutral-300 font-medium">Loading page...</span>
                   </div>
                 </div>
               )}

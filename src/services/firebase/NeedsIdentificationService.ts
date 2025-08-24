@@ -28,17 +28,23 @@ export class NeedsIdentificationService {
    * Create a new identification request
    */
   static async createIdentificationRequest(
-    data: Omit<NeedsIdentification, 'id' | 'createdAt' | 'status'>
+    data: Omit<NeedsIdentification, 'id' | 'createdAt' | 'status' | 'resolvedAt' | 'resolvedUserId' | 'resolvedUserName'>
   ): Promise<string> {
     try {
-      const docId = `${data.meetingId}_${data.voiceId}`;
+      // Use deepgramVoiceId if provided, otherwise fall back to voiceId for backward compatibility
+      const voiceId = data.deepgramVoiceId || data.voiceId;
+      const docId = `${data.meetingId}_${voiceId}`;
       const docRef = doc(db, this.COLLECTION_NAME, docId);
 
-      await setDoc(docRef, {
-        ...this.convertToFirestore(data),
-        status: 'pending',
+      const requestData = {
+        ...data,
+        deepgramVoiceId: voiceId,  // Ensure consistent field
+        voiceId: voiceId,          // Maintain backward compatibility
+        status: 'pending' as const,
         createdAt: serverTimestamp()
-      });
+      };
+
+      await setDoc(docRef, this.convertToFirestore(requestData as any));
 
       return docId;
     } catch (error) {
@@ -79,21 +85,39 @@ export class NeedsIdentificationService {
 
   /**
    * Get all pending identification requests
+   * @param meetingIdOrLimit - Either a meetingId string or a number limit
    */
-  static async getPendingRequests(limitCount: number = 10): Promise<NeedsIdentification[]> {
+  static async getPendingRequests(meetingIdOrLimit: string | number = 10): Promise<NeedsIdentification[]> {
     try {
-      const q = query(
-        collection(db, this.COLLECTION_NAME),
-        where('status', '==', 'pending'),
-        orderBy('createdAt', 'desc'),
-        limit(limitCount)
-      );
+      // If string, it's a meetingId - get requests for that meeting
+      if (typeof meetingIdOrLimit === 'string') {
+        const q = query(
+          collection(db, this.COLLECTION_NAME),
+          where('meetingId', '==', meetingIdOrLimit),
+          where('status', '==', 'pending'),
+          orderBy('createdAt', 'desc')
+        );
+        
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...this.convertFromFirestore(doc.data())
+        }));
+      } else {
+        // Otherwise it's a limit number - get all pending requests
+        const q = query(
+          collection(db, this.COLLECTION_NAME),
+          where('status', '==', 'pending'),
+          orderBy('createdAt', 'desc'),
+          limit(meetingIdOrLimit)
+        );
 
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...this.convertFromFirestore(doc.data())
-      }));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...this.convertFromFirestore(doc.data())
+        }));
+      }
     } catch (error) {
       console.error('Error getting pending requests:', error);
       throw error;
@@ -243,13 +267,17 @@ export class NeedsIdentificationService {
    * Convert Firestore data to NeedsIdentification
    */
   private static convertFromFirestore(data: any): Omit<NeedsIdentification, 'id'> {
+    // Handle both deepgramVoiceId and voiceId for backward compatibility
+    const voiceId = data.deepgramVoiceId || data.voiceId;
+    
     return {
       meetingId: data.meetingId,
       meetingTitle: data.meetingTitle,
       meetingDate: data.meetingDate?.toDate() || new Date(),
       meetingTypeId: data.meetingTypeId,
       hostId: data.hostId,
-      voiceId: data.voiceId,
+      deepgramVoiceId: voiceId,
+      voiceId: voiceId,  // Maintain backward compatibility
       speakerLabel: data.speakerLabel,
       sampleTranscripts: (data.sampleTranscripts || []).map((s: any) => ({
         text: s.text,
@@ -258,6 +286,9 @@ export class NeedsIdentificationService {
       audioUrl: data.audioUrl,
       suggestedMatches: data.suggestedMatches || [],
       status: data.status || 'pending',
+      resolvedUserId: data.resolvedUserId,
+      resolvedUserName: data.resolvedUserName,
+      resolvedAt: data.resolvedAt?.toDate(),
       createdAt: data.createdAt?.toDate() || new Date()
     };
   }
@@ -269,6 +300,7 @@ export class NeedsIdentificationService {
     return {
       ...data,
       meetingDate: Timestamp.fromDate(data.meetingDate),
+      resolvedAt: data.resolvedAt ? Timestamp.fromDate(data.resolvedAt) : undefined,
       sampleTranscripts: data.sampleTranscripts.map(s => ({
         text: s.text,
         timestamp: Timestamp.fromDate(s.timestamp)

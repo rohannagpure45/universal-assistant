@@ -217,7 +217,7 @@ async function cleanupExpiredCache(): Promise<void> {
 
     if (deletionPromises.length > 0) {
       await Promise.all(deletionPromises);
-      console.log(`Cleaned up ${deletionPromises.length} expired cache files`);
+      // Production monitoring would log: Cleaned up ${deletionPromises.length} expired cache files
     }
   } catch (error) {
     console.error('Error during cache cleanup:', error);

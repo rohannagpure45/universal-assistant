@@ -141,48 +141,49 @@
 }
 
 :root {
-  /* Light mode: Use solid grey background with proper contrast */
-  --foreground-rgb: 15, 23, 42; /* slate-900 for high contrast */
-  --background-start-rgb: 248, 250, 252; /* gray-50 - lighter static grey */
-  --background-end-rgb: 248, 250, 252; /* gray-50 - same as start for solid background */
+  /* Light mode: Use CSS custom properties from theme system */
+  --foreground-rgb: var(--color-neutral-900);
+  --background-start-rgb: var(--color-neutral-50);
+  --background-end-rgb: var(--color-neutral-50);
   
-  /* Light mode text colors for improved readability */
-  --text-primary: rgb(15, 23, 42); /* slate-900 - very dark for high contrast */
-  --text-secondary: rgb(31, 41, 55); /* gray-800 - very dark for better contrast */
-  --text-muted: rgb(55, 65, 81); /* gray-700 - dark enough to be readable */
+  /* Light mode text colors using theme system */
+  --text-primary: var(--color-neutral-900);
+  --text-secondary: var(--color-neutral-800);
+  --text-muted: var(--color-neutral-700);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 248, 250, 252; /* slate-50 for dark mode */
-    --background-start-rgb: 15, 23, 42; /* slate-900 */
-    --background-end-rgb: 30, 41, 59; /* slate-800 */
+    /* Dark mode: Use CSS custom properties from theme system */
+    --foreground-rgb: var(--color-neutral-50);
+    --background-start-rgb: var(--color-neutral-900);
+    --background-end-rgb: var(--color-neutral-800);
     
-    /* Dark mode text colors */
-    --text-primary: rgb(248, 250, 252); /* slate-50 */
-    --text-secondary: rgb(226, 232, 240); /* slate-200 */
-    --text-muted: rgb(148, 163, 184); /* slate-400 */
+    /* Dark mode text colors using theme system */
+    --text-primary: var(--color-neutral-50);
+    --text-secondary: var(--color-neutral-200);
+    --text-muted: var(--color-neutral-400);
   }
 }
 
 body {
-  color: rgb(15, 23, 42); /* slate-900 for light mode - high contrast */
-  /* Clean solid grey background - no gradient */
-  background: rgb(248, 250, 252); /* static gray-50 */
+  color: var(--text-primary);
+  /* Clean solid background using theme system */
+  background: var(--background-start-rgb);
   /* Remove textured background pattern that creates visual noise */
 }
 
 /* Ensure proper text colors in light mode */
 @media (prefers-color-scheme: light) {
   body {
-    color: rgb(15, 23, 42); /* slate-900 - ensure dark text in light mode */
+    color: var(--text-primary); /* Use theme system colors */
   }
 }
 
 /* Dark mode text colors */
 @media (prefers-color-scheme: dark) {
   body {
-    color: rgb(248, 250, 252); /* slate-50 for dark mode */
+    color: var(--text-primary); /* Use theme system colors */
   }
 }
 
@@ -213,39 +214,45 @@ body {
     @apply active:scale-95 transition-transform duration-100;
   }
   
-  /* Glass morphism effects */
+  /* Glass morphism effects using theme system */
   .glass-morphism {
-    @apply bg-white/80 backdrop-blur-lg border border-white/20;
+    background: var(--glass-bg);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    border: 1px solid var(--glass-border);
   }
   
   .glass-morphism-dark {
-    @apply bg-gray-900/80 backdrop-blur-lg border border-gray-800/20;
+    background: var(--glass-bg);
+    backdrop-filter: var(--backdrop-filter);
+    -webkit-backdrop-filter: var(--backdrop-filter);
+    border: 1px solid var(--glass-border);
   }
   
-  /* Gradient utilities */
+  /* Gradient utilities using theme system */
   .gradient-primary {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--color-primary-500) 0%, var(--color-primary-700) 100%);
   }
   
   .gradient-success {
-    background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+    background: linear-gradient(135deg, var(--color-success-400) 0%, var(--color-success-600) 100%);
   }
   
   .gradient-warning {
-    background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+    background: linear-gradient(135deg, var(--color-warning-400) 0%, var(--color-warning-600) 100%);
   }
   
   .gradient-error {
-    background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+    background: linear-gradient(135deg, var(--color-danger-400) 0%, var(--color-danger-600) 100%);
   }
   
-  /* Enhanced shadows */
+  /* Enhanced shadows using theme system */
   .shadow-soft {
-    box-shadow: 0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-soft);
   }
   
   .shadow-glow {
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+    box-shadow: var(--shadow-glow);
   }
   
   /* Pulse animation for live indicators */
@@ -331,13 +338,13 @@ body {
 
   /* Static background for light mode - no wave animation */
   .wave-bg {
-    background: rgb(248, 250, 252); /* static gray-50 background */
+    background: var(--background-start-rgb); /* Use theme system background */
   }
   
-  /* Keep wave animation for dark mode only */
+  /* Keep wave animation for dark mode only using theme colors */
   @media (prefers-color-scheme: dark) {
     .wave-bg {
-      background: linear-gradient(-45deg, #667eea, #764ba2, #667eea, #764ba2);
+      background: linear-gradient(-45deg, var(--color-primary-500), var(--color-primary-700), var(--color-primary-500), var(--color-primary-700));
       background-size: 400% 400%;
       animation: wave 15s ease-in-out infinite;
     }
@@ -376,7 +383,7 @@ body {
 @layer base {
   /* High-contrast focus indicators using design system colors */
   *:focus-visible {
-    outline: 2px solid #0284c7 !important;  /* primary-600 for 7:1 contrast */
+    outline: 2px solid var(--color-primary-600) !important;
     outline-offset: 2px !important;
     border-radius: 4px;
   }
@@ -384,54 +391,54 @@ body {
   /* Enhanced button focus states - 44px minimum touch target */
   button:focus-visible,
   [role="button"]:focus-visible {
-    outline: 3px solid #0284c7 !important;
+    outline: 3px solid var(--color-primary-600) !important;
     outline-offset: 2px !important;
-    box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15) !important;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15) !important;
   }
   
   /* Input field focus states */
   input:focus-visible,
   textarea:focus-visible,
   select:focus-visible {
-    outline: 2px solid #0284c7 !important;
+    outline: 2px solid var(--color-primary-600) !important;
     outline-offset: 1px !important;
     ring: 2px;
-    ring-color: #0284c7;
-    border-color: #0284c7 !important;
+    ring-color: var(--color-primary-600);
+    border-color: var(--color-primary-600) !important;
   }
   
   /* Link focus states with better contrast */
   a:focus-visible {
-    outline: 2px solid #0284c7 !important;
+    outline: 2px solid var(--color-primary-600) !important;
     outline-offset: 2px !important;
     text-decoration: underline;
     text-decoration-thickness: 2px;
-    color: #0369a1 !important; /* primary-700 for active state */
+    color: var(--color-primary-700) !important;
   }
   
   /* Dark mode focus states */
   @media (prefers-color-scheme: dark) {
     *:focus-visible {
-      outline-color: #0ea5e9 !important; /* primary-500 for dark mode */
+      outline-color: var(--color-primary-500) !important;
     }
     
     button:focus-visible,
     [role="button"]:focus-visible {
-      outline-color: #0ea5e9 !important;
-      box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2) !important;
+      outline-color: var(--color-primary-500) !important;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
     }
     
     input:focus-visible,
     textarea:focus-visible,
     select:focus-visible {
-      outline-color: #0ea5e9 !important;
-      ring-color: #0ea5e9;
-      border-color: #0ea5e9 !important;
+      outline-color: var(--color-primary-500) !important;
+      ring-color: var(--color-primary-500);
+      border-color: var(--color-primary-500) !important;
     }
     
     a:focus-visible {
-      outline-color: #0ea5e9 !important;
-      color: #38bdf8 !important; /* primary-400 for dark mode active */
+      outline-color: var(--color-primary-500) !important;
+      color: var(--color-primary-400) !important;
     }
   }
   
@@ -455,29 +462,29 @@ body {
   
   /* WCAG AAA compliant text contrast classes */
   .text-contrast-high {
-    color: #404040; /* neutral-700: 10.4:1 contrast with white */
+    color: var(--color-neutral-700);
   }
   
   .text-contrast-medium {
-    color: #525252; /* neutral-600: 7:1 contrast with white */
+    color: var(--color-neutral-600);
   }
   
   .text-contrast-accessible {
-    color: #737373; /* neutral-500: 4.5:1 contrast with white (WCAG AA) */
+    color: var(--color-neutral-500);
   }
   
   /* Dark mode text contrast improvements */
   @media (prefers-color-scheme: dark) {
     .text-contrast-high {
-      color: #f5f5f5; /* neutral-100: High contrast with dark backgrounds */
+      color: var(--color-neutral-100);
     }
     
     .text-contrast-medium {
-      color: #d4d4d4; /* neutral-300: Medium contrast */
+      color: var(--color-neutral-300);
     }
     
     .text-contrast-accessible {
-      color: #a3a3a3; /* neutral-400: Accessible contrast on dark */
+      color: var(--color-neutral-400);
     }
   }
   
@@ -548,8 +555,8 @@ body {
     position: fixed;
     top: -40px;
     left: 6px;
-    background: #000;
-    color: #fff;
+    background: var(--color-neutral-900);
+    color: var(--color-neutral-50);
     padding: 8px 16px;
     text-decoration: none;
     border-radius: 4px;
@@ -560,7 +567,7 @@ body {
   
   .skip-link:focus {
     top: 6px;
-    outline: 3px solid #0ea5e9;
+    outline: 3px solid var(--color-primary-500);
     outline-offset: 2px;
   }
   
@@ -600,16 +607,16 @@ body {
   
   /* Enhanced keyboard navigation for custom components */
   [role="tablist"] [role="tab"]:focus-visible {
-    outline: 2px solid #0284c7;
+    outline: 2px solid var(--color-primary-600);
     outline-offset: -2px;
-    background-color: rgba(2, 132, 199, 0.1);
+    background-color: rgba(37, 99, 235, 0.1);
   }
   
   [role="menu"] [role="menuitem"]:focus-visible,
   [role="listbox"] [role="option"]:focus-visible {
-    outline: 2px solid #0284c7;
+    outline: 2px solid var(--color-primary-600);
     outline-offset: -2px;
-    background-color: rgba(2, 132, 199, 0.1);
+    background-color: rgba(37, 99, 235, 0.1);
   }
   
   /* Focus management for modals and dialogs */
@@ -623,13 +630,13 @@ body {
   
   /* Enhanced error states for form validation */
   [aria-invalid="true"] {
-    border-color: #dc2626 !important; /* red-600 */
-    box-shadow: 0 0 0 1px #dc2626;
+    border-color: var(--color-danger-600) !important;
+    box-shadow: 0 0 0 1px var(--color-danger-600);
   }
   
   [aria-invalid="true"]:focus-visible {
-    outline-color: #dc2626 !important;
-    ring-color: #dc2626;
+    outline-color: var(--color-danger-600) !important;
+    ring-color: var(--color-danger-600);
   }
   
   /* Required field indicators */
@@ -637,71 +644,71 @@ body {
   label[aria-required="true"]::after,
   .required::after {
     content: " *";
-    color: #dc2626;
+    color: var(--color-danger-600);
     font-weight: bold;
   }
   
   /* Focus indicators for form groups and fieldsets */
   fieldset:focus-within {
-    outline: 2px solid #0284c7;
+    outline: 2px solid var(--color-primary-600);
     outline-offset: 2px;
     border-radius: 4px;
   }
   
   /* Enhanced toggle switch accessibility */
   [role="switch"]:focus-visible {
-    outline: 3px solid #0284c7;
+    outline: 3px solid var(--color-primary-600);
     outline-offset: 2px;
-    box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
   }
   
   [role="switch"][aria-checked="true"] {
-    background-color: #0284c7;
+    background-color: var(--color-primary-600);
   }
   
   [role="switch"][aria-checked="false"] {
-    background-color: #6b7280; /* gray-500 */
+    background-color: var(--color-neutral-500);
   }
   
   /* Dark mode adjustments for accessibility */
   @media (prefers-color-scheme: dark) {
     .skip-link {
-      background: #fff;
-      color: #000;
+      background: var(--color-neutral-50);
+      color: var(--color-neutral-900);
     }
     
     .skip-link:focus {
-      outline-color: #0ea5e9;
+      outline-color: var(--color-primary-500);
     }
     
     [role="tablist"] [role="tab"]:focus-visible,
     [role="menu"] [role="menuitem"]:focus-visible,
     [role="listbox"] [role="option"]:focus-visible {
-      outline-color: #0ea5e9;
-      background-color: rgba(14, 165, 233, 0.15);
+      outline-color: var(--color-primary-500);
+      background-color: rgba(59, 130, 246, 0.15);
     }
     
     [aria-invalid="true"] {
-      border-color: #ef4444; /* red-500 for dark mode */
-      box-shadow: 0 0 0 1px #ef4444;
+      border-color: var(--color-danger-500);
+      box-shadow: 0 0 0 1px var(--color-danger-500);
     }
     
     [aria-invalid="true"]:focus-visible {
-      outline-color: #ef4444;
-      ring-color: #ef4444;
+      outline-color: var(--color-danger-500);
+      ring-color: var(--color-danger-500);
     }
     
     [role="switch"]:focus-visible {
-      outline-color: #0ea5e9;
-      box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+      outline-color: var(--color-primary-500);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
     }
     
     [role="switch"][aria-checked="true"] {
-      background-color: #0ea5e9;
+      background-color: var(--color-primary-500);
     }
     
     [role="switch"][aria-checked="false"] {
-      background-color: #4b5563; /* gray-600 for dark mode */
+      background-color: var(--color-neutral-600);
     }
   }
 }

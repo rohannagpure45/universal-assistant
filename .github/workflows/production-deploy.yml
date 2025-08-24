@@ -1,0 +1,495 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - staging
+          - production
+      skip_tests:
+        description: 'Skip test suite'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '18.17.0'
+  PNPM_VERSION: '8.6.0'
+
+jobs:
+  # Code quality and security checks
+  quality-checks:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type checking
+        run: pnpm run typecheck
+
+      - name: ESLint code quality
+        run: pnpm run lint
+
+      - name: Prettier code formatting
+        run: pnpm run format:check
+
+      - name: Security audit
+        run: pnpm audit --audit-level moderate
+
+      - name: Check for sensitive data
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+
+  # Comprehensive testing suite
+  test-suite:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+    strategy:
+      matrix:
+        test-type: ['unit', 'integration', 'e2e']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup test environment
+        run: |
+          cp .env.example .env.test
+          echo "NODE_ENV=test" >> .env.test
+
+      - name: Run unit tests
+        if: matrix.test-type == 'unit'
+        run: |
+          pnpm run test:unit --coverage --passWithNoTests
+          pnpm run test:coverage:upload
+        env:
+          CI: true
+
+      - name: Run integration tests
+        if: matrix.test-type == 'integration'
+        run: pnpm run test:integration --passWithNoTests
+        env:
+          CI: true
+
+      - name: Setup Playwright
+        if: matrix.test-type == 'e2e'
+        run: pnpm exec playwright install --with-deps
+
+      - name: Run E2E tests
+        if: matrix.test-type == 'e2e'
+        run: pnpm run test:e2e
+        env:
+          CI: true
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.test-type }}
+          path: |
+            test-results/
+            coverage/
+            playwright-report/
+
+  # Build and optimization
+  build:
+    name: Build & Optimize
+    runs-on: ubuntu-latest
+    needs: [quality-checks]
+    outputs:
+      build-id: ${{ steps.build-info.outputs.build-id }}
+      bundle-size: ${{ steps.bundle-analysis.outputs.bundle-size }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate build info
+        id: build-info
+        run: |
+          BUILD_ID="${{ github.sha }}-$(date +%s)"
+          echo "build-id=$BUILD_ID" >> $GITHUB_OUTPUT
+          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+          echo "{\"buildId\":\"$BUILD_ID\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"commit\":\"${{ github.sha }}\",\"branch\":\"${{ github.ref_name }}\"}" > public/build-info.json
+
+      - name: Build application
+        run: |
+          echo "Building for production..."
+          pnpm run build
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: 1
+          GENERATE_SOURCEMAP: false
+
+      - name: Bundle size analysis
+        id: bundle-analysis
+        run: |
+          # Analyze bundle sizes
+          npx next-bundle-analyzer --help || npm install -g @next/bundle-analyzer
+          BUNDLE_SIZE=$(du -sh .next | cut -f1)
+          echo "bundle-size=$BUNDLE_SIZE" >> $GITHUB_OUTPUT
+          echo "Bundle size: $BUNDLE_SIZE"
+
+      - name: Optimize images
+        run: |
+          # Optimize any remaining images
+          find public -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" | head -20 | xargs -r -I {} sh -c 'echo "Optimizing {}"'
+
+      - name: Security scan of build
+        run: |
+          # Scan build output for potential security issues
+          find .next -name "*.js" -type f | xargs grep -l "eval\|Function\|setTimeout\|setInterval" | head -5 || true
+
+      - name: Cache build artifacts
+        uses: actions/cache@v3
+        with:
+          path: |
+            .next/
+            public/build-info.json
+          key: build-cache-${{ env.BUILD_ID }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            .next/
+            public/build-info.json
+            package.json
+
+  # Performance testing
+  performance-test:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prod
+
+      - name: Start application for testing
+        run: |
+          pnpm start &
+          sleep 30
+          curl -f http://localhost:3000/api/health || exit 1
+        env:
+          NODE_ENV: production
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          uploadDir: './lighthouse-reports'
+          configPath: './lighthouse.config.js'
+
+      - name: Performance benchmark
+        run: |
+          # Custom performance tests
+          node scripts/performance-benchmark.js || echo "Performance benchmark not available"
+
+  # Security scanning
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Staging deployment
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, test-suite]
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging.universal-assistant.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Integration with your deployment platform (Vercel, Netlify, AWS, etc.)
+          # npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+          
+      - name: Run staging health check
+        run: |
+          sleep 60  # Wait for deployment to complete
+          curl -f https://staging.universal-assistant.com/api/health?detailed=true
+
+      - name: Run staging smoke tests
+        run: |
+          # Quick smoke tests on staging
+          echo "Running staging smoke tests..."
+          # pnpm run test:smoke -- --baseURL=https://staging.universal-assistant.com
+
+  # Production deployment
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, test-suite, security-scan, performance-test]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://universal-assistant.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+
+      - name: Pre-deployment checks
+        run: |
+          echo "Running pre-deployment checks..."
+          # Verify build integrity
+          test -f .next/BUILD_ID || (echo "Build ID missing" && exit 1)
+          test -d .next/static || (echo "Static assets missing" && exit 1)
+
+      - name: Blue-Green deployment setup
+        run: |
+          echo "Setting up blue-green deployment..."
+          # Create deployment snapshot for rollback
+          DEPLOYMENT_ID="deploy-${{ needs.build.outputs.build-id }}"
+          echo "DEPLOYMENT_ID=$DEPLOYMENT_ID" >> $GITHUB_ENV
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment..."
+          # Replace with your actual deployment commands
+          # Examples:
+          # npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+          # aws s3 sync .next/ s3://your-bucket/
+          # kubectl apply -f k8s/
+          
+      - name: Health check validation
+        run: |
+          echo "Validating production deployment..."
+          sleep 90  # Wait for deployment to stabilize
+          
+          # Health check with retry logic
+          for i in {1..5}; do
+            if curl -f https://universal-assistant.com/api/health?detailed=true; then
+              echo "Health check passed"
+              break
+            else
+              echo "Health check failed, attempt $i/5"
+              sleep 30
+            fi
+            
+            if [ $i -eq 5 ]; then
+              echo "Health check failed after 5 attempts"
+              exit 1
+            fi
+          done
+
+      - name: Performance validation
+        run: |
+          echo "Validating production performance..."
+          # Quick performance check
+          RESPONSE_TIME=$(curl -w "%{time_total}" -s -o /dev/null https://universal-assistant.com/)
+          echo "Response time: ${RESPONSE_TIME}s"
+          
+          # Fail if response time > 2 seconds
+          if [ $(echo "$RESPONSE_TIME > 2.0" | bc -l) -eq 1 ]; then
+            echo "Performance validation failed: response time too high"
+            exit 1
+          fi
+
+      - name: Update monitoring
+        run: |
+          echo "Updating monitoring systems..."
+          # Notify monitoring systems of deployment
+          curl -X POST "${{ secrets.MONITORING_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event": "deployment",
+              "environment": "production",
+              "version": "${{ needs.build.outputs.build-id }}",
+              "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
+              "commit": "${{ github.sha }}"
+            }' || echo "Failed to update monitoring"
+
+      - name: Deployment success notification
+        run: |
+          echo "✅ Production deployment successful!"
+          echo "Build ID: ${{ needs.build.outputs.build-id }}"
+          echo "Bundle Size: ${{ needs.build.outputs.bundle-size }}"
+          echo "Commit: ${{ github.sha }}"
+
+  # Post-deployment monitoring
+  post-deployment:
+    name: Post-Deployment Monitoring
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: success()
+    steps:
+      - name: Monitor deployment for 10 minutes
+        run: |
+          echo "Monitoring production for 10 minutes..."
+          
+          for i in {1..20}; do
+            echo "Health check $i/20..."
+            
+            HEALTH_RESPONSE=$(curl -s https://universal-assistant.com/api/health)
+            HEALTH_STATUS=$(echo $HEALTH_RESPONSE | jq -r '.status')
+            
+            if [ "$HEALTH_STATUS" != "healthy" ]; then
+              echo "⚠️ Health status: $HEALTH_STATUS"
+              echo "Response: $HEALTH_RESPONSE"
+            else
+              echo "✅ Health status: healthy"
+            fi
+            
+            sleep 30
+          done
+
+      - name: Generate deployment report
+        run: |
+          echo "Generating deployment report..."
+          cat << EOF > deployment-report.json
+          {
+            "deployment_id": "${{ env.DEPLOYMENT_ID }}",
+            "build_id": "${{ needs.build.outputs.build-id }}",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "environment": "production",
+            "bundle_size": "${{ needs.build.outputs.bundle-size }}",
+            "status": "success"
+          }
+          EOF
+
+      - name: Archive deployment report
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-report
+          path: deployment-report.json
+
+  # Rollback capability
+  rollback:
+    name: Emergency Rollback
+    runs-on: ubuntu-latest
+    if: failure() && needs.deploy-production.result == 'failure'
+    needs: [deploy-production]
+    environment:
+      name: production
+    steps:
+      - name: Execute rollback
+        run: |
+          echo "🚨 Executing emergency rollback..."
+          # Implement rollback logic here
+          # This might involve:
+          # - Switching traffic back to previous version
+          # - Rolling back database migrations
+          # - Restoring previous container images
+          
+      - name: Validate rollback
+        run: |
+          echo "Validating rollback..."
+          curl -f https://universal-assistant.com/api/health || exit 1
+
+      - name: Notify team of rollback
+        run: |
+          echo "Notifying team of rollback..."
+          # Send notification to team via Slack, email, etc.

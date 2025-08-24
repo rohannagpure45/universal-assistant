@@ -1,735 +1,807 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
-import { MainLayout } from '@/components/layouts/MainLayout';
-import { useMeetingStore, useMeeting } from '@/stores/meetingStore';
-import { useAuth } from '@/hooks/useAuth';
-import { useUniversalAssistantClient } from '@/hooks/useUniversalAssistantClient';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { PageErrorBoundary } from '@/components/error-boundaries/PageErrorBoundary';
+import { useRouter } from 'next/navigation';
 import { 
   Mic, 
   MicOff, 
   Play, 
+  Pause, 
   Square, 
-  ChevronDown, 
-  ChevronRight, 
-  Calendar, 
+  Users, 
   Clock, 
-  Users,
-  Volume2,
+  Volume2, 
+  VolumeX,
   Settings,
-  Wifi,
-  Shield
+  ArrowLeft,
+  Phone,
+  PhoneOff
 } from 'lucide-react';
-import { MeetingType } from '@/types';
-import { ProgressModal, ProgressStep, useProgressModal, LoadingSpinner } from '@/components/ui';
 
-// LiveTranscript Component
-const LiveTranscript: React.FC = () => {
-  const { transcript, isInMeeting } = useMeeting();
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
+// Store and service imports
+import { useMeetingActions, useMeetingState, useRecording, useTranscript, useParticipants } from '@/stores/hooks/useMeetingHooks';
+import { useAuth } from '@/hooks/useAuth';
+import { UniversalAssistantCoordinator, createUniversalAssistantCoordinator, type UniversalAssistantConfig } from '@/services/universal-assistant/UniversalAssistantCoordinator';
+import { useMeetingStore } from '@/stores/meetingStore';
+import { useAppStore } from '@/stores/appStore';
 
-  // Auto-scroll to latest transcript entry
+// Component imports
+import { MeetingTypeSelector } from '@/components/meeting/MeetingTypeSelector';
+import { CreateMeetingTypeModal } from '@/components/meeting/CreateMeetingTypeModal';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/Button';
+
+// Type imports
+import type { MeetingTypeConfig } from '@/types/database';
+import type { Meeting, MeetingType } from '@/types';
+
+interface MeetingSetupModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onStartMeeting: (title: string, meetingType: MeetingTypeConfig) => Promise<void>;
+  isStarting: boolean;
+}
+
+const MeetingSetupModal: React.FC<MeetingSetupModalProps> = ({
+  isOpen,
+  onClose,
+  onStartMeeting,
+  isStarting
+}) => {
+  const [title, setTitle] = useState('');
+  const [selectedMeetingType, setSelectedMeetingType] = useState<MeetingTypeConfig | null>(null);
+  const [showCreateTypeModal, setShowCreateTypeModal] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !selectedMeetingType || isStarting) return;
+    
+    await onStartMeeting(title.trim(), selectedMeetingType);
+  };
+
+  const handleMeetingTypeCreated = (meetingType: MeetingTypeConfig) => {
+    setSelectedMeetingType(meetingType);
+    setShowCreateTypeModal(false);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-6">
+            Start New Meeting
+          </h3>
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Meeting Title
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Enter meeting title..."
+                disabled={isStarting}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Meeting Type
+              </label>
+              <MeetingTypeSelector
+                selectedMeetingType={selectedMeetingType}
+                onMeetingTypeChange={setSelectedMeetingType}
+                onCreateMeetingType={() => setShowCreateTypeModal(true)}
+                required
+                disabled={isStarting}
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={isStarting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!title.trim() || !selectedMeetingType || isStarting}
+                className="flex items-center space-x-2"
+              >
+                {isStarting && (
+                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                )}
+                <span>{isStarting ? 'Starting...' : 'Start Meeting'}</span>
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <CreateMeetingTypeModal
+        isOpen={showCreateTypeModal}
+        onClose={() => setShowCreateTypeModal(false)}
+        onMeetingTypeCreated={handleMeetingTypeCreated}
+      />
+    </>
+  );
+};
+
+interface MeetingControlsProps {
+  onEndMeeting: () => Promise<void>;
+  isEnding: boolean;
+}
+
+const MeetingControls: React.FC<MeetingControlsProps> = ({
+  onEndMeeting,
+  isEnding
+}) => {
+  const { isRecording, recordingTime, actions: recordingActions } = useRecording();
+  const [isMuted, setIsMuted] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+
+  const handleToggleRecording = () => {
+    if (isRecording) {
+      recordingActions.pauseRecording();
+    } else {
+      recordingActions.startRecording();
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center space-x-4 p-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+      {/* Recording Timer */}
+      <div className="flex items-center space-x-2">
+        <Clock className="w-4 h-4 text-gray-500" />
+        <span className="font-mono text-sm text-gray-700 dark:text-gray-300">
+          {recordingTime.formatted}
+        </span>
+      </div>
+
+      {/* Recording Control */}
+      <Button
+        onClick={handleToggleRecording}
+        variant={isRecording ? "danger" : "primary"}
+        size="lg"
+        className="flex items-center space-x-2"
+      >
+        {isRecording ? (
+          <>
+            <Pause className="w-5 h-5" />
+            <span>Pause</span>
+          </>
+        ) : (
+          <>
+            <Mic className="w-5 h-5" />
+            <span>Record</span>
+          </>
+        )}
+      </Button>
+
+      {/* Mute Control */}
+      <Button
+        onClick={() => setIsMuted(!isMuted)}
+        variant={isMuted ? "danger" : "outline"}
+        size="lg"
+        className="flex items-center space-x-2"
+      >
+        {isMuted ? (
+          <>
+            <MicOff className="w-5 h-5" />
+            <span>Muted</span>
+          </>
+        ) : (
+          <>
+            <Mic className="w-5 h-5" />
+            <span>Live</span>
+          </>
+        )}
+      </Button>
+
+      {/* End Meeting */}
+      <Button
+        onClick={onEndMeeting}
+        variant="danger"
+        size="lg"
+        disabled={isEnding}
+        className="flex items-center space-x-2"
+      >
+        {isEnding ? (
+          <>
+            <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+            <span>Ending...</span>
+          </>
+        ) : (
+          <>
+            <PhoneOff className="w-5 h-5" />
+            <span>End Meeting</span>
+          </>
+        )}
+      </Button>
+    </div>
+  );
+};
+
+interface TranscriptDisplayProps {}
+
+const TranscriptDisplay: React.FC<TranscriptDisplayProps> = () => {
+  const { transcript, transcriptAnalytics } = useTranscript();
+  const transcriptRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when new entries are added
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [transcript]);
+    if (transcriptRef.current) {
+      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+    }
+  }, [transcript.length]);
 
-  if (!isInMeeting) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
-        <div className="text-center p-8">
-          <div className="relative mb-6">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-purple-400/20 rounded-full blur-xl" />
-            <Mic className="relative w-16 h-16 mx-auto text-gray-300 dark:text-gray-600" />
+  return (
+    <Card className="h-64 flex flex-col">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Live Transcript
+          </h3>
+          <div className="flex items-center space-x-4 text-sm text-gray-500">
+            <span>{transcript.length} entries</span>
+            <span>{transcriptAnalytics.speakers} speakers</span>
+            <span>{(transcriptAnalytics.averageConfidence * 100).toFixed(0)}% confidence</span>
           </div>
-          <h3 className="text-fluid-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">Ready to Record</h3>
-          <p className="text-gray-500 dark:text-gray-400">Start a meeting to see live transcript and AI assistance</p>
+        </div>
+      </div>
+
+      <div 
+        ref={transcriptRef}
+        className="flex-1 overflow-y-auto p-4 space-y-3"
+      >
+        {transcript.length === 0 ? (
+          <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+            <Mic className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>Transcript will appear here as you speak...</p>
+          </div>
+        ) : (
+          transcript.map((entry, index) => (
+            <div key={entry.id || index} className="flex space-x-3">
+              <div className="flex-shrink-0">
+                <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center text-xs font-medium">
+                  {entry.speaker?.charAt(0) || 'S'}
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center space-x-2 mb-1">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    {entry.speaker || 'Unknown Speaker'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {new Date(entry.timestamp).toLocaleTimeString()}
+                  </span>
+                  {!entry.isComplete && (
+                    <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                      (partial)
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  {entry.text}
+                </p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </Card>
+  );
+};
+
+interface ParticipantsDisplayProps {}
+
+const ParticipantsDisplay: React.FC<ParticipantsDisplayProps> = () => {
+  const { participants, activeSpeaker, participantAnalytics } = useParticipants();
+
+  return (
+    <Card className="h-64">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Participants
+          </h3>
+          <div className="flex items-center space-x-2 text-sm text-gray-500">
+            <Users className="w-4 h-4" />
+            <span>{participantAnalytics.totalParticipants}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-3 overflow-y-auto max-h-48">
+        {participants.length === 0 ? (
+          <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+            <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>No participants yet...</p>
+          </div>
+        ) : (
+          participants.map((participant) => {
+            const stats = participantAnalytics.participantStats.find(
+              s => s.userId === participant.userId
+            );
+            return (
+              <div
+                key={participant.userId}
+                className={`flex items-center justify-between p-3 rounded-lg ${
+                  activeSpeaker === participant.userId
+                    ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                    : 'bg-gray-50 dark:bg-gray-700'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                    stats?.isConnected 
+                      ? 'bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-400'
+                      : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {participant.displayName?.charAt(0) || 'P'}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {participant.displayName || 'Unknown Participant'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {participant.role} • {stats?.speakingPercentage.toFixed(0)}% speaking time
+                    </p>
+                  </div>
+                </div>
+                
+                {activeSpeaker === participant.userId && (
+                  <div className="flex items-center space-x-1 text-green-600 dark:text-green-400">
+                    <div className="animate-pulse w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-xs font-medium">Speaking</span>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </Card>
+  );
+};
+
+function MeetingPageContent() {
+  const router = useRouter();
+  const { user } = useAuth();
+  
+  // Meeting state and actions
+  const meetingActions = useMeetingActions();
+  const { currentMeeting, isInMeeting, isLoadingMeeting, meetingStats } = useMeetingState();
+  
+  // Local state
+  const [showSetupModal, setShowSetupModal] = useState(false);
+  const [isStartingMeeting, setIsStartingMeeting] = useState(false);
+  const [isEndingMeeting, setIsEndingMeeting] = useState(false);
+  
+  // Universal Assistant integration with proper error handling
+  const universalAssistantRef = useRef<UniversalAssistantCoordinator | null>(null);
+  const [assistantError, setAssistantError] = useState<string | null>(null);
+  const initializingRef = useRef<boolean>(false);
+  
+  // Store references - avoid direct store usage in effects
+  const meetingStoreRef = useRef(useMeetingStore);
+  const appStoreRef = useRef(useAppStore);
+
+  // Initialize Universal Assistant when meeting starts with proper race condition handling
+  useEffect(() => {
+    if (isInMeeting && currentMeeting && !universalAssistantRef.current && !initializingRef.current) {
+      initializingRef.current = true;
+      setAssistantError(null);
+
+      const initializeAssistant = async () => {
+        try {
+          const config: UniversalAssistantConfig = {
+            model: 'gpt-4o-mini',
+            maxTokens: 1000,
+            voiceId: '21m00Tcm4TlvDq8ikWAM', // Default ElevenLabs voice
+            ttsSpeed: 1.0,
+            enableConcurrentProcessing: true,
+            enableSpeakerIdentification: true
+          };
+
+          universalAssistantRef.current = createUniversalAssistantCoordinator(
+            config,
+            meetingStoreRef.current,
+            appStoreRef.current
+          );
+
+          // Start recording with Universal Assistant
+          await universalAssistantRef.current.startRecording(currentMeeting);
+          console.log('Universal Assistant initialized successfully');
+        } catch (error) {
+          console.error('Failed to start Universal Assistant recording:', error);
+          setAssistantError(error instanceof Error ? error.message : 'Failed to initialize assistant');
+          
+          // Clean up on error
+          if (universalAssistantRef.current) {
+            universalAssistantRef.current.cleanup();
+            universalAssistantRef.current = null;
+          }
+        } finally {
+          initializingRef.current = false;
+        }
+      };
+
+      initializeAssistant();
+    }
+
+    // Cleanup when meeting ends or component changes
+    if (!isInMeeting && universalAssistantRef.current) {
+      console.log('Cleaning up Universal Assistant due to meeting end');
+      universalAssistantRef.current.cleanup();
+      universalAssistantRef.current = null;
+      initializingRef.current = false;
+      setAssistantError(null);
+    }
+  }, [isInMeeting, currentMeeting?.meetingId]); // Use meetingId to prevent unnecessary re-renders
+
+  // Cleanup Universal Assistant when component unmounts
+  useEffect(() => {
+    return () => {
+      if (universalAssistantRef.current) {
+        console.log('Cleaning up Universal Assistant on component unmount');
+        universalAssistantRef.current.cleanup();
+        universalAssistantRef.current = null;
+      }
+      initializingRef.current = false;
+    };
+  }, []);
+
+  const handleStartMeeting = useCallback(async (title: string, meetingType: MeetingTypeConfig) => {
+    if (!user || isStartingMeeting) return;
+
+    setIsStartingMeeting(true);
+    setAssistantError(null);
+    
+    try {
+      console.log('Starting meeting:', { title, meetingType: meetingType.name });
+      
+      const meetingId = await meetingActions.startMeeting(
+        title, 
+        'standup' as MeetingType, // Map from meetingType to MeetingType enum
+        {
+          // Additional meeting data
+          description: meetingType.contextRules
+        }
+      );
+
+      if (meetingId) {
+        console.log('Meeting started successfully:', meetingId);
+        setShowSetupModal(false);
+        
+        // Add success notification
+        useAppStore.getState().addNotification({
+          type: 'success',
+          title: 'Meeting Started',
+          message: `"${title}" meeting has been started successfully.`,
+          persistent: false
+        });
+      } else {
+        throw new Error('Failed to create meeting - no meeting ID returned');
+      }
+    } catch (error) {
+      console.error('Failed to start meeting:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      // Add error notification
+      useAppStore.getState().addNotification({
+        type: 'error',
+        title: 'Failed to Start Meeting',
+        message: errorMessage,
+        persistent: false
+      });
+      
+      // Reset any partial state
+      if (universalAssistantRef.current) {
+        universalAssistantRef.current.cleanup();
+        universalAssistantRef.current = null;
+      }
+      initializingRef.current = false;
+    } finally {
+      setIsStartingMeeting(false);
+    }
+  }, [user, meetingActions, isStartingMeeting]);
+
+  const handleEndMeeting = useCallback(async () => {
+    if (!currentMeeting || isEndingMeeting) return;
+
+    setIsEndingMeeting(true);
+    
+    try {
+      console.log('Ending meeting:', currentMeeting.meetingId);
+      
+      // Stop Universal Assistant first with timeout
+      if (universalAssistantRef.current) {
+        console.log('Stopping Universal Assistant...');
+        const cleanupPromise = universalAssistantRef.current.stopRecording();
+        
+        // Add timeout to prevent hanging
+        await Promise.race([
+          cleanupPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Assistant cleanup timeout')), 10000)
+          )
+        ]);
+        
+        universalAssistantRef.current.cleanup();
+        universalAssistantRef.current = null;
+        console.log('Universal Assistant stopped successfully');
+      }
+
+      // End meeting in store
+      const success = await meetingActions.endMeeting(currentMeeting.meetingId);
+      
+      if (success) {
+        console.log('Meeting ended successfully');
+        
+        // Add success notification
+        useAppStore.getState().addNotification({
+          type: 'success',
+          title: 'Meeting Ended',
+          message: 'Meeting has been ended and data has been saved.',
+          persistent: false
+        });
+        
+        // Reset assistant error state
+        setAssistantError(null);
+        initializingRef.current = false;
+        
+        // Optional: Navigate back to dashboard after a short delay
+        // setTimeout(() => router.push('/dashboard'), 1000);
+      } else {
+        throw new Error('Failed to end meeting in store');
+      }
+    } catch (error) {
+      console.error('Failed to end meeting:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      // Add error notification
+      useAppStore.getState().addNotification({
+        type: 'error',
+        title: 'Failed to End Meeting',
+        message: errorMessage,
+        persistent: false
+      });
+      
+      // Force cleanup even on error to prevent stuck state
+      try {
+        if (universalAssistantRef.current) {
+          universalAssistantRef.current.cleanup();
+          universalAssistantRef.current = null;
+        }
+        initializingRef.current = false;
+      } catch (cleanupError) {
+        console.error('Error during forced cleanup:', cleanupError);
+      }
+    } finally {
+      setIsEndingMeeting(false);
+    }
+  }, [currentMeeting, meetingActions, isEndingMeeting]);
+
+  const handleBackToDashboard = useCallback(async () => {
+    console.log('Navigating back to dashboard...');
+    
+    // If in meeting, prompt user to end meeting first
+    if (isInMeeting && currentMeeting) {
+      const shouldEndMeeting = window.confirm(
+        'You are currently in a meeting. Do you want to end the meeting and return to dashboard?'
+      );
+      
+      if (shouldEndMeeting) {
+        try {
+          await handleEndMeeting();
+          // Navigation will happen after meeting ends
+          setTimeout(() => router.push('/dashboard'), 500);
+        } catch (error) {
+          console.error('Error ending meeting during navigation:', error);
+          // Force navigation even if ending fails (user requested it)
+          router.push('/dashboard');
+        }
+      }
+      return;
+    }
+    
+    // Clean up any lingering state
+    if (universalAssistantRef.current) {
+      universalAssistantRef.current.cleanup();
+      universalAssistantRef.current = null;
+    }
+    initializingRef.current = false;
+    setAssistantError(null);
+    
+    // Navigate to dashboard
+    router.push('/dashboard');
+  }, [isInMeeting, currentMeeting, handleEndMeeting, router]);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isInMeeting || universalAssistantRef.current) {
+        e.preventDefault();
+        e.returnValue = 'You are currently in a meeting. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    const handlePopState = () => {
+      if (isInMeeting && currentMeeting) {
+        const shouldStay = window.confirm(
+          'You are currently in a meeting. Do you want to end the meeting?'
+        );
+        
+        if (!shouldStay) {
+          // Prevent navigation
+          window.history.pushState(null, '', window.location.href);
+          return;
+        }
+        
+        // End meeting and allow navigation
+        handleEndMeeting().catch(error => {
+          console.error('Error ending meeting during browser navigation:', error);
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isInMeeting, currentMeeting, handleEndMeeting]);
+
+  // Loading state
+  if (isLoadingMeeting) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Loading meeting...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 glass-morphism dark:glass-morphism-dark rounded-xl border border-white/30 dark:border-gray-700/30 overflow-hidden shadow-soft backdrop-blur-xl">
-      <div className="p-6 border-b border-white/20 dark:border-gray-700/30 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-blue-900/20 dark:to-indigo-900/20">
-        <div className="flex items-center space-x-3">
-          <div className="w-2 h-2 bg-green-500 rounded-full pulse-soft" />
-          <h3 className="text-fluid-lg font-semibold text-gray-900 dark:text-white">
-            Live Transcript
-          </h3>
-        </div>
-      </div>
-      
-      <div className="p-6 h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
-        {transcript.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-            <div className="text-center p-8">
-              <div className="relative mb-4">
-                <div className="absolute inset-0 bg-green-500/20 rounded-full blur-lg animate-pulse" />
-                <div className="relative w-4 h-4 bg-green-500 rounded-full mx-auto pulse-soft" />
-              </div>
-              <p className="text-gray-600 dark:text-gray-300 font-medium">Listening for speech...</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Speak naturally to see real-time transcription</p>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="max-w-6xl mx-auto p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Button
+              onClick={handleBackToDashboard}
+              variant="outline"
+              size="sm"
+              className="flex items-center space-x-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Dashboard</span>
+            </Button>
+            
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                {isInMeeting ? currentMeeting?.title : 'Meeting Room'}
+              </h1>
+              {isInMeeting && meetingStats && (
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {Math.floor(meetingStats.duration / 60000)} minutes • {meetingStats.participantCount} participants
+                </p>
+              )}
             </div>
           </div>
-        ) : (
-          <div className="space-y-6">
-            {transcript.map((entry, index) => (
-              <div 
-                key={entry.id || index} 
-                className="group relative p-4 rounded-xl bg-white/40 dark:bg-gray-800/40 border-l-4 border-gradient-primary backdrop-blur-sm hover:bg-white/60 dark:hover:bg-gray-800/60 transition-all duration-200"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                          {entry.speakerId || 'Speaker'}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100/50 dark:bg-gray-700/50 px-2 py-1 rounded-full">
-                        {new Date(entry.timestamp).toLocaleTimeString()}
-                      </span>
-                      {entry.confidence && (
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-900/20 px-2 py-1 rounded-full font-medium">
-                          {Math.round(entry.confidence * 100)}% confident
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-gray-900 dark:text-white leading-relaxed text-fluid-base">
-                      {entry.text}
+
+          {!isInMeeting && (
+            <Button
+              onClick={() => setShowSetupModal(true)}
+              size="lg"
+              className="flex items-center space-x-2"
+              disabled={isStartingMeeting}
+            >
+              <Phone className="w-5 h-5" />
+              <span>Start Meeting</span>
+            </Button>
+          )}
+        </div>
+
+        {isInMeeting ? (
+          <>
+            {/* Assistant Error Alert */}
+            {assistantError && (
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
+                <div className="flex items-center space-x-2 text-yellow-800 dark:text-yellow-200">
+                  <div className="w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center">
+                    <span className="text-white text-xs font-bold">!</span>
+                  </div>
+                  <div>
+                    <p className="font-medium">AI Assistant Error</p>
+                    <p className="text-sm mt-1">{assistantError}</p>
+                    <p className="text-xs mt-1 opacity-75">
+                      Meeting recording continues, but AI features may be limited.
                     </p>
                   </div>
                 </div>
-                {/* Subtle hover effect */}
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
               </div>
-            ))}
-            <div ref={transcriptEndRef} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// PastMeetings Component
-const PastMeetings: React.FC = () => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const { user } = useAuth();
-  const { recentMeetings, isLoadingRecentMeetings, loadRecentMeetings } = useMeetingStore();
-
-  useEffect(() => {
-    // Always load recent meetings when component mounts if user is available
-    if (user?.uid && !isLoadingRecentMeetings) {
-      loadRecentMeetings(user.uid, 10).catch(error => {
-        console.error('Failed to load recent meetings:', error);
-      });
-    }
-  }, [user?.uid, loadRecentMeetings]); // Removed recentMeetings.length dependency to allow refresh
-
-  return (
-    <div className="glass-morphism dark:glass-morphism-dark rounded-xl border border-white/30 dark:border-gray-700/30 overflow-hidden shadow-soft">
-      <button
-        onClick={() => {
-          const next = !isExpanded;
-          setIsExpanded(next);
-          if (next && user?.uid && recentMeetings.length === 0 && !isLoadingRecentMeetings) {
-            // Lazy-load recent meetings on first expand if not already loaded
-            loadRecentMeetings(user.uid, 10);
-          }
-        }}
-        className="w-full p-6 flex items-center justify-between text-left hover:bg-white/30 dark:hover:bg-gray-800/30 transition-all duration-200 button-press"
-        aria-expanded={isExpanded}
-        aria-controls="past-meetings-content"
-      >
-        <div className="flex items-center space-x-4">
-          <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}>
-            <ChevronRight className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-          </div>
-          <h3 className="text-fluid-lg font-semibold text-gray-900 dark:text-white">
-            Past Meetings
-          </h3>
-          {recentMeetings.length > 0 && (
-            <span className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 text-blue-700 dark:text-blue-300 text-sm font-medium px-3 py-1 rounded-full border border-blue-200/50 dark:border-blue-700/50">
-              {recentMeetings.length}
-            </span>
-          )}
-        </div>
-      </button>
-
-      {isExpanded && (
-        <div id="past-meetings-content" className="border-t border-gray-200 dark:border-gray-700">
-          {isLoadingRecentMeetings ? (
-            <div className="p-4 flex items-center justify-center">
-              <LoadingSpinner size="sm" color="primary" />
-              <span className="ml-2 text-gray-500 dark:text-gray-400">Loading meetings...</span>
-            </div>
-          ) : recentMeetings.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-              <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
-              <p>No past meetings found</p>
-            </div>
-          ) : (
-            <div className="max-h-64 overflow-y-auto">
-              {recentMeetings.map((meeting) => (
-                <div
-                  key={meeting.meetingId}
-                  className="group relative p-5 border-b border-white/10 dark:border-gray-700/30 last:border-b-0 hover:bg-white/30 dark:hover:bg-gray-800/30 cursor-pointer transition-all duration-200 card-hover"
-                  onClick={() => {/* TODO: navigate to meeting details if needed */}}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-gray-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-200">
-                        {meeting.title}
-                      </h4>
-                      <div className="flex items-center space-x-6 text-sm text-gray-500 dark:text-gray-400">
-                        <div className="flex items-center space-x-2 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
-                          <Calendar className="w-4 h-4" />
-                          <span>{new Date(meeting.createdAt).toLocaleDateString()}</span>
-                        </div>
-                        {meeting.endTime && (
-                          <div className="flex items-center space-x-2 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
-                            <Clock className="w-4 h-4" />
-                            <span>{Math.round((new Date(meeting.endTime).getTime() - new Date(meeting.startTime).getTime()) / (1000 * 60))} min</span>
-                          </div>
-                        )}
-                        <div className="flex items-center space-x-2 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors duration-200">
-                          <Users className="w-4 h-4" />
-                          <span>{meeting.participants.length}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className={`px-3 py-1.5 rounded-full text-xs font-medium shadow-soft group-hover:scale-105 transition-transform duration-200 ${
-                      meeting.status === 'active' 
-                        ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 dark:from-green-900/30 dark:to-emerald-900/30 dark:text-green-400 border border-green-200/50 dark:border-green-700/50'
-                        : 'bg-gradient-to-r from-gray-100 to-slate-100 text-gray-800 dark:from-gray-700 dark:to-slate-700 dark:text-gray-300 border border-gray-200/50 dark:border-gray-600/50'
-                    }`}>
-                      {meeting.status}
-                    </div>
-                  </div>
-                  {/* Subtle gradient overlay on hover */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg pointer-events-none" />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Main Meeting Page Component
-export default function MeetingPage() {
-  const { user } = useAuth();
-  const { 
-    isInMeeting, 
-    isLoadingMeeting, 
-    startMeeting, 
-    endMeeting, 
-    clearMeetingError,
-    meetingError,
-    isRecording,
-    startRecording,
-    stopRecording
-  } = useMeeting();
-  
-  // Universal Assistant integration with client-side safety
-  const {
-    isRecording: assistantIsRecording,
-    isPlaying: assistantIsPlaying,
-    isProcessing: assistantIsProcessing,
-    error: assistantError,
-    startRecording: startAssistantRecording,
-    stopRecording: stopAssistantRecording,
-    handleVocalInterrupt,
-    isReady: assistantReady
-  } = useUniversalAssistantClient();
-  
-  const [isStartingMeeting, setIsStartingMeeting] = useState(false);
-  const [isEndingMeeting, setIsEndingMeeting] = useState(false);
-  const [isTriggeringAI, setIsTriggeringAI] = useState(false);
-  
-  // Progress modal for meeting setup
-  const meetingSetupModal = useProgressModal();
-  const meetingEndModal = useProgressModal();
-
-  // Clear errors on component mount
-  useEffect(() => {
-    clearMeetingError();
-  }, [clearMeetingError]);
-
-  const handleStartMeeting = async () => {
-    if (!user?.uid) return;
-    
-    setIsStartingMeeting(true);
-    
-    // Create meeting setup steps
-    const steps: ProgressStep[] = [
-      {
-        id: 'permissions',
-        label: 'Requesting permissions',
-        description: 'Getting microphone access for audio recording',
-        status: 'pending'
-      },
-      {
-        id: 'initialize',
-        label: 'Initializing meeting',
-        description: 'Setting up meeting room and participant data',
-        status: 'pending'
-      },
-      {
-        id: 'audio-setup',
-        label: 'Setting up audio',
-        description: 'Configuring audio recording and AI assistant',
-        status: 'pending'
-      },
-      {
-        id: 'start-recording',
-        label: 'Starting recording',
-        description: 'Beginning audio capture and transcription',
-        status: 'pending'
-      }
-    ];
-
-    meetingSetupModal.openModal({
-      title: 'Starting Meeting',
-      description: 'Setting up your meeting environment',
-      steps,
-      canCancel: true,
-      canClose: false,
-      icon: Settings,
-      onCancel: () => {
-        setIsStartingMeeting(false);
-        meetingSetupModal.closeModal();
-      }
-    });
-
-    try {
-      // Step 1: Request microphone permission
-      meetingSetupModal.updateProgress({
-        steps: steps.map((step, index) => 
-          index === 0 ? { ...step, status: 'running' } : step
-        ),
-        currentStep: 0,
-        progress: 10
-      });
-      
-      if (assistantReady) {
-        try {
-          await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch (err) {
-          console.error('Microphone permission denied:', err);
-          meetingSetupModal.updateProgress({
-            hasError: true,
-            errorMessage: 'Microphone access is required to record audio. Please allow microphone permissions and try again.',
-            canClose: true
-          });
-          setIsStartingMeeting(false);
-          return;
-        }
-      }
-      
-      // Step 2: Initialize meeting
-      meetingSetupModal.updateProgress({
-        steps: steps.map((step, index) => {
-          if (index === 0) return { ...step, status: 'completed' };
-          if (index === 1) return { ...step, status: 'running' };
-          return step;
-        }),
-        currentStep: 1,
-        progress: 35
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 800)); // Simulate setup time
-      
-      // Start the meeting in the store
-      await startMeeting({
-        id: '',
-        title: `Meeting - ${new Date().toLocaleString()}`,
-        type: MeetingType.TEAM_STANDUP,
-        meetingTypeId: 'default-meeting-type', // Added required field
-        participantIds: [user.uid], // Added required field
-        status: 'active' as const,
-        hostId: user.uid,
-        createdBy: user.uid,
-        participants: [{
-          id: user.uid + '-participant',
-          userId: user.uid,
-          userName: user.displayName || user.email?.split('@')[0] || 'Host',
-          displayName: user.displayName || user.email?.split('@')[0] || 'Host',
-          email: user.email || '',
-          voiceProfileId: 'default-voice-profile',
-          role: 'host' as const,
-          joinTime: new Date(),
-          joinedAt: new Date(),
-          speakingTime: 0,
-          isActive: true
-        }],
-        keywords: [],
-        notes: [],
-        appliedRules: [],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      // Step 3: Setup audio
-      meetingSetupModal.updateProgress({
-        steps: steps.map((step, index) => {
-          if (index <= 1) return { ...step, status: 'completed' };
-          if (index === 2) return { ...step, status: 'running' };
-          return step;
-        }),
-        currentStep: 2,
-        progress: 65
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 600));
-
-      // Step 4: Start recording
-      meetingSetupModal.updateProgress({
-        steps: steps.map((step, index) => {
-          if (index <= 2) return { ...step, status: 'completed' };
-          if (index === 3) return { ...step, status: 'running' };
-          return step;
-        }),
-        currentStep: 3,
-        progress: 85
-      });
-      
-      // Start audio recording with Universal Assistant
-      await startAssistantRecording();
-      startRecording();
-      
-      // Complete
-      meetingSetupModal.updateProgress({
-        steps: steps.map(step => ({ ...step, status: 'completed' })),
-        currentStep: 3,
-        progress: 100,
-        isComplete: true,
-        canClose: true,
-        successMessage: 'Meeting started successfully! You can now speak and interact with the AI assistant.'
-      });
-      // Auto-close the setup modal so it doesn't block other controls (e.g., Stop Meeting)
-      setTimeout(() => {
-        meetingSetupModal.closeModal();
-      }, 800);
-      
-    } catch (error) {
-      console.error('Failed to start meeting:', error);
-      meetingSetupModal.updateProgress({
-        hasError: true,
-        errorMessage: `Failed to start meeting: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        canClose: true,
-        onRetry: () => {
-          meetingSetupModal.closeModal();
-          setTimeout(() => handleStartMeeting(), 100);
-        }
-      });
-    } finally {
-      setIsStartingMeeting(false);
-    }
-  };
-
-  const handleEndMeeting = async () => {
-    setIsEndingMeeting(true);
-    
-    const steps: ProgressStep[] = [
-      {
-        id: 'stop-recording',
-        label: 'Stopping recording',
-        description: 'Ending audio capture and transcription',
-        status: 'pending'
-      },
-      {
-        id: 'save-data',
-        label: 'Saving meeting data',
-        description: 'Storing transcript and meeting information',
-        status: 'pending'
-      },
-      {
-        id: 'cleanup',
-        label: 'Cleaning up',
-        description: 'Finalizing meeting resources',
-        status: 'pending'
-      }
-    ];
-
-    meetingEndModal.openModal({
-      title: 'Ending Meeting',
-      description: 'Saving your meeting data and cleaning up resources',
-      steps,
-      canCancel: false,
-      canClose: false,
-      variant: 'warning'
-    });
-
-    try {
-      // Step 1: Stop recording
-      meetingEndModal.updateProgress({
-        steps: steps.map((step, index) => 
-          index === 0 ? { ...step, status: 'running' } : step
-        ),
-        currentStep: 0,
-        progress: 20
-      });
-      
-      stopAssistantRecording();
-      stopRecording();
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Step 2: Save data
-      meetingEndModal.updateProgress({
-        steps: steps.map((step, index) => {
-          if (index === 0) return { ...step, status: 'completed' };
-          if (index === 1) return { ...step, status: 'running' };
-          return step;
-        }),
-        currentStep: 1,
-        progress: 60
-      });
-      
-      // End the meeting in the store
-      await endMeeting();
-      // Refresh recent meetings after ending to reflect latest state in dropdown
-      try {
-        if (user?.uid) {
-          // Force a reload of recent meetings
-          await useMeetingStore.getState().loadRecentMeetings(user.uid, 10);
-        }
-      } catch {}
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // Step 3: Cleanup
-      meetingEndModal.updateProgress({
-        steps: steps.map((step, index) => {
-          if (index <= 1) return { ...step, status: 'completed' };
-          if (index === 2) return { ...step, status: 'running' };
-          return step;
-        }),
-        currentStep: 2,
-        progress: 90
-      });
-      
-      await new Promise(resolve => setTimeout(resolve, 400));
-      
-      // Complete
-      meetingEndModal.updateProgress({
-        steps: steps.map(step => ({ ...step, status: 'completed' })),
-        currentStep: 2,
-        progress: 100,
-        isComplete: true,
-        canClose: true,
-        successMessage: 'Meeting ended successfully. Your transcript and data have been saved.'
-      });
-      // Auto-close the ending modal to return control to the UI
-      setTimeout(() => {
-        meetingEndModal.closeModal();
-      }, 800);
-      
-    } catch (error) {
-      console.error('Failed to end meeting:', error);
-      meetingEndModal.updateProgress({
-        hasError: true,
-        errorMessage: `Failed to end meeting: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        canClose: true
-      });
-    } finally {
-      setIsEndingMeeting(false);
-    }
-  };
-
-  const handleTriggerAISpeech = async () => {
-    if (!isInMeeting) return;
-    
-    setIsTriggeringAI(true);
-    try {
-      // Trigger AI vocal interrupt to generate and speak response
-      handleVocalInterrupt();
-    } catch (error) {
-      console.error('Failed to trigger AI speech:', error);
-    } finally {
-      setIsTriggeringAI(false);
-    }
-  };
-
-  return (
-    <MainLayout>
-      <div className="max-w-4xl mx-auto space-y-8">
-        
-        {/* Header with Wave Background */}
-        <div className="relative text-center p-8 rounded-2xl overflow-hidden">
-          <div className="absolute inset-0 wave-bg opacity-10" />
-          <div className="relative">
-            <h1 className="text-fluid-3xl font-bold text-gray-900 dark:text-white mb-4">
-              Meeting Assistant
-            </h1>
-            <p className="text-fluid-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-              Distraction-free meeting experience with AI assistance and real-time transcription
-            </p>
-          </div>
-        </div>
-
-        {/* Error Display */}
-        {(meetingError || assistantError) && (
-          <div className="glass-morphism-dark border border-red-200/50 dark:border-red-800/50 rounded-xl p-5 bg-gradient-to-r from-red-50/80 to-pink-50/80 dark:from-red-900/30 dark:to-pink-900/30 shadow-soft">
-            <div className="flex items-start justify-between">
-              <div className="text-red-600 dark:text-red-400 flex-1">
-                {meetingError && (
-                  <>
-                    <p className="font-semibold text-fluid-base mb-1">Meeting Error: {meetingError.message}</p>
-                    <p className="text-sm opacity-80">Operation: {meetingError.operation}</p>
-                  </>
-                )}
-                {assistantError && (
-                  <p className="font-semibold text-fluid-base">Assistant Error: {assistantError}</p>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  clearMeetingError();
-                  // Note: assistantError clears automatically when operation succeeds
-                }}
-                className="ml-4 p-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-100/50 dark:hover:bg-red-800/20 rounded-lg transition-all duration-200 button-press"
-              >
-                <span className="sr-only">Close</span>
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Central Meeting Controls */}
-        <div className="flex flex-col items-center space-y-6">
-          
-          {/* Primary Meeting Button */}
-          <div className="flex flex-col items-center space-y-4">
-            {!isInMeeting ? (
-              <button
-                onClick={handleStartMeeting}
-                disabled={isStartingMeeting || isLoadingMeeting}
-                className="group relative w-56 h-56 sm:w-64 sm:h-64 bg-gradient-success hover:scale-105 disabled:scale-100 disabled:opacity-50 text-white rounded-full flex items-center justify-center transition-all duration-300 shadow-glow hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-green-500/50 button-press overflow-hidden"
-                aria-label="Start Meeting"
-              >
-                {/* Pulsing ring animation */}
-                <div className="absolute inset-0 rounded-full bg-green-400/30 animate-ping" />
-                <div className="absolute inset-2 rounded-full bg-green-400/20 animate-ping animation-delay-75" />
-                
-                <div className="relative text-center z-10">
-                  {isStartingMeeting || isLoadingMeeting ? (
-                    <LoadingSpinner size="xl" color="white" />
-                  ) : (
-                    <Play className="w-14 h-14 mb-3 mx-auto group-hover:scale-110 transition-transform duration-200" />
-                  )}
-                  <span className="text-fluid-xl font-bold tracking-wide">
-                    {isStartingMeeting ? 'Starting...' : 'Start Meeting'}
-                  </span>
-                </div>
-                
-                {/* Shine effect on hover */}
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300" />
-              </button>
-            ) : (
-              <button
-                onClick={handleEndMeeting}
-                disabled={isEndingMeeting}
-                className="group relative w-56 h-56 sm:w-64 sm:h-64 bg-gradient-error hover:scale-105 disabled:scale-100 disabled:opacity-50 text-white rounded-full flex items-center justify-center transition-all duration-300 shadow-glow hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-red-500/50 button-press overflow-hidden"
-                aria-label="Stop Meeting"
-              >
-                {/* Pulsing ring animation for active recording */}
-                <div className="absolute inset-0 rounded-full bg-red-400/30 pulse-soft" />
-                
-                <div className="relative text-center z-10">
-                  {isEndingMeeting ? (
-                    <LoadingSpinner size="xl" color="white" />
-                  ) : (
-                    <Square className="w-14 h-14 mb-3 mx-auto group-hover:scale-110 transition-transform duration-200" />
-                  )}
-                  <span className="text-fluid-xl font-bold tracking-wide">
-                    {isEndingMeeting ? 'Stopping...' : 'Stop Meeting'}
-                  </span>
-                </div>
-                
-                {/* Shine effect on hover */}
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-opacity duration-300" />
-              </button>
             )}
-          </div>
 
-          {/* Trigger AI Speech Button - Only visible during meeting */}
-          {isInMeeting && (
-            <div className="flex flex-col items-center space-y-3">
-              <button
-                onClick={handleTriggerAISpeech}
-                disabled={isTriggeringAI || assistantIsProcessing}
-                className="group px-10 py-5 bg-gradient-primary hover:scale-105 disabled:scale-100 disabled:opacity-50 text-white rounded-xl font-semibold transition-all duration-200 flex items-center space-x-3 shadow-glow hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/50 button-press"
-                aria-label="Trigger AI Speech"
-              >
-                {isTriggeringAI || assistantIsProcessing ? (
-                  <LoadingSpinner size="sm" color="white" />
-                ) : assistantIsPlaying ? (
-                  <Volume2 className="w-6 h-6 group-hover:scale-110 transition-transform duration-200" />
-                ) : (
-                  <Mic className="w-6 h-6 group-hover:scale-110 transition-transform duration-200" />
-                )}
-                <span className="text-fluid-lg">
-                  {isTriggeringAI ? 'Processing...' : 
-                   assistantIsProcessing ? 'Thinking...' :
-                   assistantIsPlaying ? 'Speaking...' : 
-                   'Trigger AI Speech'}
-                </span>
-              </button>
-              
-              {/* Audio Status Indicators */}
-              <div className="glass-morphism dark:glass-morphism-dark rounded-xl p-4 shadow-soft border border-white/30 dark:border-gray-700/30">
-                <div className="flex items-center justify-center space-x-8 text-sm text-gray-600 dark:text-gray-400">
-                  <div className="flex flex-col items-center space-y-2">
-                    <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                      assistantIsRecording ? 'bg-red-500 pulse-soft shadow-glow' : 'bg-gray-300 dark:bg-gray-600'
-                    }`} />
-                    <span className={`font-medium transition-colors duration-200 ${
-                      assistantIsRecording ? 'text-red-600 dark:text-red-400' : ''
-                    }`}>Recording</span>
-                  </div>
-                  <div className="flex flex-col items-center space-y-2">
-                    <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                      assistantIsProcessing ? 'bg-yellow-500 pulse-soft shadow-glow' : 'bg-gray-300 dark:bg-gray-600'
-                    }`} />
-                    <span className={`font-medium transition-colors duration-200 ${
-                      assistantIsProcessing ? 'text-yellow-600 dark:text-yellow-400' : ''
-                    }`}>Processing</span>
-                  </div>
-                  <div className="flex flex-col items-center space-y-2">
-                    <div className={`w-3 h-3 rounded-full transition-all duration-200 ${
-                      assistantIsPlaying ? 'bg-green-500 pulse-soft shadow-glow' : 'bg-gray-300 dark:bg-gray-600'
-                    }`} />
-                    <span className={`font-medium transition-colors duration-200 ${
-                      assistantIsPlaying ? 'text-green-600 dark:text-green-400' : ''
-                    }`}>Speaking</span>
-                  </div>
-                </div>
+            {/* Meeting Controls */}
+            <MeetingControls 
+              onEndMeeting={handleEndMeeting}
+              isEnding={isEndingMeeting}
+            />
+
+            {/* Main Content Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Transcript - Takes up 2/3 on large screens */}
+              <div className="lg:col-span-2">
+                <TranscriptDisplay />
+              </div>
+
+              {/* Participants - Takes up 1/3 on large screens */}
+              <div className="lg:col-span-1">
+                <ParticipantsDisplay />
               </div>
             </div>
-          )}
-        </div>
-
-        {/* Live Transcript Area */}
-        <div className="space-y-6">
-          <LiveTranscript />
-        </div>
-
-        {/* Past Meetings Section */}
-        <div className="space-y-6">
-          <PastMeetings />
-        </div>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-32 text-center">
+            <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6">
+              <Phone className="w-12 h-12 text-gray-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              Ready to start your meeting?
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md">
+              Click "Start Meeting" to begin recording, transcribing, and getting AI assistance for your conversation.
+            </p>
+            <Button
+              onClick={() => setShowSetupModal(true)}
+              size="lg"
+              className="flex items-center space-x-2"
+              disabled={isStartingMeeting}
+            >
+              <Phone className="w-5 h-5" />
+              <span>Start Meeting</span>
+            </Button>
+          </div>
+        )}
       </div>
-      
-      {/* Progress Modals */}
-      <meetingSetupModal.ProgressModal />
-      <meetingEndModal.ProgressModal />
-    </MainLayout>
+
+      {/* Meeting Setup Modal */}
+      <MeetingSetupModal
+        isOpen={showSetupModal}
+        onClose={() => setShowSetupModal(false)}
+        onStartMeeting={handleStartMeeting}
+        isStarting={isStartingMeeting}
+      />
+    </div>
+  );
+}
+
+// Export with error boundary protection
+export default function MeetingPage() {
+  return (
+    <PageErrorBoundary 
+      pageName="Meeting" 
+      enableRetry={true}
+      maxRetries={2}
+    >
+      <MeetingPageContent />
+    </PageErrorBoundary>
   );
 }

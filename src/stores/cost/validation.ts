@@ -73,14 +73,13 @@ const isValidAIModel = (model: string): boolean => {
   const validModels: AIModel[] = [
     'gpt-4o',
     'gpt-4o-mini',
+    'gpt-4-turbo',
     'claude-3-5-sonnet',
     'claude-3-5-opus',
     'claude-3-7-sonnet',
     'claude-3-7-opus',
-    'gpt-5-mini',
-    'gpt-5-nano',
-    'gpt-5',
-    'gpt-4.1-nano'
+    'claude-3-haiku',
+    'claude-3-opus'
   ];
   return validModels.includes(model as AIModel);
 };

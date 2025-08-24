@@ -15,6 +15,7 @@ interface DashboardCardProps {
   };
   className?: string;
   isActive?: boolean;
+  isLoading?: boolean;
 }
 
 export const DashboardCard = React.memo<DashboardCardProps>(({
@@ -24,6 +25,7 @@ export const DashboardCard = React.memo<DashboardCardProps>(({
   trend,
   className = '',
   isActive = false,
+  isLoading = false,
 }) => {
   const [isVisible, setIsVisible] = React.useState(false);
   

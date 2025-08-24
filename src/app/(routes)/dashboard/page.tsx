@@ -1,6 +1,7 @@
 'use client';
 
 import React, { Suspense } from 'react';
+import { PageErrorBoundary } from '@/components/error-boundaries/PageErrorBoundary';
 import { MainLayout } from '@/components/layouts/MainLayout';
 import { Button } from '@/components/ui/Button';
 import { 
@@ -123,7 +124,7 @@ const DashboardPage = React.memo(() => {
   }
 
   return (
-    <DashboardErrorBoundary>
+    <PageErrorBoundary pageName="Dashboard" enableRetry={true} maxRetries={2}>
       <MainLayout>
         <div className="space-y-4 sm:space-y-6 lg:space-y-8">
           {/* Header with improved typography and spacing */}
@@ -267,7 +268,7 @@ const DashboardPage = React.memo(() => {
 
         </div>
       </MainLayout>
-    </DashboardErrorBoundary>
+    </PageErrorBoundary>
   );
 });
 

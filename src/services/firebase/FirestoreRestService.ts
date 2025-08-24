@@ -39,6 +39,11 @@ import {
   serverTimestamp,
   increment
 } from 'firebase/firestore/lite';
+import { 
+  getAuth,
+  onAuthStateChanged,
+  User as FirebaseUser 
+} from 'firebase/auth';
 
 import type { 
   User, 
@@ -48,6 +53,8 @@ import type {
   CustomRule, 
   MeetingType
 } from '@/types';
+import { handleFirebaseError, reportFirebaseError, withFirebaseErrorHandling } from '@/utils/firebaseErrorHandler';
+import { processCatchError } from '@/utils/errorMessages';
 
 // Firebase config (same as client config)
 const firebaseConfig = {
@@ -71,6 +78,14 @@ if (!getApps().find(a => a.name === 'firestore-lite')) {
 }
 
 db = getFirestoreLite(app);
+
+// Auth instance for validation
+let auth: any;
+try {
+  auth = getAuth(app);
+} catch (error) {
+  console.warn('Auth not available for FirestoreRestService:', error);
+}
 
 // Utility function for timestamp conversion
 const convertTimestamps = (data: any): any => {
@@ -221,6 +236,50 @@ class PollingManager {
 // Global polling manager instance
 const pollingManager = new PollingManager();
 
+// Enhanced authentication validation with better timing and error handling
+const ensureAuthenticatedUser = (): Promise<{ authenticated: boolean; user: FirebaseUser | null }> => {
+  return new Promise((resolve) => {
+    if (!auth) {
+      console.warn('Auth not available - proceeding without auth check');
+      resolve({ authenticated: false, user: null });
+      return;
+    }
+
+    // If user is already available, return immediately
+    if (auth.currentUser) {
+      resolve({ authenticated: true, user: auth.currentUser });
+      return;
+    }
+
+    // Wait longer for auth state to settle (increased from 3s to 6s)
+    const timeout = setTimeout(() => {
+      console.warn('Auth state timeout - checking final state');
+      resolve({ 
+        authenticated: Boolean(auth.currentUser), 
+        user: auth.currentUser 
+      });
+    }, 6000);
+
+    // Listen for auth state changes with better error handling
+    const unsubscribe = onAuthStateChanged(auth, (user: FirebaseUser | null) => {
+      clearTimeout(timeout);
+      unsubscribe();
+      
+      console.log('Auth state resolved:', user ? 'authenticated' : 'not authenticated');
+      resolve({ 
+        authenticated: Boolean(user), 
+        user 
+      });
+    }, (error) => {
+      // Handle auth state change errors
+      console.error('Auth state change error:', error);
+      clearTimeout(timeout);
+      unsubscribe();
+      resolve({ authenticated: false, user: null });
+    });
+  });
+};
+
 // Error handling for REST operations
 export class FirestoreRestError extends Error {
   constructor(
@@ -263,6 +322,10 @@ export class FirestoreRestService {
         }
         return null;
       } catch (error) {
+        // Use our new Firebase error handling for monitoring
+        const processedError = processCatchError(error);
+        reportFirebaseError(processedError, 'Fetch user', userId);
+        
         throw new FirestoreRestError(
           `Failed to fetch user ${userId}`,
           'USER_FETCH_FAILED',
@@ -291,6 +354,14 @@ export class FirestoreRestService {
 
     const fetchMeeting = async (): Promise<Meeting | null> => {
       try {
+        // Ensure auth state is ready before attempting Firestore operations
+        const authState = await ensureAuthenticatedUser();
+        
+        if (!authState.authenticated) {
+          console.warn(`No authenticated user for meeting ${meetingId} - returning null`);
+          return null;
+        }
+
         const meetingRef = doc(db, 'meetings', meetingId);
         const docSnap = await getDoc(meetingRef);
         
@@ -302,6 +373,12 @@ export class FirestoreRestService {
         }
         return null;
       } catch (error) {
+        // For permission denied errors, return null instead of throwing
+        if ((error as any)?.code === 'permission-denied') {
+          console.warn(`Permission denied for meeting ${meetingId} - returning null`);
+          return null;
+        }
+        
         throw new FirestoreRestError(
           `Failed to fetch meeting ${meetingId}`,
           'MEETING_FETCH_FAILED',
@@ -334,6 +411,21 @@ export class FirestoreRestService {
 
     const fetchMeetings = async (): Promise<RestUpdate<Meeting>> => {
       try {
+        // Ensure auth state is ready before attempting Firestore operations
+        const authState = await ensureAuthenticatedUser();
+        
+        if (!authState.authenticated) {
+          console.warn(`No authenticated user for user meetings ${userId} - returning empty result`);
+          return {
+            changes: [],
+            data: [],
+            metadata: {
+              hasPendingWrites: false,
+              isFromCache: false
+            }
+          };
+        }
+
         const {
           limit: queryLimit = 20,
           orderBy: orderField = 'startTime',
@@ -342,7 +434,7 @@ export class FirestoreRestService {
 
         const meetingsQuery = query(
           collection(db, 'meetings'),
-          where('participantsUserIds', 'array-contains', userId),
+          where('participantIds', 'array-contains', userId),
           limit(queryLimit)
         );
 
@@ -375,6 +467,19 @@ export class FirestoreRestService {
           }
         };
       } catch (error) {
+        // For permission denied errors, return empty result instead of throwing
+        if ((error as any)?.code === 'permission-denied') {
+          console.warn(`Permission denied for user meetings ${userId} - returning empty result`);
+          return {
+            changes: [],
+            data: [],
+            metadata: {
+              hasPendingWrites: false,
+              isFromCache: false
+            }
+          };
+        }
+        
         throw new FirestoreRestError(
           `Failed to fetch user meetings for ${userId}`,
           'USER_MEETINGS_FETCH_FAILED',
@@ -407,6 +512,21 @@ export class FirestoreRestService {
 
     const fetchTranscripts = async (): Promise<RestUpdate<TranscriptEntry>> => {
       try {
+        // Ensure auth state is ready before attempting Firestore operations
+        const authState = await ensureAuthenticatedUser();
+        
+        if (!authState.authenticated) {
+          console.warn(`No authenticated user for transcripts in meeting ${meetingId} - returning empty result`);
+          return {
+            changes: [],
+            data: [],
+            metadata: {
+              hasPendingWrites: false,
+              isFromCache: false
+            }
+          };
+        }
+
         const {
           limit: queryLimit = 100,
           orderBy: orderField = 'timestamp',
@@ -441,6 +561,19 @@ export class FirestoreRestService {
           }
         };
       } catch (error) {
+        // For permission denied errors, return empty result instead of throwing
+        if ((error as any)?.code === 'permission-denied') {
+          console.warn(`Permission denied for transcripts in meeting ${meetingId} - returning empty result`);
+          return {
+            changes: [],
+            data: [],
+            metadata: {
+              hasPendingWrites: false,
+              isFromCache: false
+            }
+          };
+        }
+        
         throw new FirestoreRestError(
           `Failed to fetch transcripts for meeting ${meetingId}`,
           'TRANSCRIPTS_FETCH_FAILED',
@@ -695,7 +828,7 @@ export class FirestoreRestService {
 
       let meetingsQuery = query(
         collection(db, 'meetings'),
-        where('participantsUserIds', 'array-contains', userId),
+        where('participantIds', 'array-contains', userId),
         limit(queryLimit)
       );
 

@@ -12,18 +12,17 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
-import { useMeetingStore } from '@/stores/meetingStore';
 import { useAppStore } from '@/stores/appStore';
+import { useCoordinatedMeetingOperations } from '@/services/universal-assistant/MeetingServiceIntegration';
 import { PrimaryButton, SecondaryButton, Button } from '@/components/ui/Button';
 import { MotionCard } from '@/components/ui/Motion';
 import { cn } from '@/lib/utils';
 
-// Universal Assistant Coordinator integration
+// Global Service Manager integration
 import { 
-  UniversalAssistantCoordinator, 
-  createUniversalAssistantCoordinator,
-  type UniversalAssistantConfig 
-} from '@/services/universal-assistant/UniversalAssistantCoordinator';
+  useGlobalServiceManager,
+  useUniversalAssistantCoordinator
+} from '@/services/universal-assistant/GlobalServiceManager';
 
 interface MeetingControlsProps {
   className?: string;
@@ -40,73 +39,43 @@ export const MeetingControls = React.memo<MeetingControlsProps>(({ className }) 
     stopRecording,
     pauseRecording,
     resumeRecording
-  } = useMeetingStore();
+  } = useCoordinatedMeetingOperations();
   
   const { addNotification } = useAppStore();
   
+  // Global Service Manager integration
+  const serviceManager = useGlobalServiceManager();
+  const { coordinator, isLoading: isCoordinatorLoading, error: coordinatorError } = useUniversalAssistantCoordinator({
+    model: 'gpt-4o',
+    maxTokens: 1000,
+    voiceId: '21m00Tcm4TlvDq8ikWAM',
+    ttsSpeed: 1.0,
+    enableConcurrentProcessing: true,
+    enableSpeakerIdentification: true,
+  });
+  
   // Universal Assistant state
-  const [coordinator, setCoordinator] = useState<UniversalAssistantCoordinator | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(coordinatorError);
 
-  // Initialize Universal Assistant Coordinator
+  // Subscribe to coordinator state changes
   useEffect(() => {
-    if (isInMeeting && currentMeeting && !coordinator) {
-      const config: UniversalAssistantConfig = {
-        model: 'gpt-4o',
-        maxTokens: 1000,
-        voiceId: '21m00Tcm4TlvDq8ikWAM', // Default ElevenLabs voice
-        ttsSpeed: 1.0,
-        enableConcurrentProcessing: true,
-        enableSpeakerIdentification: true,
-      };
+    if (!coordinator) return;
+    
+    const unsubscribe = coordinator.subscribe((state) => {
+      setIsProcessing(state.isProcessing);
+      setIsPlaying(state.isPlaying);
+    });
 
-      try {
-        const newCoordinator = createUniversalAssistantCoordinator(
-          config,
-          useMeetingStore,
-          useAppStore
-        );
-        
-        // Subscribe to coordinator state changes
-        const unsubscribe = newCoordinator.subscribe((state) => {
-          setIsProcessing(state.isProcessing);
-          setIsPlaying(state.isPlaying);
-        });
+    return unsubscribe;
+  }, [coordinator]);
 
-        setCoordinator(newCoordinator);
-        setError(null);
-
-        // Cleanup on unmount
-        return () => {
-          unsubscribe();
-          newCoordinator.cleanup();
-        };
-      } catch (err) {
-        console.error('Failed to initialize Universal Assistant:', err);
-        setError('Failed to initialize Universal Assistant');
-        addNotification({
-          type: 'error',
-          title: 'Universal Assistant Error',
-          message: 'Failed to initialize Universal Assistant coordinator',
-          persistent: false,
-        });
-      }
-    }
-  }, [isInMeeting, currentMeeting, coordinator, addNotification]);
-
-  // Cleanup coordinator when meeting ends
+  // Update error state when coordinator error changes
   useEffect(() => {
-    if (!isInMeeting && coordinator) {
-      coordinator.cleanup();
-      setCoordinator(null);
-      setIsProcessing(false);
-      setIsPlaying(false);
-      setError(null);
-    }
-  }, [isInMeeting, coordinator]);
+    setError(coordinatorError);
+  }, [coordinatorError]);
 
   // Handle recording control
   const handleToggleRecording = useCallback(async () => {
@@ -172,16 +141,12 @@ export const MeetingControls = React.memo<MeetingControlsProps>(({ className }) 
     }
   }, [coordinator, stopRecording, addNotification]);
 
-  // Handle ending meeting
+  // Handle ending meeting with proper service cleanup
   const handleEndMeeting = useCallback(async () => {
     if (!currentMeeting) return;
 
     try {
-      // Stop all Universal Assistant processes
-      if (coordinator) {
-        coordinator.cleanup();
-      }
-
+      // endMeeting now includes coordinated service cleanup
       const success = await endMeeting(currentMeeting.meetingId);
       
       if (success) {
@@ -203,7 +168,7 @@ export const MeetingControls = React.memo<MeetingControlsProps>(({ className }) 
         persistent: false,
       });
     }
-  }, [currentMeeting, coordinator, endMeeting, addNotification]);
+  }, [currentMeeting, endMeeting, addNotification]);
 
   // Handle trigger AI speech
   const handleTriggerAISpeech = useCallback(async () => {
@@ -297,7 +262,7 @@ export const MeetingControls = React.memo<MeetingControlsProps>(({ className }) 
           size="sm"
           fullWidth
           onClick={handleToggleRecording}
-          disabled={isProcessing}
+          disabled={isProcessing || isCoordinatorLoading}
           leftIcon={
             isProcessing ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -318,7 +283,7 @@ export const MeetingControls = React.memo<MeetingControlsProps>(({ className }) 
           size="sm"
           fullWidth
           onClick={handleStopRecording}
-          disabled={!isRecording || isProcessing}
+          disabled={!isRecording || isProcessing || isCoordinatorLoading}
           leftIcon={<Square className="w-4 h-4" />}
         >
           Stop
@@ -329,7 +294,7 @@ export const MeetingControls = React.memo<MeetingControlsProps>(({ className }) 
           size="sm"
           fullWidth
           onClick={handleTriggerAISpeech}
-          disabled={isProcessing || isPlaying}
+          disabled={isProcessing || isPlaying || isCoordinatorLoading}
           loading={isPlaying}
           leftIcon={isPlaying ? <Volume2 className="w-4 h-4" /> : <Play className="w-4 h-4" />}
         >
@@ -341,7 +306,7 @@ export const MeetingControls = React.memo<MeetingControlsProps>(({ className }) 
           size="sm"
           fullWidth
           onClick={handleVocalInterrupt}
-          disabled={!isPlaying}
+          disabled={!isPlaying || isCoordinatorLoading}
           leftIcon={<VolumeX className="w-4 h-4" />}
         >
           Interrupt

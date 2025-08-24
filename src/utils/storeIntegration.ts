@@ -120,6 +120,8 @@ export const useMeetingIntegration = () => {
     try {
       const meetingId = await meetingStore.startMeeting({
         id: '',
+        meetingTypeId: `${meetingType}-${Date.now()}`,
+        participantIds: [user.uid],
         title,
         description: description || '',
         hostId: user.uid,

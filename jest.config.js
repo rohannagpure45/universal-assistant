@@ -18,6 +18,16 @@ const customJestConfig = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   
+  // Transform ignore patterns for ESM modules
+  transformIgnorePatterns: [
+    'node_modules/(?!(nanoid|@anthropic-ai|@deepgram|uuid)/)',
+  ],
+  
+  // Handle Node.js modules and polyfills
+  testEnvironmentOptions: {
+    url: "http://localhost"
+  },
+  
   // Test file patterns
   testMatch: [
     '<rootDir>/tests/**/*.test.{js,jsx,ts,tsx}',

@@ -8,8 +8,16 @@ import {
   buildPromptWithContext,
   estimateTokens,
   calculateCost,
-  selectOptimalModel
+  selectOptimalModel,
+  validateModelRequest,
+  getModelWithFallback,
+  isValidModel
 } from '@/config/modelConfigs';
+import { getModelAPIService, ModelAPIService } from '@/services/ai/ModelAPIService';
+import { 
+  getAIProviderRateLimitingService, 
+  AIProviderRateLimitingService 
+} from '@/services/ai/rate-limiting/AIProviderRateLimitingService';
 
 export interface AIRequestOptions {
   temperature?: number;
@@ -34,8 +42,15 @@ export class EnhancedAIService {
   private anthropic: Anthropic | null = null;
   private requestCount: Map<AIModel, number> = new Map();
   private lastRequestTime: Map<AIModel, number> = new Map();
+  private modelAPIService: ModelAPIService;
+  private rateLimitingService: AIProviderRateLimitingService;
 
-  constructor() {
+  constructor(
+    modelAPIService?: ModelAPIService, 
+    rateLimitingService?: AIProviderRateLimitingService
+  ) {
+    this.modelAPIService = modelAPIService || getModelAPIService();
+    this.rateLimitingService = rateLimitingService || getAIProviderRateLimitingService();
     this.initializeProviders();
   }
 
@@ -60,14 +75,23 @@ export class EnhancedAIService {
     options: AIRequestOptions = {}
   ): Promise<EnhancedAIResponse> {
     const startTime = Date.now();
-    const config = getModelConfig(model);
     
-    // Check rate limits
-    await this.checkRateLimit(model, config);
+    // Validate and get working model with fallback
+    const workingModel = getModelWithFallback(model, {
+      needsVision: options.priority === 'quality',
+      needsFunctionCalling: true,
+      maxCost: options.costLimit
+    });
+    
+    const config = getModelConfig(workingModel);
+    
+    // Check rate limits with token estimation
+    const fullPrompt = context ? buildPromptWithContext(prompt, context, config) : prompt;
+    await this.checkRateLimit(workingModel, config, fullPrompt);
     
     // Build context-aware prompt
     const enhancedPrompt = context 
-      ? buildPromptWithContext(prompt, context, model)
+      ? buildPromptWithContext(prompt, context, workingModel)
       : prompt;
 
     // Estimate input tokens
@@ -75,29 +99,41 @@ export class EnhancedAIService {
     
     // Check cost limit
     if (options.costLimit) {
-      const estimatedCost = calculateCost(model, inputTokens, config.maxTokens);
+      const estimatedCost = calculateCost(workingModel, inputTokens, config.maxTokens);
       if (estimatedCost > options.costLimit) {
         // Try to find a cheaper model
         const cheaperModel = selectOptimalModel({ maxCost: options.costLimit });
-        if (cheaperModel !== model) {
-          console.log(`Switching from ${model} to ${cheaperModel} due to cost limit`);
+        if (cheaperModel !== workingModel) {
+          console.log(`Switching from ${workingModel} to ${cheaperModel} due to cost limit`);
           return this.generateResponse(prompt, cheaperModel, context, options);
         }
       }
     }
 
-    let response: EnhancedAIResponse;
+    let response: EnhancedAIResponse | undefined;
     let fallbackUsed = false;
 
     try {
-      response = await this.callProvider(enhancedPrompt, model, config, options);
+      response = await this.callProvider(enhancedPrompt, workingModel, config, options);
+      
+      // Log if we used a fallback model
+      if (workingModel !== model) {
+        fallbackUsed = true;
+        console.log(`Successfully used fallback model '${workingModel}' instead of '${model}'`);
+      }
     } catch (error) {
-      console.error(`Error with model ${model}:`, error);
+      console.error(`Error with model ${workingModel}:`, error);
       
       // Try fallback models if enabled
       if (options.fallbackEnabled !== false && config.fallbackModels) {
         for (const fallbackModel of config.fallbackModels) {
           try {
+            const fallbackValidation = validateModelRequest(fallbackModel);
+            if (!fallbackValidation.valid) {
+              console.warn(`Skipping invalid fallback model '${fallbackModel}': ${fallbackValidation.message}`);
+              continue;
+            }
+            
             console.log(`Trying fallback model: ${fallbackModel}`);
             response = await this.callProvider(enhancedPrompt, fallbackModel, getModelConfig(fallbackModel), options);
             fallbackUsed = true;
@@ -109,18 +145,18 @@ export class EnhancedAIService {
         }
       }
       
-      if (!response!) {
-        throw new Error(`All models failed. Last error: ${error}`);
+      if (!response) {
+        throw new Error(`All models failed. Last error: ${error}. Original model: ${model}, Working model: ${workingModel}`);
       }
     }
 
     // Calculate final metrics
     const processingTime = Date.now() - startTime;
     const outputTokens = estimateTokens(response.text);
-    const cost = calculateCost(model, inputTokens, outputTokens);
+    const cost = calculateCost(workingModel, inputTokens, outputTokens);
 
     // Update request tracking
-    this.updateRequestTracking(model);
+    this.updateRequestTracking(workingModel);
 
     return {
       ...response,
@@ -160,13 +196,14 @@ export class EnhancedAIService {
       throw new Error('OpenAI not initialized');
     }
 
+    const startTime = Date.now();
     const messages = [
       { role: 'system' as const, content: config.systemPrompt || 'You are a helpful assistant.' },
       { role: 'user' as const, content: prompt },
     ];
 
     const completion = await this.openai.chat.completions.create({
-      model: model.replace('gpt-5', 'gpt-4'), // Map future models to current ones
+      model: this.mapToActualModel(model),
       messages,
       temperature: options.temperature ?? config.temperature,
       max_tokens: options.maxTokens ?? config.maxTokens,
@@ -180,7 +217,7 @@ export class EnhancedAIService {
       text,
       model,
       tokensUsed,
-      latency: Date.now() - Date.now(),
+      latency: Date.now() - startTime,
       timestamp: new Date(),
       cost: 0, // Will be calculated in parent method
       inputTokens: 'usage' in completion ? completion.usage?.prompt_tokens || 0 : 0,
@@ -200,8 +237,9 @@ export class EnhancedAIService {
       throw new Error('Anthropic not initialized');
     }
 
+    const startTime = Date.now();
     const message = await this.anthropic.messages.create({
-      model: model.replace('claude-3-7', 'claude-3-5'), // Map future models to current ones
+      model: this.mapToActualModel(model),
       max_tokens: options.maxTokens ?? config.maxTokens,
       temperature: options.temperature ?? config.temperature,
       system: config.systemPrompt,
@@ -216,7 +254,7 @@ export class EnhancedAIService {
       text,
       model,
       tokensUsed,
-      latency: 0,
+      latency: Date.now() - startTime,
       timestamp: new Date(),
       cost: 0,
       inputTokens: message.usage.input_tokens,
@@ -227,22 +265,33 @@ export class EnhancedAIService {
   }
 
 
-  private async checkRateLimit(model: AIModel, config: ModelConfig): Promise<void> {
-    const now = Date.now();
-    const lastRequest = this.lastRequestTime.get(model) || 0;
-    const timeSinceLastRequest = now - lastRequest;
-    const minInterval = (60 * 1000) / config.rateLimit.requestsPerMinute;
-
-    if (timeSinceLastRequest < minInterval) {
-      const waitTime = minInterval - timeSinceLastRequest;
-      console.log(`Rate limit: waiting ${waitTime}ms for ${model}`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+  private async checkRateLimit(model: AIModel, config: ModelConfig, prompt?: string): Promise<void> {
+    // Determine the provider for this model
+    const provider = model.startsWith('gpt-') ? 'openai' : 'anthropic';
+    
+    // Estimate tokens for rate limiting
+    const estimatedTokens = prompt ? estimateTokens(prompt) : 1000;
+    
+    try {
+      await this.rateLimitingService.checkProviderLimit(provider, model, estimatedTokens);
+    } catch (error) {
+      console.error(`[EnhancedAIService] Rate limit check failed for ${provider}/${model}:`, error);
+      throw error;
     }
   }
 
   private updateRequestTracking(model: AIModel): void {
     this.requestCount.set(model, (this.requestCount.get(model) || 0) + 1);
     this.lastRequestTime.set(model, Date.now());
+  }
+
+  private mapToActualModel(model: AIModel): string {
+    try {
+      return this.modelAPIService.getAPIModelName(model);
+    } catch (error) {
+      console.error(`[EnhancedAIService] Failed to get API model name for ${model}:`, error);
+      throw error;
+    }
   }
 
   // Utility methods
@@ -327,6 +376,27 @@ export class EnhancedAIService {
     }
 
     return health;
+  }
+
+  // Cleanup and management methods
+  public destroy(): void {
+    // Clean up rate limiting service
+    this.rateLimitingService.destroy();
+    
+    // Clear tracking maps
+    this.requestCount.clear();
+    this.lastRequestTime.clear();
+  }
+
+  public getProviderStatus(): Record<string, any> {
+    return {
+      openai: this.rateLimitingService.getProviderStatus('openai'),
+      anthropic: this.rateLimitingService.getProviderStatus('anthropic')
+    };
+  }
+
+  public async resetProviderLimits(provider: 'openai' | 'anthropic'): Promise<void> {
+    await this.rateLimitingService.resetProvider(provider);
   }
 }
 

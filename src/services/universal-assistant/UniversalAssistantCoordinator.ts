@@ -2,7 +2,9 @@ import { conversationProcessor } from './ConversationProcessor';
 import { audioManager } from './AudioManager';
 import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor';
 import { TTSApiClient } from './TTSApiClient';
-import type { TranscriptEntry } from '@/types';
+import { DeepgramSTT } from './DeepgramSTT';
+import { VoiceIdentificationCoordinator } from '../voice-identification/VoiceIdentificationCoordinator';
+import type { TranscriptEntry, Meeting } from '@/types';
 import { useMeetingStore, useAppStore } from '@/stores';
 
 // Define store types based on the actual Zustand store instances
@@ -48,6 +50,8 @@ export class UniversalAssistantCoordinator {
   private appStore: AppStoreInstance | null = null;
   private ttsClient: TTSApiClient;
   private authToken: string | null = null;
+  private voiceIdentificationCoordinator: VoiceIdentificationCoordinator | null = null;
+  private currentMeeting: Meeting | null = null;
   private state: CoordinatorState = {
     isRecording: false,
     isPlaying: false,
@@ -231,12 +235,120 @@ export class UniversalAssistantCoordinator {
     }
   }
 
+  // Helper method to get Deepgram API key
+  private async getDeepgramApiKey(): Promise<string> {
+    try {
+      const response = await fetch('/api/universal-assistant/deepgram-key');
+      const { key } = await response.json();
+      return key;
+    } catch (error) {
+      console.error('Failed to get Deepgram API key:', error);
+      throw new Error('Unable to retrieve Deepgram API key');
+    }
+  }
+
+  // Setup voice identification callbacks
+  private setupVoiceIdentificationCallbacks(): void {
+    if (!this.voiceIdentificationCoordinator) return;
+
+    // Track speaker changes for voice capture
+    let lastSpeaker: string | null = null;
+    let speakerStartTime: number = Date.now();
+    const audioChunkBuffer: Map<string, Blob[]> = new Map();
+
+    // Register audio chunk callback for voice capture
+    audioManager.addRecordingCallback(async (audioChunk: Blob) => {
+      try {
+        const currentSpeaker = this.state.currentSpeaker;
+        
+        if (currentSpeaker) {
+          // Handle speaker change
+          if (lastSpeaker !== currentSpeaker) {
+            if (lastSpeaker) {
+              console.log(`Speaker change detected: ${lastSpeaker} -> ${currentSpeaker}`);
+              
+              // Notify voice coordinator of speaker change
+              if (this.voiceIdentificationCoordinator) {
+                const voiceCapture = (this.voiceIdentificationCoordinator as any).voiceCapture;
+                if (voiceCapture && voiceCapture.handleSpeakerChange) {
+                  await voiceCapture.handleSpeakerChange({
+                    previousSpeaker: this.extractDeepgramVoiceId([{ speaker: this.extractSpeakerNumber(lastSpeaker) }]),
+                    newSpeaker: this.extractDeepgramVoiceId([{ speaker: this.extractSpeakerNumber(currentSpeaker) }]) || 'dg_voice_0',
+                    timestamp: Date.now(),
+                    transcript: ''
+                  });
+                }
+              }
+            }
+            
+            lastSpeaker = currentSpeaker;
+            speakerStartTime = Date.now();
+            audioChunkBuffer.set(currentSpeaker, []);
+          }
+          
+          // Store audio chunk for current speaker
+          if (!audioChunkBuffer.has(currentSpeaker)) {
+            audioChunkBuffer.set(currentSpeaker, []);
+          }
+          audioChunkBuffer.get(currentSpeaker)!.push(audioChunk);
+          
+          // Process audio chunk through voice capture if available
+          if (this.voiceIdentificationCoordinator) {
+            const voiceCapture = (this.voiceIdentificationCoordinator as any).voiceCapture;
+            if (voiceCapture && voiceCapture.handleTranscriptUpdate) {
+              const deepgramVoiceId = this.extractDeepgramVoiceId([{ speaker: this.extractSpeakerNumber(currentSpeaker) }]);
+              if (deepgramVoiceId) {
+                const audioBuffer = await audioChunk.arrayBuffer();
+                voiceCapture.handleTranscriptUpdate({
+                  speaker: deepgramVoiceId,
+                  audioChunk: audioBuffer,
+                  transcript: '',
+                  confidence: 0.8
+                });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error in voice identification audio callback:', error);
+      }
+    });
+
+    console.log('Voice identification callbacks configured');
+  }
+
+  // Helper to extract speaker number from speaker string
+  private extractSpeakerNumber(speakerString: string): number {
+    const match = speakerString.match(/Speaker (\d+)/);
+    return match ? parseInt(match[1], 10) - 1 : 0; // Convert to 0-based index
+  }
+
   // Recording Management
-  public async startRecording(): Promise<void> {
+  public async startRecording(meeting?: Meeting): Promise<void> {
     try {
       // Initialize Deepgram if not already connected
       if (!this.deepgramConnection || this.deepgramConnection.readyState !== WebSocket.OPEN) {
         await this.initializeDeepgram();
+      }
+
+      // Initialize voice identification if meeting provided and enabled
+      if (meeting && this.config.enableSpeakerIdentification) {
+        this.currentMeeting = meeting;
+        
+        // Create a DeepgramSTT instance for voice identification
+        const deepgramApiKey = await this.getDeepgramApiKey();
+        const deepgramSTT = new DeepgramSTT(deepgramApiKey);
+        
+        // Initialize voice identification coordinator
+        this.voiceIdentificationCoordinator = new VoiceIdentificationCoordinator(
+          meeting,
+          deepgramSTT
+        );
+        
+        // Connect voice identification to transcript processing
+        this.setupVoiceIdentificationCallbacks();
+        
+        console.log('Voice identification initialized for meeting:', meeting.meetingId);
       }
 
       // Start audio recording through AudioManager
@@ -253,7 +365,7 @@ export class UniversalAssistantCoordinator {
     }
   }
 
-  public stopRecording(): void {
+  public async stopRecording(): Promise<void> {
     try {
       // Stop audio recording through AudioManager
       audioManager.stopRecording();
@@ -264,7 +376,25 @@ export class UniversalAssistantCoordinator {
         this.deepgramConnection = null;
       }
 
+      // End voice identification if active
+      if (this.voiceIdentificationCoordinator) {
+        try {
+          const stats = await this.voiceIdentificationCoordinator.endMeeting();
+          console.log('Voice identification stats:', stats);
+          
+          // Clear recording callbacks to prevent memory leaks
+          audioManager.clearRecordingCallbacks();
+          
+          console.log(`Meeting ended with ${stats.totalSpeakers} speakers: ${stats.identifiedCount} identified, ${stats.unidentifiedCount} unidentified`);
+        } catch (voiceIdError) {
+          console.error('Error ending voice identification:', voiceIdError);
+        } finally {
+          this.voiceIdentificationCoordinator = null;
+        }
+      }
+
       this.setState({ isRecording: false });
+      this.currentMeeting = null;
       
       console.log('Recording stopped');
       performanceMonitor.recordMetric('recording_stop', 'success');
@@ -311,6 +441,29 @@ export class UniversalAssistantCoordinator {
         currentSpeaker: speakerId 
       });
 
+      // Process voice identification if enabled
+      if (this.config.enableSpeakerIdentification && this.voiceIdentificationCoordinator) {
+        try {
+          // Extract deepgram voice ID from words array (speaker number from diarization)
+          const deepgramVoiceId = this.extractDeepgramVoiceId(words);
+          
+          if (deepgramVoiceId !== null) {
+            // Process transcript through voice identification
+            await this.voiceIdentificationCoordinator.processTranscript({
+              speaker: deepgramVoiceId,
+              text: transcript,
+              confidence: result.confidence || 0.8,
+              timestamp: Date.now()
+            });
+            
+            console.log(`Processed transcript for voice identification: speaker=${deepgramVoiceId}, text="${transcript.substring(0, 50)}..."`);
+          }
+        } catch (voiceIdError) {
+          console.error('Error processing voice identification:', voiceIdError);
+          // Continue with normal processing even if voice identification fails
+        }
+      }
+
       // Process through concurrent conversation processor
       if (this.config.enableConcurrentProcessing) {
         await audioManager.processTranscriptionInput(transcript, speakerId);
@@ -333,9 +486,12 @@ export class UniversalAssistantCoordinator {
         }
       }
 
-      // Process diarization for speaker identification
+      // Process diarization for speaker identification (only if voice ID is enabled)
       if (words && this.config.enableSpeakerIdentification) {
         this.processDiarization(words);
+      } else if (!this.config.enableSpeakerIdentification) {
+        // Still process basic diarization for speaker labels without voice ID
+        this.processDiarization(words || []);
       }
 
       // Check for vocal interrupts
@@ -372,6 +528,31 @@ export class UniversalAssistantCoordinator {
 
     // Return human-readable speaker name instead of speaker_0
     return `Speaker ${dominantSpeaker + 1}`;
+  }
+
+  // Extract Deepgram voice ID for voice identification
+  private extractDeepgramVoiceId(words?: any[]): string | null {
+    if (!words || words.length === 0) {
+      return null;
+    }
+
+    // Get most common speaker in this chunk (same logic as extractSpeakerId)
+    const speakerCounts = new Map<number, number>();
+    words.forEach(word => {
+      if (word.speaker !== undefined && word.speaker !== null) {
+        speakerCounts.set(word.speaker, (speakerCounts.get(word.speaker) || 0) + 1);
+      }
+    });
+
+    if (speakerCounts.size === 0) {
+      return null;
+    }
+
+    const dominantSpeaker = Array.from(speakerCounts.entries())
+      .sort((a, b) => b[1] - a[1])[0][0];
+
+    // Return Deepgram voice ID format (dg_voice_N)
+    return `dg_voice_${dominantSpeaker}`;
   }
 
   private processDiarization(words: any[]): void {
@@ -623,10 +804,97 @@ export class UniversalAssistantCoordinator {
         audioManager.disableConcurrentProcessing();
       }
     }
+
+    // Handle speaker identification configuration changes
+    if (newConfig.enableSpeakerIdentification !== undefined) {
+      if (newConfig.enableSpeakerIdentification && !this.config.enableSpeakerIdentification) {
+        console.log('Speaker identification enabled');
+      } else if (!newConfig.enableSpeakerIdentification && this.config.enableSpeakerIdentification) {
+        console.log('Speaker identification disabled');
+        
+        // Clean up voice identification if currently active
+        if (this.voiceIdentificationCoordinator) {
+          this.voiceIdentificationCoordinator.endMeeting().catch(error => {
+            console.error('Error cleaning up voice identification:', error);
+          });
+          this.voiceIdentificationCoordinator = null;
+        }
+      }
+    }
+  }
+
+  // Validate voice identification configuration
+  public validateVoiceIdentificationConfig(): {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+  } {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Check if feature is enabled
+    if (!this.config.enableSpeakerIdentification) {
+      return { isValid: true, errors, warnings: ['Speaker identification is disabled'] };
+    }
+
+    // Check if we have a current meeting
+    if (!this.currentMeeting) {
+      warnings.push('No active meeting for voice identification');
+    }
+
+    // Check if voice identification coordinator is initialized
+    if (!this.voiceIdentificationCoordinator) {
+      warnings.push('Voice identification coordinator not initialized');
+    }
+
+    // Check if Deepgram connection is available
+    if (!this.deepgramConnection || this.deepgramConnection.readyState !== WebSocket.OPEN) {
+      errors.push('Deepgram connection not available for voice identification');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings
+    };
   }
 
   public getConfig(): UniversalAssistantConfig {
     return { ...this.config };
+  }
+
+  // Get voice identification status and statistics
+  public getVoiceIdentificationStatus(): {
+    enabled: boolean;
+    active: boolean;
+    speakers?: Array<{
+      deepgramVoiceId: string;
+      name: string;
+      isIdentified: boolean;
+      stats: any;
+    }>;
+    meetingId?: string;
+  } {
+    if (!this.config.enableSpeakerIdentification) {
+      return { enabled: false, active: false };
+    }
+
+    if (!this.voiceIdentificationCoordinator) {
+      return { 
+        enabled: true, 
+        active: false,
+        meetingId: this.currentMeeting?.meetingId 
+      };
+    }
+
+    const speakers = this.voiceIdentificationCoordinator.getAllSpeakers();
+    
+    return {
+      enabled: true,
+      active: true,
+      speakers,
+      meetingId: this.currentMeeting?.meetingId
+    };
   }
 
   // Public method to trigger AI response (for manual triggers)

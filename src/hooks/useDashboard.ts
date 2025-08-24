@@ -5,14 +5,13 @@ import { useMeetingStore } from '@/stores/meetingStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { useCostSummary } from '@/stores/costStore';
+import { DashboardService } from '@/services/firebase/DashboardService';
 import type { Meeting } from '@/types';
+import type { DashboardStats } from '@/services/firebase/DashboardService';
 
-export interface DashboardStats {
-  totalMeetings: number;
-  activeMeetings: number;
-  totalHours: number;
-  participants: number;
-}
+// DashboardStats interface moved to DashboardService
+// Re-export for backwards compatibility
+export type { DashboardStats } from '@/services/firebase/DashboardService';
 
 export interface DisplayMeeting {
   id: string;
@@ -53,20 +52,28 @@ export const useDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [statsReady, setStatsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dashboardStatsData, setDashboardStatsData] = useState<DashboardStats>({
+    totalMeetings: 0,
+    activeMeetings: 0,
+    totalHours: 0,
+    uniqueParticipants: 0
+  });
 
-  // Memoized dashboard stats calculation for performance
-  const dashboardStats: DashboardStats = useMemo(() => ({
-    totalMeetings: meetings.length,
-    activeMeetings: isInMeeting ? 1 : 0,
-    totalHours: meetings.reduce((total, meeting) => {
-      if (meeting.endTime && meeting.startTime) {
-        const duration = (new Date(meeting.endTime).getTime() - new Date(meeting.startTime).getTime()) / (1000 * 60 * 60);
-        return total + duration;
-      }
-      return total;
-    }, 0),
-    participants: meetings.reduce((total, meeting) => total + meeting.participants.length, 0),
-  }), [meetings, isInMeeting]);
+  // Use real dashboard stats from DashboardService
+  const dashboardStats: DashboardStats = useMemo(() => {
+    // If we have real stats, use them. Otherwise show loading/empty state
+    if (statsReady) {
+      return dashboardStatsData;
+    }
+    
+    // Show empty stats while loading
+    return {
+      totalMeetings: 0,
+      activeMeetings: isInMeeting ? 1 : 0, // Still show current meeting if in progress
+      totalHours: 0,
+      uniqueParticipants: 0
+    };
+  }, [dashboardStatsData, statsReady, isInMeeting]);
 
   // Memoized conversion of meetings to display format
   const recentMeetingsForDisplay: DisplayMeeting[] = useMemo(() => {
@@ -118,43 +125,56 @@ export const useDashboard = () => {
     return `Welcome back, ${user?.displayName || user?.email?.split('@')[0] || 'User'}`;
   }, [user?.displayName, user?.email]);
 
-  // Optimized data loading with proper cleanup
-  useEffect(() => {
-    let isMounted = true;
+  // Load dashboard data and recent meetings
+  const loadDashboardData = useCallback(async () => {
+    if (!user?.uid) return;
     
-    const loadData = async () => {
-      if (user?.uid) {
-        try {
-          setError(null);
-          await loadRecentMeetings(user.uid, 10);
-        } catch (error) {
-          console.error('Failed to load recent meetings:', error);
-          if (isMounted) {
-            const errorMessage = 'Unable to load your recent meetings. Please refresh the page to try again.';
-            setError(errorMessage);
-            addNotification({
-              type: 'error',
-              title: 'Failed to Load Meetings',
-              message: errorMessage,
-              persistent: false,
-            });
-          }
-        }
-      }
-      if (isMounted) {
-        setIsLoading(false);
-        setTimeout(() => {
-          if (isMounted) setStatsReady(true);
-        }, 200);
-      }
-    };
-
-    loadData();
+    setIsLoading(true);
+    setError(null);
+    setStatsReady(false);
     
-    return () => {
-      isMounted = false;
-    };
+    try {
+      // Load dashboard stats and recent meetings in parallel
+      const [statsResult, meetingsResult] = await Promise.allSettled([
+        DashboardService.getDashboardStats(user.uid),
+        loadRecentMeetings(user.uid, 10)
+      ]);
+      
+      // Handle dashboard stats result
+      if (statsResult.status === 'fulfilled') {
+        setDashboardStatsData(statsResult.value);
+      } else {
+        console.error('Failed to load dashboard stats:', statsResult.reason);
+        throw new Error('Failed to load dashboard statistics');
+      }
+      
+      // Handle recent meetings result
+      if (meetingsResult.status === 'rejected') {
+        console.error('Failed to load recent meetings:', meetingsResult.reason);
+        // Don't throw here - we can still show stats without recent meetings
+      }
+      
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unable to load dashboard data. Please refresh the page to try again.';
+      setError(errorMessage);
+      addNotification({
+        type: 'error',
+        title: 'Failed to Load Dashboard',
+        message: errorMessage,
+        persistent: false,
+      });
+    } finally {
+      setIsLoading(false);
+      // Short delay to show loading state transition
+      setTimeout(() => setStatsReady(true), 200);
+    }
   }, [user?.uid, loadRecentMeetings, addNotification]);
+
+  // Initial data loading
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   // Handle meeting errors from store
   useEffect(() => {
@@ -203,21 +223,9 @@ export const useDashboard = () => {
   // Retry function for error recovery
   const retryLoad = useCallback(async () => {
     if (user?.uid) {
-      setIsLoading(true);
-      setError(null);
-      setStatsReady(false);
-      
-      try {
-        await loadRecentMeetings(user.uid, 10);
-        setIsLoading(false);
-        setTimeout(() => setStatsReady(true), 200);
-      } catch (error) {
-        console.error('Retry failed:', error);
-        setError('Failed to reload dashboard data');
-        setIsLoading(false);
-      }
+      await loadDashboardData();
     }
-  }, [user?.uid, loadRecentMeetings]);
+  }, [loadDashboardData]);
 
   // Clear error function
   const clearError = useCallback(() => {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getServiceContainer, initializeTranscription } from '@/services/universal-assistant/ClientServiceContainer';
-import { UniversalAssistantCoordinator, createUniversalAssistantCoordinator } from '@/services/universal-assistant/UniversalAssistantCoordinator';
+import { useGlobalServiceManager, useUniversalAssistantCoordinator } from '@/services/universal-assistant/GlobalServiceManager';
 import type { AudioManager } from '@/services/universal-assistant/AudioManager';
 import type { DeepgramSTT } from '@/services/universal-assistant/DeepgramSTT';
 import type { FragmentProcessor } from '@/services/universal-assistant/FragmentProcessor';
@@ -17,7 +17,6 @@ interface TranscriptionServices {
 }
 
 interface CoordinatorServices {
-  coordinator: UniversalAssistantCoordinator;
   services: TranscriptionServices;
 }
 
@@ -34,9 +33,19 @@ export function useUniversalAssistantClient() {
   const [isInitialized, setIsInitialized] = useState(false);
   
   const servicesRef = useRef<TranscriptionServices | null>(null);
-  const coordinatorRef = useRef<UniversalAssistantCoordinator | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const initializationAttempted = useRef(false);
+  
+  // Use global service manager for coordinator
+  const serviceManager = useGlobalServiceManager();
+  const { coordinator, isLoading: isCoordinatorLoading, error: coordinatorError } = useUniversalAssistantCoordinator({
+    model: 'claude-3-5-sonnet',
+    maxTokens: 1000,
+    voiceId: '21m00Tcm4TlvDq8ikWAM',
+    ttsSpeed: 1.0,
+    enableConcurrentProcessing: true,
+    enableSpeakerIdentification: true,
+  });
   
   // Get stores for integration
   const meetingStore = useMeetingStore();
@@ -139,24 +148,8 @@ export function useUniversalAssistantClient() {
       
       console.log('Services connected and ready for transcription');
       
-      // Initialize the coordinator with the services
-      const coordinator = createUniversalAssistantCoordinator(
-        {
-          model: 'claude-3-5-sonnet',
-          maxTokens: 1000,
-          voiceId: '21m00Tcm4TlvDq8ikWAM',
-          ttsSpeed: 1.0,
-          enableConcurrentProcessing: true,
-          enableSpeakerIdentification: true,
-        },
-        useMeetingStore,
-        useAppStore
-      );
-      
-      coordinatorRef.current = coordinator;
-      
       setIsInitialized(true);
-      console.log('Universal Assistant services and coordinator initialized successfully');
+      console.log('Universal Assistant services initialized successfully');
     } catch (err) {
       console.error('Failed to initialize Universal Assistant services:', err);
       setError(err instanceof Error ? err.message : 'Failed to initialize audio system');
@@ -231,14 +224,13 @@ export function useUniversalAssistantClient() {
   }, []);
 
   const handleVocalInterrupt = useCallback(() => {
-    if (!isClient || !isInitialized || !coordinatorRef.current) {
+    if (!isClient || !isInitialized || !coordinator) {
       console.warn('Vocal interrupt requires initialized coordinator');
       return;
     }
     
     try {
       setIsProcessing(true);
-      const coordinator = coordinatorRef.current;
       
       // Use coordinator's vocal interrupt handling
       coordinator.handleVocalInterrupt();
@@ -260,7 +252,7 @@ export function useUniversalAssistantClient() {
       setError(err instanceof Error ? err.message : 'Error handling interrupt');
       setIsProcessing(false);
     }
-  }, [isClient, isInitialized]);
+  }, [isClient, isInitialized, coordinator]);
 
   // Cleanup on unmount only
   useEffect(() => {
@@ -293,13 +285,6 @@ export function useUniversalAssistantClient() {
           streamRef.current = null;
         }
         
-        // Clean up coordinator first
-        if (coordinatorRef.current) {
-          console.log('Cleaning up coordinator...');
-          coordinatorRef.current.cleanup();
-          coordinatorRef.current = null;
-        }
-        
         // Clean up all services through the container
         if (servicesRef.current) {
           console.log('Cleaning up service container...');
@@ -317,7 +302,7 @@ export function useUniversalAssistantClient() {
 
   // Add triggerAIResponse function
   const triggerAIResponse = useCallback(async (text?: string) => {
-    if (!isClient || !isInitialized || !coordinatorRef.current) {
+    if (!isClient || !isInitialized || !coordinator) {
       console.warn('AI response trigger requires initialized coordinator');
       setError('Services not ready. Please wait.');
       return;
@@ -325,13 +310,12 @@ export function useUniversalAssistantClient() {
     
     try {
       setError(null);
-      const coordinator = coordinatorRef.current;
       await coordinator.triggerAIResponse(text);
     } catch (err) {
       console.error('Error triggering AI response:', err);
       setError(err instanceof Error ? err.message : 'Failed to generate AI response');
     }
-  }, [isClient, isInitialized]);
+  }, [isClient, isInitialized, coordinator]);
 
   return {
     isRecording,
@@ -343,7 +327,7 @@ export function useUniversalAssistantClient() {
     stopRecording,
     handleVocalInterrupt,
     triggerAIResponse,
-    coordinator: coordinatorRef.current,
+    coordinator,
     isReady: isClient && isInitialized,
   };
 }

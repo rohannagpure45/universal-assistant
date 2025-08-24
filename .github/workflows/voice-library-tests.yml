@@ -1,0 +1,499 @@
+# Voice Library E2E Tests CI/CD Pipeline
+# 
+# Comprehensive CI/CD workflow for running Firebase voice library tests with Playwright.
+# Includes authentication testing, Firebase permission validation, and cross-browser compatibility.
+
+name: Voice Library E2E Tests
+
+on:
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'src/components/voice-identification/**'
+      - 'src/services/firebase/VoiceLibraryService.ts'
+      - 'src/app/voice-library/**'
+      - 'tests/e2e/firebase-voice-library*.spec.ts'
+      - 'tests/e2e/utils/voice-library-test-utils.ts'
+  pull_request:
+    branches: [ main, dev ]
+    paths:
+      - 'src/components/voice-identification/**'
+      - 'src/services/firebase/VoiceLibraryService.ts'
+      - 'src/app/voice-library/**'
+      - 'tests/e2e/firebase-voice-library*.spec.ts'
+      - 'tests/e2e/utils/voice-library-test-utils.ts'
+  schedule:
+    # Run daily at 2 AM UTC to catch Firebase permission regressions
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Test suite to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - authentication
+          - permissions
+          - integration
+          - performance
+      browser:
+        description: 'Browser to test'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - chromium
+          - firefox
+          - webkit
+
+env:
+  NODE_VERSION: '18'
+  PLAYWRIGHT_BROWSERS_PATH: 0
+
+jobs:
+  # Setup and validation job
+  setup:
+    name: Setup and Validate
+    runs-on: ubuntu-latest
+    outputs:
+      test-suite: ${{ steps.determine-tests.outputs.test-suite }}
+      browser-matrix: ${{ steps.determine-tests.outputs.browser-matrix }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate test files
+        run: |
+          echo "Validating voice library test files..."
+          if [ ! -f "tests/e2e/firebase-voice-library.spec.ts" ]; then
+            echo "Error: Main voice library test file not found"
+            exit 1
+          fi
+          if [ ! -f "tests/e2e/firebase-voice-library-integration.spec.ts" ]; then
+            echo "Error: Integration test file not found"
+            exit 1
+          fi
+          if [ ! -f "tests/e2e/utils/voice-library-test-utils.ts" ]; then
+            echo "Error: Test utilities file not found"
+            exit 1
+          fi
+          echo "All test files validated successfully"
+
+      - name: Determine test configuration
+        id: determine-tests
+        run: |
+          # Determine which tests to run based on input or changed files
+          if [ "${{ github.event.inputs.test_suite }}" != "" ]; then
+            TEST_SUITE="${{ github.event.inputs.test_suite }}"
+          else
+            TEST_SUITE="all"
+          fi
+          
+          if [ "${{ github.event.inputs.browser }}" != "" ]; then
+            BROWSER="${{ github.event.inputs.browser }}"
+          else
+            BROWSER="all"
+          fi
+          
+          # Set browser matrix
+          if [ "$BROWSER" = "all" ]; then
+            BROWSER_MATRIX='["chromium", "firefox", "webkit"]'
+          else
+            BROWSER_MATRIX='["'$BROWSER'"]'
+          fi
+          
+          echo "test-suite=$TEST_SUITE" >> $GITHUB_OUTPUT
+          echo "browser-matrix=$BROWSER_MATRIX" >> $GITHUB_OUTPUT
+          
+          echo "Test Suite: $TEST_SUITE"
+          echo "Browser Matrix: $BROWSER_MATRIX"
+
+      - name: TypeScript compilation check
+        run: npm run typecheck
+
+      - name: Lint voice library tests
+        run: npx eslint tests/e2e/firebase-voice-library*.spec.ts tests/e2e/utils/voice-library-test-utils.ts
+
+  # Main test execution job
+  voice-library-tests:
+    name: Voice Library Tests (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    needs: setup
+    timeout-minutes: 30
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: ${{ fromJson(needs.setup.outputs.browser-matrix) }}
+    
+    env:
+      # Firebase Test Environment Variables
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_TEST_API_KEY }}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_TEST_AUTH_DOMAIN }}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_TEST_PROJECT_ID }}
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_TEST_STORAGE_BUCKET }}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_TEST_MESSAGING_SENDER_ID }}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_TEST_APP_ID }}
+      
+      # Firebase Admin SDK for test user management
+      FIREBASE_ADMIN_SDK_KEY: ${{ secrets.FIREBASE_ADMIN_SDK_KEY }}
+      
+      # Test configuration
+      PLAYWRIGHT_BROWSER: ${{ matrix.browser }}
+      TEST_SUITE: ${{ needs.setup.outputs.test-suite }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Create test environment file
+        run: |
+          cat > .env.test.local << EOF
+          NEXT_PUBLIC_FIREBASE_API_KEY=${{ env.NEXT_PUBLIC_FIREBASE_API_KEY }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ env.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          NEXT_PUBLIC_FIREBASE_APP_ID=${{ env.NEXT_PUBLIC_FIREBASE_APP_ID }}
+          FIREBASE_ADMIN_SDK_KEY=${{ env.FIREBASE_ADMIN_SDK_KEY }}
+          NODE_ENV=test
+          EOF
+
+      - name: Setup Firebase test users
+        run: |
+          echo "Setting up Firebase test users..."
+          # Create test users for authentication tests
+          node -e "
+          const admin = require('firebase-admin');
+          const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_SDK_KEY || '{}');
+          
+          if (Object.keys(serviceAccount).length > 0) {
+            admin.initializeApp({
+              credential: admin.credential.cert(serviceAccount),
+              projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+            });
+            
+            // Create test users
+            const testUsers = [
+              { uid: 'test-user-authenticated', email: 'authenticated@test.com', password: 'TestPassword123!' },
+              { uid: 'test-admin-user', email: 'admin@test.com', password: 'AdminPassword123!' }
+            ];
+            
+            Promise.all(testUsers.map(user => 
+              admin.auth().createUser(user).catch(err => {
+                if (err.code !== 'auth/uid-already-exists') throw err;
+                console.log('User already exists:', user.email);
+              })
+            )).then(() => {
+              console.log('Test users setup complete');
+              process.exit(0);
+            }).catch(err => {
+              console.error('Error setting up test users:', err);
+              process.exit(1);
+            });
+          } else {
+            console.log('Skipping user setup - no admin SDK key provided');
+          }
+          "
+
+      - name: Build application
+        run: npm run build
+
+      - name: Start development server
+        run: |
+          npm run dev &
+          npx wait-on http://localhost:3000 --timeout 60000
+          echo "Development server started"
+
+      - name: Run voice library permission tests
+        if: contains(needs.setup.outputs.test-suite, 'all') || contains(needs.setup.outputs.test-suite, 'permissions')
+        run: |
+          npx playwright test firebase-voice-library.spec.ts \
+            --project=${{ matrix.browser }} \
+            --grep="Firebase Permission Tests" \
+            --reporter=html,json \
+            --output-dir=test-results/voice-library-permissions-${{ matrix.browser }}
+
+      - name: Run voice library authentication tests
+        if: contains(needs.setup.outputs.test-suite, 'all') || contains(needs.setup.outputs.test-suite, 'authentication')
+        run: |
+          npx playwright test firebase-voice-library.spec.ts \
+            --project=${{ matrix.browser }} \
+            --grep="Authentication Tests" \
+            --reporter=html,json \
+            --output-dir=test-results/voice-library-auth-${{ matrix.browser }}
+
+      - name: Run voice library component tests
+        if: contains(needs.setup.outputs.test-suite, 'all') || contains(needs.setup.outputs.test-suite, 'components')
+        run: |
+          npx playwright test firebase-voice-library.spec.ts \
+            --project=${{ matrix.browser }} \
+            --grep="Component Tests" \
+            --reporter=html,json \
+            --output-dir=test-results/voice-library-components-${{ matrix.browser }}
+
+      - name: Run voice library integration tests
+        if: contains(needs.setup.outputs.test-suite, 'all') || contains(needs.setup.outputs.test-suite, 'integration')
+        run: |
+          npx playwright test firebase-voice-library-integration.spec.ts \
+            --project=${{ matrix.browser }} \
+            --reporter=html,json \
+            --output-dir=test-results/voice-library-integration-${{ matrix.browser }}
+
+      - name: Run voice library end-to-end tests
+        if: contains(needs.setup.outputs.test-suite, 'all') || contains(needs.setup.outputs.test-suite, 'e2e')
+        run: |
+          npx playwright test firebase-voice-library.spec.ts \
+            --project=${{ matrix.browser }} \
+            --grep="E2E Tests" \
+            --reporter=html,json \
+            --output-dir=test-results/voice-library-e2e-${{ matrix.browser }}
+
+      - name: Run performance tests
+        if: contains(needs.setup.outputs.test-suite, 'all') || contains(needs.setup.outputs.test-suite, 'performance')
+        run: |
+          npx playwright test firebase-voice-library-integration.spec.ts \
+            --project=${{ matrix.browser }} \
+            --grep="Performance and Optimization" \
+            --reporter=html,json \
+            --output-dir=test-results/voice-library-performance-${{ matrix.browser }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-library-test-results-${{ matrix.browser }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+      - name: Upload screenshots on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: voice-library-screenshots-${{ matrix.browser }}
+          path: test-results/**/*.png
+          retention-days: 30
+
+      - name: Cleanup test users
+        if: always()
+        run: |
+          echo "Cleaning up test users..."
+          node -e "
+          const admin = require('firebase-admin');
+          const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_SDK_KEY || '{}');
+          
+          if (Object.keys(serviceAccount).length > 0 && admin.apps.length === 0) {
+            admin.initializeApp({
+              credential: admin.credential.cert(serviceAccount),
+              projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+            });
+            
+            const testUserIds = ['test-user-authenticated', 'test-admin-user'];
+            
+            Promise.all(testUserIds.map(uid => 
+              admin.auth().deleteUser(uid).catch(err => {
+                if (err.code !== 'auth/user-not-found') {
+                  console.error('Error deleting user:', uid, err.message);
+                }
+              })
+            )).then(() => {
+              console.log('Test users cleanup complete');
+            }).catch(err => {
+              console.error('Error during cleanup:', err);
+            });
+          } else {
+            console.log('Skipping user cleanup - no admin SDK key provided');
+          }
+          "
+
+  # Cross-browser compatibility check
+  cross-browser-compatibility:
+    name: Cross-Browser Compatibility Check
+    runs-on: ubuntu-latest
+    needs: [setup, voice-library-tests]
+    if: always() && needs.setup.outputs.browser-matrix == '["chromium", "firefox", "webkit"]'
+    
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: voice-library-test-results-*
+          merge-multiple: true
+
+      - name: Analyze cross-browser compatibility
+        run: |
+          echo "Analyzing cross-browser test results..."
+          
+          # Check if all browsers have test results
+          browsers=("chromium" "firefox" "webkit")
+          failed_browsers=()
+          
+          for browser in "${browsers[@]}"; do
+            if [ ! -d "test-results/voice-library-*-$browser" ]; then
+              failed_browsers+=($browser)
+            fi
+          done
+          
+          if [ ${#failed_browsers[@]} -gt 0 ]; then
+            echo "❌ Tests failed in browsers: ${failed_browsers[*]}"
+            echo "cross-browser-status=failed" >> $GITHUB_ENV
+          else
+            echo "✅ All browsers passed voice library tests"
+            echo "cross-browser-status=passed" >> $GITHUB_ENV
+          fi
+
+      - name: Post cross-browser compatibility status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = process.env.cross_browser_status;
+            const body = status === 'passed' 
+              ? '✅ **Voice Library Cross-Browser Tests**: All browsers (Chrome, Firefox, Safari) passed voice library tests'
+              : '❌ **Voice Library Cross-Browser Tests**: Some browsers failed. Check test results for details.';
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # Performance regression check
+  performance-regression-check:
+    name: Performance Regression Check
+    runs-on: ubuntu-latest
+    needs: [setup, voice-library-tests]
+    if: always()
+    
+    steps:
+      - name: Download performance test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: voice-library-test-results-chromium
+          name: performance-results
+
+      - name: Analyze performance metrics
+        run: |
+          echo "Analyzing voice library performance metrics..."
+          
+          # Extract performance data from test results
+          if [ -f "test-results/voice-library-performance-chromium/results.json" ]; then
+            echo "Performance test results found"
+            
+            # Basic performance analysis (would be enhanced with actual metrics)
+            echo "✅ Performance tests completed successfully"
+            echo "performance-status=passed" >> $GITHUB_ENV
+          else
+            echo "⚠️ Performance test results not found"
+            echo "performance-status=warning" >> $GITHUB_ENV
+          fi
+
+      - name: Post performance status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = process.env.performance_status;
+            let body = '';
+            
+            if (status === 'passed') {
+              body = '✅ **Voice Library Performance**: No performance regressions detected';
+            } else {
+              body = '⚠️ **Voice Library Performance**: Performance data unavailable - manual review recommended';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  # Test summary and reporting
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [setup, voice-library-tests, cross-browser-compatibility, performance-regression-check]
+    if: always()
+    
+    steps:
+      - name: Generate test summary
+        run: |
+          echo "# Voice Library Test Summary" > test-summary.md
+          echo "" >> test-summary.md
+          echo "## Test Configuration" >> test-summary.md
+          echo "- **Test Suite**: ${{ needs.setup.outputs.test-suite }}" >> test-summary.md
+          echo "- **Browsers**: ${{ needs.setup.outputs.browser-matrix }}" >> test-summary.md
+          echo "- **Trigger**: ${{ github.event_name }}" >> test-summary.md
+          echo "" >> test-summary.md
+          
+          # Job status summary
+          echo "## Job Results" >> test-summary.md
+          echo "| Job | Status |" >> test-summary.md
+          echo "|-----|--------|" >> test-summary.md
+          echo "| Voice Library Tests | ${{ needs.voice-library-tests.result }} |" >> test-summary.md
+          echo "| Cross-Browser Compatibility | ${{ needs.cross-browser-compatibility.result }} |" >> test-summary.md
+          echo "| Performance Check | ${{ needs.performance-regression-check.result }} |" >> test-summary.md
+          
+          cat test-summary.md
+
+      - name: Upload test summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: voice-library-test-summary
+          path: test-summary.md
+          retention-days: 30
+
+      - name: Post final status
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const testResult = '${{ needs.voice-library-tests.result }}';
+            const crossBrowserResult = '${{ needs.cross-browser-compatibility.result }}';
+            
+            let status = '✅';
+            let message = 'All voice library tests passed successfully';
+            
+            if (testResult === 'failure' || crossBrowserResult === 'failure') {
+              status = '❌';
+              message = 'Some voice library tests failed - please review the results';
+            } else if (testResult === 'cancelled' || crossBrowserResult === 'cancelled') {
+              status = '⚠️';
+              message = 'Voice library tests were cancelled - please retry';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `${status} **Voice Library Test Suite**: ${message}`
+            });

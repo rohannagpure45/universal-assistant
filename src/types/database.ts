@@ -19,20 +19,8 @@ export interface VoiceLibraryEntry {
   lastHeard: Date;
   meetingsCount: number;
   totalSpeakingTime: number;         // in seconds
-  audioSamples: Array<{              // Keep 3-5 best samples
-    url: string;                     // Firebase Storage URL
-    transcript: string;              // What was said
-    quality: number;                 // Audio quality score
-    duration: number;                // Length in seconds
-    timestamp: Date;
-  }>;
-  identificationHistory: Array<{     // How voice was identified
-    method: 'self' | 'mentioned' | 'manual' | 'pattern';
-    timestamp: Date;
-    meetingId: string;
-    confidence: number;
-    details: string;                 // e.g., "User confirmed post-meeting"
-  }>;
+  audioSamples: AudioSample[];       // Keep 3-5 best samples
+  identificationHistory: IdentificationRecord[]; // How voice was identified
 }
 
 // ============================================
@@ -69,15 +57,7 @@ export interface MeetingTypeConfig {
     'claude-3-7-sonnet'?: string;
     'claude-3-7-opus'?: string;
   };
-  modelCompatibility: {              // Track what works best
-    recommendedModel: string;
-    performanceHistory: Array<{
-      model: string;
-      avgResponseTime: number;
-      successRate: number;
-      userSatisfaction: number;
-    }>;
-  };
+  modelCompatibility: ModelCompatibility; // Track what works best
   createdAt: Date;
 }
 
@@ -105,36 +85,14 @@ export interface MeetingUpdate {
   date: Date;
   duration?: number;                 // in minutes
   status: 'scheduled' | 'active' | 'ended' | 'processed';
-  aiModelHistory: Array<{            // Track model changes
-    model: string;                   // e.g., "gpt-4", "claude-3"
-    switchedAt: Date;
-    switchedBy: string;              // userId
-    reason?: string | null;          // Optional reason for switch
-    transcriptIndex: number;         // Where in transcript the switch occurred
-  }>;
+  aiModelHistory: AIModelHistory[];  // Track model changes
   currentModel: string;              // Active model for this meeting
-  modelContext?: {                   // Preserve context across model switches
-    summary: string;                 // What's been discussed so far
-    speakers: object;                // Speaker identification up to this point
-    topics: string[];                // Key topics covered
-    lastPrompt: string;              // Last system prompt used
-  };
+  modelContext?: ModelContext;       // Preserve context across model switches
   participants: Record<string, MeetingParticipant>; // Keyed by deepgramVoiceId
   notes?: string;                   // AI-generated summary/notes in markdown
   keyPoints?: string[];              // Max 10 bullet points
-  actionItems?: Array<{
-    text: string;
-    assignedTo?: string | null;     // userId or name
-    dueDate?: Date | null;
-    completed: boolean;
-  }>;
-  transcript: Array<{                // Full transcript
-    voiceId: string;                 // deepgramVoiceId
-    speakerName: string;             // Display name at time of meeting
-    text: string;
-    timestamp: Date;
-    confidence: number;              // Transcription confidence
-  }>;
+  actionItems?: ActionItem[];        // Meeting action items
+  transcript: TranscriptEntry[];     // Full transcript
 }
 
 // ============================================
@@ -148,20 +106,16 @@ export interface NeedsIdentification {
   meetingDate: Date;
   meetingTypeId: string;
   hostId: string;                    // Who to notify for review
-  voiceId: string;                   // deepgramVoiceId
+  deepgramVoiceId: string;           // Primary voice identifier (consistent naming)
+  voiceId: string;                   // Alias for deepgramVoiceId (for backward compatibility)
   speakerLabel: string;              // Current label (e.g., "Unknown Speaker 2")
-  sampleTranscripts: Array<{         // 2-3 clear examples
-    text: string;
-    timestamp: Date;
-  }>;
+  sampleTranscripts: SampleTranscript[]; // 2-3 clear examples
   audioUrl: string;                  // Best quality clip
-  suggestedMatches?: Array<{         // AI suggestions
-    userId: string;
-    userName: string;
-    confidence: number;
-    reason: string;                  // Why AI thinks this
-  }>;
+  suggestedMatches?: SuggestedMatch[]; // AI suggestions
   status: 'pending' | 'identified' | 'skipped';
+  resolvedUserId?: string;           // Set when status is 'identified'
+  resolvedUserName?: string;         // Set when status is 'identified'
+  resolvedAt?: Date;                 // When it was resolved
   createdAt: Date;
 }
 
@@ -173,11 +127,7 @@ export interface VoiceMatch {
   deepgramVoiceId: string;           // Document ID
   confirmedUserId?: string | null;
   lastUpdated: Date;
-  meetingHistory: Array<{            // Last 10 meetings
-    meetingId: string;
-    confidence: number;
-    date: Date;
-  }>;
+  meetingHistory: MeetingHistoryEntry[]; // Last 10 meetings
 }
 
 // ============================================
@@ -188,7 +138,7 @@ export interface UserUpdate {
   email: string;
   displayName: string;
   createdAt: Date;
-  isAdmin: boolean;                  // NEW: Admin flag for access control
+  isAdmin: boolean;                  // Admin flag for access control
   primaryVoiceId?: string | null;    // Links to voice_library
   settings: {
     ttsSpeed: number;
@@ -197,4 +147,96 @@ export interface UserUpdate {
     preferredLanguage: string;
     timezone: string;
   };
+}
+
+// ============================================
+// MEETING ANALYTICS & PERFORMANCE TRACKING
+// ============================================
+
+export interface ModelPerformanceHistory {
+  model: string;
+  avgResponseTime: number;
+  successRate: number;
+  userSatisfaction: number;
+}
+
+export interface ModelCompatibility {
+  recommendedModel: string;
+  performanceHistory: ModelPerformanceHistory[];
+}
+
+export interface AIModelHistory {
+  model: string;                     // e.g., "gpt-4", "claude-3"
+  switchedAt: Date;
+  switchedBy: string;                // userId
+  reason?: string | null;            // Optional reason for switch
+  transcriptIndex: number;           // Where in transcript the switch occurred
+}
+
+export interface ModelContext {
+  summary: string;                   // What's been discussed so far
+  speakers: object;                  // Speaker identification up to this point
+  topics: string[];                  // Key topics covered
+  lastPrompt: string;                // Last system prompt used
+}
+
+// ============================================
+// ENHANCED TRANSCRIPT TYPES
+// ============================================
+
+export interface TranscriptEntry {
+  voiceId: string;                   // deepgramVoiceId
+  speakerName: string;               // Display name at time of meeting
+  text: string;
+  timestamp: Date;
+  confidence: number;                // Transcription confidence
+}
+
+export interface ActionItem {
+  text: string;
+  assignedTo?: string | null;        // userId or name
+  dueDate?: Date | null;
+  completed: boolean;
+}
+
+// ============================================
+// IDENTIFICATION SYSTEM
+// ============================================
+
+export interface AudioSample {
+  url: string;                       // Firebase Storage URL
+  transcript: string;                // What was said
+  quality: number;                   // Audio quality score
+  duration: number;                  // Length in seconds
+  timestamp: Date;
+}
+
+export interface IdentificationRecord {
+  method: 'self' | 'mentioned' | 'manual' | 'pattern';
+  timestamp: Date;
+  meetingId: string;
+  confidence: number;
+  details: string;                   // e.g., "User confirmed post-meeting"
+}
+
+export interface SuggestedMatch {
+  userId: string;
+  userName: string;
+  confidence: number;
+  reason: string;                    // Why AI thinks this
+}
+
+export interface SampleTranscript {
+  text: string;
+  timestamp: Date;
+}
+
+// ============================================
+// MEETING HISTORY TRACKING
+// ============================================
+
+export interface MeetingHistoryEntry {
+  meetingId: string;
+  confidence: number;
+  date: Date;
 }

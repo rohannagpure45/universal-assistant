@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertCircle, CheckCircle, Download, Upload, RefreshCw } from 'lucide-react';
 import { LinearProgress, CircularProgress, LoadingSpinner } from './LoadingSpinner';
@@ -82,6 +82,27 @@ export interface ProgressModalProps {
   
   /** Children content to render inside the modal */
   children?: React.ReactNode;
+  
+  /** Whether to prevent closing on backdrop click */
+  preventBackdropClose?: boolean;
+  
+  /** Whether to show a manual continue button after completion */
+  showContinueAfterCompletion?: boolean;
+  
+  /** Custom error recovery actions */
+  errorRecoveryActions?: Array<{
+    label: string;
+    action: () => void;
+    variant?: 'primary' | 'secondary' | 'danger';
+  }>;
+  
+  /** Focus management options */
+  focusOptions?: {
+    /** Element to focus when modal opens */
+    initialFocus?: React.RefObject<HTMLElement> | (() => HTMLElement | null);
+    /** Whether to trap focus within modal */
+    trapFocus?: boolean;
+  };
 }
 
 const sizeClasses = {
@@ -142,10 +163,81 @@ export const ProgressModal: React.FC<ProgressModalProps> = ({
   onRetry,
   actions,
   size = 'md',
+  preventBackdropClose = false,
+  showContinueAfterCompletion = true,
+  errorRecoveryActions,
+  focusOptions,
 }) => {
   const [isClosing, setIsClosing] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const initialFocusRef = useRef<HTMLButtonElement>(null);
   
   const variantConfig = variantClasses[variant];
+  
+  // Handle focus management
+  useEffect(() => {
+    if (isOpen) {
+      // Focus initial element
+      const getInitialFocus = () => {
+        if (focusOptions?.initialFocus) {
+          if (typeof focusOptions.initialFocus === 'function') {
+            return focusOptions.initialFocus();
+          }
+          return focusOptions.initialFocus.current;
+        }
+        return initialFocusRef.current;
+      };
+      
+      const timeoutId = setTimeout(() => {
+        const element = getInitialFocus();
+        if (element) {
+          element.focus();
+        }
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isOpen, focusOptions]);
+  
+  // Handle keyboard navigation
+  useEffect(() => {
+    if (!isOpen || !focusOptions?.trapFocus) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && canClose) {
+        e.preventDefault();
+        handleClose();
+        return;
+      }
+      
+      if (e.key === 'Tab') {
+        const modalElement = modalRef.current;
+        if (!modalElement) return;
+        
+        const focusableElements = modalElement.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        );
+        
+        const firstElement = focusableElements[0] as HTMLElement;
+        const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+        
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement?.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement?.focus();
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, canClose, focusOptions?.trapFocus]);
   
   const handleClose = useCallback(() => {
     if (canClose && onClose) {
@@ -217,7 +309,7 @@ export const ProgressModal: React.FC<ProgressModalProps> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={canClose ? handleClose : undefined}
+            onClick={canClose && !preventBackdropClose ? handleClose : undefined}
           />
 
           {/* Modal */}
@@ -231,9 +323,11 @@ export const ProgressModal: React.FC<ProgressModalProps> = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
+            ref={modalRef}
             role="dialog"
             aria-labelledby="progress-modal-title"
-            aria-describedby="progress-modal-description"
+            aria-describedby={description ? "progress-modal-description" : undefined}
+            aria-modal="true"
           >
             {/* Header */}
             <div className={cn('flex items-center justify-between p-6 rounded-t-xl', variantConfig.header)}>
@@ -267,8 +361,9 @@ export const ProgressModal: React.FC<ProgressModalProps> = ({
               
               {canClose && (
                 <button
+                  ref={initialFocusRef}
                   onClick={handleClose}
-                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
                   aria-label="Close modal"
                 >
                   <X className="w-5 h-5 text-neutral-500 dark:text-neutral-400" />
@@ -299,18 +394,38 @@ export const ProgressModal: React.FC<ProgressModalProps> = ({
                 </div>
               )}
 
-              {/* Error Message */}
+              {/* Error Message with Enhanced Recovery Options */}
               {hasError && errorMessage && (
                 <div className="p-4 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg">
                   <div className="flex items-start space-x-3">
                     <AlertCircle className="w-5 h-5 text-danger-600 dark:text-danger-400 mt-0.5 flex-shrink-0" />
-                    <div>
+                    <div className="flex-1">
                       <h4 className="text-sm font-medium text-danger-700 dark:text-danger-300">
                         Operation Failed
                       </h4>
                       <p className="text-sm text-danger-600 dark:text-danger-400 mt-1">
                         {errorMessage}
                       </p>
+                      {errorRecoveryActions && errorRecoveryActions.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {errorRecoveryActions.map((action, index) => (
+                            <button
+                              key={index}
+                              onClick={action.action}
+                              className={cn(
+                                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-danger-50 dark:focus:ring-offset-danger-900/20',
+                                action.variant === 'primary'
+                                  ? 'bg-danger-600 text-white hover:bg-danger-700 focus:ring-danger-500'
+                                  : action.variant === 'danger'
+                                  ? 'bg-danger-100 text-danger-700 hover:bg-danger-200 focus:ring-danger-500 dark:bg-danger-800/30 dark:text-danger-300 dark:hover:bg-danger-800/50'
+                                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 focus:ring-neutral-500 dark:bg-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-600'
+                              )}
+                            >
+                              {action.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -383,14 +498,14 @@ export const ProgressModal: React.FC<ProgressModalProps> = ({
               )}
             </div>
 
-            {/* Footer */}
+            {/* Footer - Enhanced with Better UX */}
             <div className="flex items-center justify-end space-x-3 p-6 border-t border-neutral-200 dark:border-neutral-700">
               {actions || (
                 <>
                   {hasError && onRetry && (
                     <button
                       onClick={onRetry}
-                      className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded-lg transition-colors"
+                      className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
                     >
                       <RefreshCw className="w-4 h-4 mr-2" />
                       Retry
@@ -400,23 +515,39 @@ export const ProgressModal: React.FC<ProgressModalProps> = ({
                   {canCancel && !isComplete && !hasError && (
                     <button
                       onClick={handleCancel}
-                      className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded-lg transition-colors"
+                      className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
                     >
                       Cancel
                     </button>
                   )}
                   
-                  {(isComplete || hasError) && (
+                  {/* Manual Continue Button - Only shown when completion requires user action */}
+                  {isComplete && showContinueAfterCompletion && (
                     <button
                       onClick={handleClose}
-                      className={cn(
-                        'px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors',
-                        hasError
-                          ? 'bg-danger-600 hover:bg-danger-700'
-                          : 'bg-success-600 hover:bg-success-700'
-                      )}
+                      className="px-6 py-2 text-sm font-medium text-white bg-success-600 hover:bg-success-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-success-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
                     >
-                      {hasError ? 'Close' : 'Done'}
+                      Continue
+                    </button>
+                  )}
+                  
+                  {/* Error State - Always allow manual closure */}
+                  {hasError && (
+                    <button
+                      onClick={handleClose}
+                      className="px-4 py-2 text-sm font-medium text-white bg-danger-600 hover:bg-danger-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-danger-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
+                    >
+                      Close
+                    </button>
+                  )}
+                  
+                  {/* Close button for completed operations when auto-continue is disabled */}
+                  {isComplete && !showContinueAfterCompletion && canClose && (
+                    <button
+                      onClick={handleClose}
+                      className="px-4 py-2 text-sm font-medium text-white bg-success-600 hover:bg-success-700 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-success-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
+                    >
+                      Done
                     </button>
                   )}
                 </>

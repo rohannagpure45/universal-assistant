@@ -15,66 +15,70 @@ interface AuthProviderProps {
  * and manages auth-related side effects
  */
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const { initializeAuth } = useAuthStore();
+  const { initializeAuth, isInitialized: authStoreInitialized, isLoading } = useAuthStore();
   const { addNotification } = useAppStore();
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [localInitialized, setLocalInitialized] = useState(false);
+  const [forceInitialized, setForceInitialized] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
 
     const initializeAuthentication = async () => {
       try {
-        // Loading will be managed by auth store
+        console.log('Starting auth initialization...');
         
-        // Initialize auth service and listen for auth state changes
-        const unsubscribe = authService.onAuthStateChanged((user) => {
-          if (!isMounted) return;
-          
-          if (user) {
-            // User state is now handled by the auth store directly
-            
-            // Notifications will be handled elsewhere
-          } else {
-            // setUser removed(null);
-          }
-          
-          // Loading state handled by auth store
-          if (!isInitialized) {
-            setIsInitialized(true);
-          }
-        });
-
-        // Initialize the auth store
+        // Initialize the auth store - this sets up the auth listener
         await initializeAuth();
+        console.log('Auth store initialized');
+        
+        // Set local initialized flag once auth store is set up
+        if (isMounted) {
+          setLocalInitialized(true);
+        }
 
-        return () => {
-          unsubscribe();
-        };
+        // Set a timeout to force initialization if auth state doesn't settle
+        timeoutId = setTimeout(() => {
+          if (isMounted && !authStoreInitialized) {
+            console.warn('Auth initialization timeout - forcing initialization');
+            setForceInitialized(true);
+          }
+        }, 3000);
+
       } catch (error) {
         console.error('Auth initialization error:', error);
         if (isMounted) {
-          // Error handling is now done by the auth store
-          // Loading state handled by auth store
-          setIsInitialized(true);
+          setForceInitialized(true);
         }
       }
     };
 
-    const cleanup = initializeAuthentication();
+    // Only initialize once
+    if (!localInitialized && !forceInitialized) {
+      initializeAuthentication();
+    }
 
     return () => {
       isMounted = false;
-      cleanup.then(unsubscribe => unsubscribe?.()).catch(console.error);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
-  }, [initializeAuth, addNotification, isInitialized]);
+  }, [initializeAuth, authStoreInitialized, localInitialized, forceInitialized]);
 
   // Show loading spinner during auth initialization
-  if (!isInitialized) {
+  // Only show loading if neither the auth store nor local state is initialized
+  if (!authStoreInitialized && !forceInitialized && localInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-gray-600 dark:text-gray-400">Initializing...</p>
+          {forceInitialized && (
+            <p className="text-yellow-600 dark:text-yellow-400 text-sm mt-2">
+              Timeout reached - proceeding with limited functionality
+            </p>
+          )}
         </div>
       </div>
     );

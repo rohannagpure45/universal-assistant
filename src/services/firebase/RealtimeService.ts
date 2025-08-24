@@ -176,11 +176,11 @@ export class RealtimeService {
         orderDirection = 'desc'
       } = options;
 
-      // Prefer denormalized participantsUserIds for membership lookups
+      // Prefer denormalized participantIds for membership lookups
       // Avoid orderBy here to prevent composite index requirements; sort client-side instead
       const meetingsQuery = query(
         collection(db, 'meetings'),
-        where('participantsUserIds', 'array-contains', userId),
+        where('participantIds', 'array-contains', userId),
         limit(queryLimit)
       );
 

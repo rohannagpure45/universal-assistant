@@ -72,6 +72,7 @@ export const createMockUser = (overrides: Partial<User> = {}): User => {
     email: 'test@example.com',
     displayName: 'Test User',
     photoURL: 'https://example.com/avatar.jpg',
+    isAdmin: false,
     preferences: defaultPreferences,
     createdAt: new Date('2024-01-01'),
     lastActive: new Date(),
@@ -83,6 +84,8 @@ export const createMockUser = (overrides: Partial<User> = {}): User => {
 export const createMockMeeting = (overrides: Partial<Meeting> = {}): Meeting => ({
   id: 'test-meeting-123',
   meetingId: 'test-meeting-123',
+  meetingTypeId: 'brainstorming-123',
+  participantIds: ['test-user-123'],
   hostId: 'test-user-123',
   createdBy: 'test-user-123',
   title: 'Test Meeting',

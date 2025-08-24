@@ -63,7 +63,7 @@ export const modelConfigs: Record<AIModel, ModelConfig> = {
       tokensPerMinute: 30000,
     },
     systemPrompt: 'You are an intelligent meeting assistant. Provide helpful, concise responses based on the conversation context.',
-    fallbackModels: ['gpt-4o-mini', 'gpt-5-mini'],
+    fallbackModels: ['gpt-4o-mini', 'gpt-4-turbo'],
   },
 
   'gpt-4o-mini': {
@@ -87,7 +87,7 @@ export const modelConfigs: Record<AIModel, ModelConfig> = {
       tokensPerMinute: 50000,
     },
     systemPrompt: 'You are a helpful meeting assistant. Be concise and relevant to the conversation.',
-    fallbackModels: ['gpt-5-mini'],
+    fallbackModels: ['gpt-4-turbo'],
   },
 
   'claude-3-5-sonnet': {
@@ -186,57 +186,9 @@ export const modelConfigs: Record<AIModel, ModelConfig> = {
     fallbackModels: ['claude-3-7-sonnet', 'claude-3-5-opus'],
   },
 
-  'gpt-5-mini': {
+  'gpt-4-turbo': {
     provider: 'openai',
-    maxTokens: 2048,
-    temperature: 0.7,
-    endpoint: '/api/openai/chat',
-    pricing: {
-      inputTokenCost: 0.0001,
-      outputTokenCost: 0.0004,
-    },
-    capabilities: {
-      streaming: true,
-      functionCalling: true,
-      vision: false,
-      codeExecution: false,
-      maxContextLength: 256000,
-    },
-    rateLimit: {
-      requestsPerMinute: 2000,
-      tokensPerMinute: 100000,
-    },
-    systemPrompt: 'You are GPT-5 Mini, an efficient meeting assistant optimized for quick, accurate responses.',
-    fallbackModels: ['gpt-4o-mini'],
-  },
-
-  'gpt-5-nano': {
-    provider: 'openai',
-    maxTokens: 1024,
-    temperature: 0.7,
-    endpoint: '/api/openai/chat',
-    pricing: {
-      inputTokenCost: 0.00005,
-      outputTokenCost: 0.0002,
-    },
-    capabilities: {
-      streaming: true,
-      functionCalling: false,
-      vision: false,
-      codeExecution: false,
-      maxContextLength: 128000,
-    },
-    rateLimit: {
-      requestsPerMinute: 5000,
-      tokensPerMinute: 200000,
-    },
-    systemPrompt: 'You are GPT-5 Nano, a fast and efficient assistant for brief meeting interactions.',
-    fallbackModels: ['gpt-5-mini', 'gpt-4o-mini'],
-  },
-
-  'gpt-5': {
-    provider: 'openai',
-    maxTokens: 8192,
+    maxTokens: 4096,
     temperature: 0.7,
     endpoint: '/api/openai/chat',
     pricing: {
@@ -247,40 +199,65 @@ export const modelConfigs: Record<AIModel, ModelConfig> = {
       streaming: true,
       functionCalling: true,
       vision: true,
-      codeExecution: true,
-      maxContextLength: 1000000,
+      codeExecution: false,
+      maxContextLength: 128000,
     },
     rateLimit: {
-      requestsPerMinute: 200,
-      tokensPerMinute: 20000,
+      requestsPerMinute: 500,
+      tokensPerMinute: 30000,
     },
-    systemPrompt: 'You are GPT-5, the most advanced AI assistant with superior reasoning capabilities for complex meeting scenarios.',
-    fallbackModels: ['gpt-4o', 'claude-3-5-opus'],
+    systemPrompt: 'You are GPT-4 Turbo, an advanced AI assistant with enhanced capabilities for complex meeting scenarios.',
+    fallbackModels: ['gpt-4o', 'gpt-4o-mini'],
   },
 
-  'gpt-4.1-nano': {
-    provider: 'openai',
-    maxTokens: 1024,
+  'claude-3-haiku': {
+    provider: 'anthropic',
+    maxTokens: 2048,
     temperature: 0.7,
-    endpoint: '/api/openai/chat',
+    endpoint: '/api/anthropic/messages',
     pricing: {
-      inputTokenCost: 0.0001,
-      outputTokenCost: 0.0003,
+      inputTokenCost: 0.00025,
+      outputTokenCost: 0.00125,
     },
     capabilities: {
       streaming: true,
       functionCalling: false,
       vision: false,
       codeExecution: false,
-      maxContextLength: 64000,
+      maxContextLength: 200000,
     },
     rateLimit: {
-      requestsPerMinute: 3000,
-      tokensPerMinute: 150000,
+      requestsPerMinute: 1000,
+      tokensPerMinute: 50000,
     },
-    systemPrompt: 'You are GPT-4.1 Nano, optimized for quick responses in meeting contexts.',
-    fallbackModels: ['gpt-4o-mini', 'gpt-5-nano'],
+    systemPrompt: 'You are Claude 3 Haiku, a fast and efficient AI assistant optimized for quick responses.',
+    fallbackModels: ['claude-3-5-sonnet'],
   },
+
+  'claude-3-opus': {
+    provider: 'anthropic',
+    maxTokens: 4096,
+    temperature: 0.7,
+    endpoint: '/api/anthropic/messages',
+    pricing: {
+      inputTokenCost: 0.015,
+      outputTokenCost: 0.075,
+    },
+    capabilities: {
+      streaming: true,
+      functionCalling: true,
+      vision: true,
+      codeExecution: false,
+      maxContextLength: 200000,
+    },
+    rateLimit: {
+      requestsPerMinute: 100,
+      tokensPerMinute: 20000,
+    },
+    systemPrompt: 'You are Claude 3 Opus, the most capable AI assistant with superior reasoning abilities for complex analysis.',
+    fallbackModels: ['claude-3-5-sonnet', 'claude-3-haiku'],
+  },
+
 };
 
 // Utility functions for model selection
@@ -400,13 +377,94 @@ export function calculateCost(
   return inputCost + outputCost;
 }
 
+// Model validation
+export function isValidModel(model: string): model is AIModel {
+  return Object.keys(modelConfigs).includes(model as AIModel);
+}
+
+export function validateModelRequest(model: string): { valid: boolean; message?: string } {
+  if (!isValidModel(model)) {
+    const validModels = Object.keys(modelConfigs).join(', ');
+    return {
+      valid: false,
+      message: `Invalid model '${model}'. Valid models are: ${validModels}`
+    };
+  }
+  
+  const config = modelConfigs[model as AIModel];
+  
+  // Check if provider is properly configured
+  if (config.provider === 'openai' && !process.env.OPENAI_API_KEY) {
+    return {
+      valid: false,
+      message: `OpenAI API key not configured for model '${model}'`
+    };
+  }
+  
+  if (config.provider === 'anthropic' && !process.env.ANTHROPIC_API_KEY) {
+    return {
+      valid: false,
+      message: `Anthropic API key not configured for model '${model}'`
+    };
+  }
+  
+  return { valid: true };
+}
+
+export function getAvailableModels(): AIModel[] {
+  return Object.keys(modelConfigs).filter(model => {
+    const config = modelConfigs[model as AIModel];
+    if (config.provider === 'openai' && !process.env.OPENAI_API_KEY) return false;
+    if (config.provider === 'anthropic' && !process.env.ANTHROPIC_API_KEY) return false;
+    return true;
+  }) as AIModel[];
+}
+
+export function getModelWithFallback(preferredModel: AIModel, requirements?: {
+  maxLatency?: number;
+  maxCost?: number;
+  needsVision?: boolean;
+  needsFunctionCalling?: boolean;
+}): AIModel {
+  const validation = validateModelRequest(preferredModel);
+  if (validation.valid) {
+    return preferredModel;
+  }
+  
+  // Try fallback models from the preferred model's configuration
+  const config = modelConfigs[preferredModel];
+  if (config?.fallbackModels) {
+    for (const fallback of config.fallbackModels) {
+      const fallbackValidation = validateModelRequest(fallback);
+      if (fallbackValidation.valid) {
+        console.log(`Using fallback model '${fallback}' instead of '${preferredModel}': ${validation.message}`);
+        return fallback;
+      }
+    }
+  }
+  
+  // If no fallbacks work, select optimal model based on requirements
+  try {
+    return selectOptimalModel(requirements || {});
+  } catch {
+    // Last resort: return the first available model
+    const availableModels = getAvailableModels();
+    if (availableModels.length > 0) {
+      console.warn(`Using fallback model '${availableModels[0]}' as last resort`);
+      return availableModels[0];
+    }
+    
+    throw new Error('No AI models are available. Please check your API key configuration.');
+  }
+}
+
 // Model recommendation based on use case
 export function recommendModel(useCase: 'quick_response' | 'detailed_analysis' | 'creative' | 'technical' | 'cost_efficient'): AIModel {
   switch (useCase) {
     case 'quick_response':
-      return 'gpt-5-nano';
+      return 'claude-3-haiku';
     case 'detailed_analysis':
-      return 'claude-3-5-opus';
+      return 'claude-3-opus';
     case 'creative':
       return 'gpt-4o';
     case 'technical':

@@ -1,0 +1,11 @@
+{
+  "adminEmails": [
+    "ribt2218@gmail.com",
+    "rohan@linkstudio.ai"
+  ],
+  "securityRulesVersion": "v2.0",
+  "lastSecurityAudit": "2025-08-22T22:25:32.480Z",
+  "criticalIssues": 0,
+  "warnings": 3,
+  "passes": 23
+}

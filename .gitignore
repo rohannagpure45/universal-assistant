@@ -228,3 +228,43 @@ ui-debug.log
 *.png
 *.jpg
 *.jpeg
+
+# Reports and migration files
+/tests/reports/
+/tests/test-results/
+test-results/
+/migration/
+migrate-*.ts
+populate-*.ts
+*.md.backup
+*-README.md
+StorageService-README.md
+voice-identification-test-README.md
+
+# Generated reports and documentation
+FIREBASE_SECURITY_RULES.md
+firestoredb.txt
+VOICE_IDENTIFICATION_E2E_TESTING.md
+COMPREHENSIVE_TESTING_AUDIT_REPORT.md
+DATABASE_MIGRATION.md
+DEPLOYMENT_INSTRUCTIONS.md
+PERFORMANCE_OPTIMIZATION_SUMMARY.md
+PHASE_2_VERIFICATION_REPORT.md
+PRODUCTION_DEPLOYMENT_VALIDATION_REPORT.md
+TESTING_FIXES_IMPLEMENTATION_GUIDE.md
+INTEGRATION_TESTING_SUMMARY.md
+PRODUCTION_READINESS_REPORT.md
+*_REPORT.md
+*_SUMMARY.md
+*_VALIDATION_REPORT.md
+*_AUDIT_REPORT.md
+*_INSTRUCTIONS.md
+*_GUIDE.md
+
+# Performance and testing reports
+/test-results/performance/
+performance-report.md
+test-report*.md
+
+# Revamp type analysis folder
+revamptypeshit/

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyIdToken } from '@/lib/firebase/admin';
 import { AIService } from '@/services/universal-assistant/AIService';
 import { AIModel } from '@/types';
+import { validateModelRequest, getModelWithFallback, isValidModel } from '@/config/modelConfigs';
+import { withSecurity } from '@/lib/security/middleware';
+import { aiRequestSchema } from '@/lib/security/validation';
+import { SecurityLogger } from '@/lib/security/monitoring';
 
 /**
  * POST /api/universal-assistant/ai-response
@@ -9,10 +13,11 @@ import { AIModel } from '@/types';
  * Generates AI responses for transcribed conversations
  * Used by UniversalAssistantCoordinator for real-time AI responses
  */
-export async function POST(request: NextRequest) {
+async function handleAIResponse(request: NextRequest) {
   let decodedToken: any;
   let text: string = '';
   let model: AIModel = 'claude-3-5-sonnet';
+  let workingModel: AIModel = 'claude-3-5-sonnet';
   let body: any = {};
   
   try {
@@ -35,42 +40,75 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse request body
+    // Parse and validate request body
     body = await request.json();
+    
+    // Validate request using Zod schema
+    const validationResult = aiRequestSchema.safeParse(body);
+    if (!validationResult.success) {
+      SecurityLogger.suspiciousActivity(
+        request.headers.get('x-forwarded-for') || 'unknown',
+        decodedToken?.uid,
+        { 
+          action: 'invalid_ai_request',
+          errors: validationResult.error.errors,
+          body: body
+        }
+      );
+      
+      return NextResponse.json(
+        { 
+          error: 'Invalid request data',
+          details: validationResult.error.errors 
+        },
+        { status: 400 }
+      );
+    }
+    
     const { 
       text: requestText, 
       context, 
-      meetingType, 
-      participants,
+      meetingId,
       model: requestModel = 'claude-3-5-sonnet' as AIModel,
-      options = {}
-    } = body;
+      temperature,
+      maxTokens
+    } = validationResult.data;
     
     text = requestText;
     model = requestModel;
 
-    // Validate required fields
-    if (!text || typeof text !== 'string') {
+    // Validate the requested model
+    const modelValidation = validateModelRequest(model);
+    if (!modelValidation.valid) {
+      SecurityLogger.suspiciousActivity(
+        request.headers.get('x-forwarded-for') || 'unknown',
+        decodedToken?.uid,
+        { 
+          action: 'invalid_model_request',
+          model: model,
+          error: modelValidation.message
+        }
+      );
+      
       return NextResponse.json(
-        { error: 'Text field is required and must be a string' },
+        { 
+          error: 'Invalid AI model specified',
+          details: modelValidation.message,
+          supportedModels: Object.keys(await import('@/config/modelConfigs').then(m => m.modelConfigs))
+        },
         { status: 400 }
       );
     }
 
-    if (text.length > 10000) {
-      return NextResponse.json(
-        { error: 'Text exceeds maximum length of 10,000 characters' },
-        { status: 400 }
-      );
-    }
+    // Get working model with fallback if needed
+    workingModel = getModelWithFallback(model);
 
     // Initialize AI service
     const aiService = new AIService();
     
     // Prepare context for AI response
     const aiContext = {
-      meetingType: meetingType || 'general',
-      participants: participants || [],
+      meetingId: meetingId || null,
       timestamp: new Date().toISOString(),
       userId: decodedToken.uid,
       ...context
@@ -79,11 +117,11 @@ export async function POST(request: NextRequest) {
     // Prepare context array for AI response
     const contextArray = context ? Object.values(context).filter(val => typeof val === 'string') : [];
     
-    // Generate AI response with cost tracking
+    // Generate AI response with cost tracking using the working model
     const startTime = Date.now();
     const response = await aiService.generateResponse(
       text, 
-      model as AIModel, 
+      workingModel as AIModel, 
       contextArray,
       {
         userId: decodedToken.uid,
@@ -94,9 +132,9 @@ export async function POST(request: NextRequest) {
 
     const latency = Date.now() - startTime;
 
-    // Log for monitoring with cost information
-    const costInfo = response.cost ? ` ($${response.cost.toFixed(4)})` : '';
-    console.log(`AI response generated for user ${decodedToken.uid}: ${latency}ms latency${costInfo}`);
+    // Production monitoring would log this to proper logging service
+    // const costInfo = response.cost ? ` ($${response.cost.toFixed(4)})` : '';
+    // AI response generated for user ${decodedToken.uid}: ${latency}ms latency${costInfo}
 
     return NextResponse.json({
       success: true,
@@ -107,13 +145,30 @@ export async function POST(request: NextRequest) {
         latency: response.latency,
         timestamp: response.timestamp.toISOString(),
         cost: response.cost,
-        costMetadata: response.costMetadata
+        costMetadata: response.costMetadata,
+        modelUsed: workingModel,
+        originalModel: model !== workingModel ? model : undefined,
+        fallbackUsed: model !== workingModel
       },
       context: aiContext
     });
 
   } catch (error) {
     console.error('Error in ai-response API route:', error);
+    
+    // Log security event
+    SecurityLogger.error(
+      request.headers.get('x-forwarded-for') || 'unknown',
+      decodedToken?.uid,
+      error instanceof Error ? error : new Error('Unknown error'),
+      {
+        endpoint: '/api/universal-assistant/ai-response',
+        method: 'POST',
+        requestedModel: model,
+        workingModel: workingModel || 'unknown',
+        textLength: text?.length || 0
+      }
+    );
     
     // Attempt to track failed API call for cost monitoring
     try {
@@ -122,7 +177,7 @@ export async function POST(request: NextRequest) {
       const estimatedInputTokens = Math.ceil((text || '').length / 4);
       
       await aiService.trackResponseCost({
-        model: model as AIModel,
+        model: (workingModel || model) as AIModel,
         tokenUsage: { inputTokens: estimatedInputTokens, outputTokens: 0, totalTokens: estimatedInputTokens },
         latency: 0, // 0 for failed calls
         metadata: {
@@ -130,6 +185,7 @@ export async function POST(request: NextRequest) {
           meetingId: body?.meetingId,
           operation: 'ai_response_generation_failed',
           error: error instanceof Error ? error.message : 'Unknown error',
+          originalModel: model !== workingModel ? model : undefined,
         },
       });
     } catch (costTrackingError) {
@@ -159,6 +215,14 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Apply security middleware and export
+export const POST = withSecurity(handleAIResponse, {
+  requireAuth: true,
+  rateLimitRpm: 30, // 30 AI requests per minute per user
+  allowedMethods: ['POST'],
+  skipCSRF: false
+});
 
 // Only allow POST requests
 export async function GET() {

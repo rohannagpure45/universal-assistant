@@ -42,10 +42,21 @@ const buttonConfig = {
     'focus-visible:ring-2',
     'focus-visible:ring-primary-600/20',
     
-    // Disabled state
-    'disabled:opacity-60',
+    // Disabled state - improved contrast for accessibility
+    'disabled:opacity-70', // Increased from 60 to 70 for better contrast
     'disabled:cursor-not-allowed',
     'disabled:pointer-events-auto', // Allow focus for screen readers
+    'disabled:bg-neutral-200', // Explicit disabled background
+    'disabled:border-neutral-300', // Explicit disabled border
+    'disabled:text-neutral-500', // Explicit disabled text color
+    'dark:disabled:bg-neutral-700', // Dark mode disabled background
+    'dark:disabled:border-neutral-600', // Dark mode disabled border
+    'dark:disabled:text-neutral-400', // Dark mode disabled text
+    // Enhanced focus for disabled buttons
+    'disabled:focus-visible:ring-2',
+    'disabled:focus-visible:ring-neutral-400',
+    'disabled:focus-visible:ring-offset-2',
+    'dark:disabled:focus-visible:ring-neutral-500'
   ],
   
   // Border radius
@@ -314,6 +325,12 @@ interface BaseButtonProps {
   
   /** Button type for forms */
   type?: 'button' | 'submit' | 'reset';
+  
+  /** Optional tooltip text for accessibility */
+  title?: string;
+  
+  /** Custom tab index for focus management */
+  tabIndex?: number;
 }
 
 interface MotionButtonProps extends BaseButtonProps, Omit<HTMLMotionProps<'button'>, 'children' | 'className' | 'disabled'> {
@@ -400,11 +417,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       type = 'button',
       'aria-label': ariaLabel,
       'aria-describedby': ariaDescribedBy,
+      title,
+      tabIndex,
     } = props;
 
     // Build class names using design system
-    const sizeConfig = buttonSizes[size];
-    const variantConfig = buttonVariants[variant];
+    const sizeConfig = buttonSizes[size] || buttonSizes.md;
+    const variantConfig = buttonVariants[variant] || buttonVariants.primary;
     const darkOverrides = darkModeOverrides[variant as keyof typeof darkModeOverrides];
     
     const isDisabled = disabled || loading;
@@ -421,10 +440,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       sizeConfig.gap,
       
       // Variant styles
-      variantConfig.base,
-      !isDisabled && variantConfig.hover,
-      !isDisabled && variantConfig.active,
-      variantConfig.focus,
+      variantConfig?.base,
+      !isDisabled && variantConfig?.hover,
+      !isDisabled && variantConfig?.active,
+      variantConfig?.focus,
       
       // Dark mode overrides
       darkOverrides?.base,
@@ -466,14 +485,17 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       </>
     );
 
-    // Common accessibility props
+    // Common accessibility props with enhanced ARIA support
     const accessibilityProps = {
       'aria-label': ariaLabel,
       'aria-describedby': ariaDescribedBy,
       'aria-disabled': isDisabled,
       'aria-busy': loading,
+      'aria-live': loading ? 'polite' as const : undefined,
       disabled: isDisabled,
       type,
+      title: title || (loading ? `Loading ${children}...` : undefined),
+      tabIndex: isDisabled ? -1 : tabIndex,
     };
 
     // Use type discrimination with proper type guards (TypeScript best practice)
@@ -492,6 +514,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className: _className,
         'aria-label': _ariaLabel,
         'aria-describedby': _ariaDescribedBy,
+        title: _title,
+        tabIndex: _tabIndex,
         ...cleanStaticProps 
       } = props;
       
@@ -527,6 +551,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className: _className,
       'aria-label': _ariaLabel,
       'aria-describedby': _ariaDescribedBy,
+      title: _title,
+      tabIndex: _tabIndex,
       ...restMotionProps 
     } = props;
 
@@ -659,8 +685,8 @@ export const createButtonClasses = (
   const { disabled = false, loading = false, fullWidth = false, customClasses } = options;
   const isDisabled = disabled || loading;
   
-  const sizeConfig = buttonSizes[size];
-  const variantConfig = buttonVariants[variant];
+  const sizeConfig = buttonSizes[size] || buttonSizes.md;
+  const variantConfig = buttonVariants[variant] || buttonVariants.primary;
   const darkOverrides = darkModeOverrides[variant as keyof typeof darkModeOverrides];
   
   return cn(
@@ -670,10 +696,10 @@ export const createButtonClasses = (
     sizeConfig.padding,
     sizeConfig.text,
     sizeConfig.gap,
-    variantConfig.base,
-    !isDisabled && variantConfig.hover,
-    !isDisabled && variantConfig.active,
-    variantConfig.focus,
+    variantConfig?.base,
+    !isDisabled && variantConfig?.hover,
+    !isDisabled && variantConfig?.active,
+    variantConfig?.focus,
     darkOverrides?.base,
     !isDisabled && darkOverrides?.hover,
     !isDisabled && darkOverrides?.active,

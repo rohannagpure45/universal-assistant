@@ -43,9 +43,13 @@ export const useMeetingActions = () => {
   ) => {
     if (!user) return null;
 
+    const meetingId = `meeting-${Date.now()}`;
     return startMeeting({
-      id: `meeting-${Date.now()}`,
+      id: meetingId,
+      meetingId: meetingId,
+      meetingTypeId: `${type}-${Date.now()}`,
       hostId: user.uid,
+      participantIds: [user.uid],
       createdBy: user.uid,
       title,
       type,
@@ -262,7 +266,7 @@ export const useFilteredTranscript = (options: {
       const searchLower = options.searchTerm.toLowerCase();
       filtered = filtered.filter(entry => 
         entry.text.toLowerCase().includes(searchLower) ||
-        entry.speaker.toLowerCase().includes(searchLower)
+        (entry.speaker && entry.speaker.toLowerCase().includes(searchLower))
       );
     }
 

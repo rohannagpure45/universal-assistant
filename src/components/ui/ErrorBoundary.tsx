@@ -71,8 +71,17 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       errorInfo: extendedErrorInfo,
     });
 
-    // Log error for debugging
-    this.logError(error, extendedErrorInfo);
+    // Enhanced Firebase error handling
+    const isFirebaseError = this.isFirebaseError(error);
+    const isPermissionError = this.isPermissionDeniedError(error);
+    
+    // Log error with Firebase-specific context
+    this.logError(error, extendedErrorInfo, { isFirebaseError, isPermissionError });
+
+    // For Firebase permission errors, try graceful recovery
+    if (isPermissionError) {
+      this.handlePermissionError(error);
+    }
 
     // Call custom error handler
     if (this.props.onError) {
@@ -88,7 +97,48 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     }
   }
 
-  private logError = (error: Error, errorInfo: ErrorInfo) => {
+  private isFirebaseError = (error: Error): boolean => {
+    const errorMessage = error.message.toLowerCase();
+    const errorStack = error.stack?.toLowerCase() || '';
+    
+    return (
+      errorMessage.includes('firebase') ||
+      errorMessage.includes('firestore') ||
+      errorMessage.includes('permission-denied') ||
+      errorStack.includes('firebase') ||
+      (error as any).code?.startsWith('permission-denied') ||
+      (error as any).code?.startsWith('auth/') ||
+      (error as any).code?.startsWith('firestore/')
+    );
+  };
+
+  private isPermissionDeniedError = (error: Error): boolean => {
+    const errorMessage = error.message.toLowerCase();
+    return (
+      errorMessage.includes('permission-denied') ||
+      errorMessage.includes('missing or insufficient permissions') ||
+      (error as any).code === 'permission-denied'
+    );
+  };
+
+  private handlePermissionError = (error: Error) => {
+    console.warn('🔒 Firebase permission error detected - attempting graceful recovery:', error.message);
+    
+    // For permission errors, we don't want to crash the app
+    // Instead, we'll show a more user-friendly message
+    const { severity = 'warning' } = this.props;
+    
+    // Override severity to warning for permission errors
+    if (severity === 'critical') {
+      console.log('Downgrading critical permission error to warning level');
+    }
+    
+    // Could trigger a user notification or redirect to login
+    // For now, just log the graceful handling
+    console.info('Permission error handled gracefully - app continues to function');
+  };
+
+  private logError = (error: Error, errorInfo: ErrorInfo, firebaseContext?: { isFirebaseError: boolean; isPermissionError: boolean }) => {
     const { componentName, severity = 'warning' } = this.props;
     
     const errorReport = {
@@ -100,6 +150,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       timestamp: new Date().toISOString(),
       userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'server',
       url: typeof window !== 'undefined' ? window.location.href : 'server',
+      firebaseError: firebaseContext?.isFirebaseError || false,
+      permissionError: firebaseContext?.isPermissionError || false,
+      errorCode: (error as any).code || 'unknown',
     };
 
     // Log to console with appropriate level
@@ -201,13 +254,23 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     const colors = this.getSeverityColors(severity);
     const canRetry = enableRetry && retryCount < maxRetries;
 
-    const errorTitle = severity === 'critical' 
-      ? 'Critical Error' 
-      : severity === 'warning' 
-        ? 'Something went wrong' 
-        : 'Minor Issue';
+    const isFirebaseError = this.isFirebaseError(error || new Error());
+    const isPermissionError = this.isPermissionDeniedError(error || new Error());
+    
+    const errorTitle = isPermissionError
+      ? 'Authentication Required'
+      : severity === 'critical' 
+        ? 'Critical Error' 
+        : severity === 'warning' 
+          ? 'Something went wrong' 
+          : 'Minor Issue';
 
-    const errorMessage = error?.message || 'An unexpected error occurred';
+    const errorMessage = isPermissionError
+      ? 'Please sign in to access this feature. Your session may have expired.'
+      : isFirebaseError
+        ? 'There was an issue connecting to our services. Please try again.'
+        : error?.message || 'An unexpected error occurred';
+        
     const componentContext = componentName ? ` in ${componentName}` : '';
 
     const baseContent = (

@@ -20,7 +20,7 @@
       "collectionGroup": "meetings",
       "queryScope": "COLLECTION", 
       "fields": [
-        { "fieldPath": "participantsUserIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "participantIds", "arrayConfig": "CONTAINS" },
         { "fieldPath": "startTime", "order": "DESCENDING" }
       ]
     },
@@ -39,13 +39,6 @@
         { "fieldPath": "hostId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "startTime", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "transcripts",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "timestamp", "order": "ASCENDING" }
       ]
     },
     {
@@ -102,12 +95,45 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "priority", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "meeting_types",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "meeting_types",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "voice_library",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "confirmed", "order": "ASCENDING" },
+        { "fieldPath": "meetingsCount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "voice_library",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "lastHeard", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
     {
       "collectionGroup": "meetings",
-      "fieldPath": "participantsUserIds",
+      "fieldPath": "participantIds",
       "indexes": [
         { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION" }
       ]

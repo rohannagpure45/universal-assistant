@@ -264,6 +264,29 @@ Current Phase 2 completion includes:
   });
 
 
+## Voice Sample Validation System
+
+The voice sample validation system has been simplified to reduce over-engineering while maintaining all functionality:
+
+### Simple Validation Approach
+- Use `isValidVoiceSample()` for basic validation (returns boolean, no exceptions)
+- Use `createVoiceSample()` to create samples with safe defaults
+- Use `getQualityLevel()` to map numeric quality scores to human-readable labels
+- Use `isHighQuality()` to check quality thresholds (matches component patterns)
+
+### Component Usage Patterns
+Components use simple fallback patterns that are now supported by helpers:
+```typescript
+// What components actually do:
+const quality = sample.quality || 0.5;  // Now: withSafeFallbacks(sample)
+const level = quality >= 0.8 ? 'excellent' : 'good';  // Now: getQualityLevel(quality)
+```
+
+### Migration from Complex Validation
+The previous 235-line VoiceSampleValidator with exception-based validation has been removed as it was unused. The simplified approach matches how components actually handle voice samples with safe defaults and return-based validation.
+
+**Location**: `/src/utils/voice-sample-helpers.ts`
+
 ### Project-Specific Model Configuration
 This project supports both OpenAI and Anthropic providers via the modelConfigs system in `/src/config/modelConfigs.ts`. Google/Gemini references have been removed. Use the modelConfigs system for adding new models or modifying existing ones.
 

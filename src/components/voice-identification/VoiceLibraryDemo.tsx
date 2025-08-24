@@ -191,6 +191,7 @@ const MOCK_VOICE_PROFILES: VoiceLibraryEntry[] = [
  * Mock voice sample for player demo
  */
 const MOCK_VOICE_SAMPLE = {
+  id: 'demo_sample_1',
   url: '/audio/samples/demo_voice_sample.webm',
   transcript: 'This is a demonstration of our voice identification system. The AI can recognize speakers with high accuracy and provide real-time transcription.',
   quality: 0.87,
@@ -401,6 +402,7 @@ export const VoiceLibraryDemo: React.FC<VoiceLibraryDemoProps> = ({
               <VoiceSamplePlayer
                 sample={{
                   ...MOCK_VOICE_SAMPLE,
+                  id: 'demo_sample_2',
                   transcript: 'Compact player view with reduced controls.',
                   duration: 5.8,
                   quality: 0.75

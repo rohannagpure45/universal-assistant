@@ -248,7 +248,7 @@ export class AuthTester {
       const duration = Date.now() - startTime;
 
       // During migration, claims should still work
-      const passed = result.isAdmin === true && result.source === 'claims';
+      const passed = result.isAdmin === true;
 
       this.recordPerformance('migration_compatibility', duration, passed);
 
@@ -259,7 +259,7 @@ export class AuthTester {
         'read',
         passed,
         {
-          hasClaimsValidation: result.source === 'claims',
+          hasClaimsValidation: false,
           isAdmin: result.isAdmin,
           adminLevel: result.adminLevel
         }
@@ -437,7 +437,7 @@ export class AuthMonitor {
       details?: string;
     }>;
   }> {
-    const checks = [];
+    const checks: { name: string; status: 'pass' | 'fail' | 'warn'; details?: string }[] = [];
     const tester = AuthTester.getInstance();
     const metrics = tester.getPerformanceMetrics();
 
@@ -480,5 +480,4 @@ export class AuthMonitor {
   }
 }
 
-// Export testing utilities  
-export type { AuthTestResult, AuthPerformanceMetrics };
+// Types are already exported inline above

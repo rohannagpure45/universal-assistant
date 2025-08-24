@@ -370,6 +370,7 @@ export const SpeakerProfileCard: React.FC<SpeakerProfileCardProps> = ({
             {bestAudioSample && (
               <VoiceSamplePlayer
                 sample={{
+                  id: `sample_${profile.deepgramVoiceId}_best`,
                   url: bestAudioSample.url,
                   transcript: bestAudioSample.transcript,
                   quality: bestAudioSample.quality,

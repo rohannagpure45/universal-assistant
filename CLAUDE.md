@@ -2,6 +2,31 @@
 
 This file provides project-specific guidance to Claude Code (claude.ai/code) when working with the Universal Assistant codebase. For general development preferences and universal commands, see `/Users/rohan/CLAUDE.md`.
 
+## ⚠️ CRITICAL PROJECT STATUS - August 2025
+
+### 🚨 DO NOT DEPLOY - CRITICAL ISSUES PRESENT
+
+**Current State**: The codebase has 79 TypeScript compilation errors and critical implementation flaws that make it non-functional.
+
+**Major Issues**:
+1. **XSS Prevention Implementation BROKEN** - URL sanitization returns empty strings for all valid URLs
+2. **Performance Regression** - 57+ second processing time for large inputs (expected <1 second)
+3. **Bundle Size Issue** - Recent changes added 836KB (DOMPurify: 812KB)
+4. **Test Suite Failing** - 30% of XSS prevention tests failing
+5. **TypeScript Errors** - 79 compilation errors preventing build
+
+**Recent Failed Attempts**:
+- Interface segregation created type conflicts
+- ValidationResult discriminated unions incomplete
+- Migration helpers over-engineered
+- XSS prevention implementation has critical bugs
+
+**Before ANY work**:
+1. Review `/CRITICAL_ISSUES_TRACKER.md` for current blockers
+2. Check TypeScript errors: `npm run typecheck 2>&1 | grep -c "error TS"`
+3. Do NOT add new features until core issues resolved
+4. Focus on fixing compilation errors first
+
 ## Project-Specific Commands
 
 ### Core Development
@@ -303,10 +328,24 @@ const optimization = await optimizeCache(50 * 1024 * 1024); // 50MB limit
 
 ---
 
-# COMPREHENSIVE DEBUGGING REPORT
+# COMPREHENSIVE DEBUGGING REPORT - UPDATED AUGUST 2025
 ## Universal Assistant Application - Critical Flaws and Issues Analysis
 
 **⚠️ CRITICAL STATUS: This application has significant stability, security, and functionality issues that require immediate attention before any production deployment.**
+
+## LATEST ASSESSMENT (August 2025)
+
+### Recently Attempted Fixes That FAILED:
+1. **Runtime Validation** - Added but created circular dependencies
+2. **Interface Segregation** - Caused more type conflicts than it solved
+3. **XSS Prevention with DOMPurify** - Completely broken, blocks all valid URLs
+4. **Migration Helpers** - Over-engineered, adds complexity without solving issues
+
+### Current Error Count: 79 TypeScript Errors
+- Down from 115 initially
+- But core functionality is MORE broken than before
+- URL sanitization prevents ANY URLs from working
+- Performance degraded by 57x
 
 Based on detailed debugging analysis, numerous critical bugs, type errors, runtime issues, and architectural problems have been identified:
 

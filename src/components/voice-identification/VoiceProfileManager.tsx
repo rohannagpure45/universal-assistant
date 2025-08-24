@@ -53,8 +53,9 @@ import {
 } from 'lucide-react';
 import { VoiceLibraryService } from '@/services/firebase/VoiceLibraryService';
 import { ClientStorageService, type VoiceSampleMetadata } from '@/services/firebase/ClientStorageService';
-import { VoiceSamplePlayer, type VoiceSample } from './VoiceSamplePlayer';
+import { VoiceSamplePlayer } from './VoiceSamplePlayer';
 import type { VoiceLibraryEntry } from '@/types/database';
+import type { VoiceSample, EnhancedVoiceSample } from '@/types/voice-identification';
 
 /**
  * Props for the Voice Profile Manager component
@@ -72,15 +73,7 @@ interface VoiceProfileManagerProps {
   className?: string;
 }
 
-/**
- * Voice sample with additional metadata
- */
-interface EnhancedVoiceSample extends VoiceSample {
-  id: string;
-  filePath: string;
-  selected: boolean;
-  metadata?: VoiceSampleMetadata;
-}
+// Note: Using EnhancedVoiceSample from @/types/voice-identification
 
 /**
  * Profile form data

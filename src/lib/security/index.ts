@@ -38,7 +38,7 @@ export const SecurityFramework = {
   
   // Audio security
   validateAudioFile: require('./audioSecurity').defaultAudioValidator.validateAudioFile,
-  validateVoiceSample: require('./audioSecurity').AudioSecurityHelpers.validateVoiceSample,
+  // validateVoiceSample: removed broken reference to non-existent AudioSecurityHelpers
   
   // Encryption
   encryptData: require('./encryption').dataEncryption.encryptText,
@@ -236,7 +236,7 @@ export class SecurityManager {
       message: string;
     }>;
   }> {
-    const checks = [];
+    const checks: { name: string; status: 'pass' | 'fail' | 'warn'; message: string }[] = [];
 
     // Environment validation
     try {

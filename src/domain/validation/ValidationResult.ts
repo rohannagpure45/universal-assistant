@@ -80,44 +80,60 @@ export class CircuitBreakerError extends ValidationError {
 }
 
 /**
- * Generic validation result type
+ * Successful validation result with type-safe data
  */
-export interface ValidationResult<T = any> {
-  isValid: boolean;
-  data?: T;
-  errors?: ValidationError[];
-  warnings?: string[];
-  metadata?: Record<string, any>;
+export interface ValidationSuccess<T> {
+  readonly isValid: true;
+  readonly data: T;
+  readonly warnings?: string[];
+  readonly metadata?: Record<string, any>;
 }
+
+/**
+ * Failed validation result with errors
+ */
+export interface ValidationFailure {
+  readonly isValid: false;
+  readonly errors: ValidationError[];
+  readonly warnings?: string[];
+  readonly metadata?: Record<string, any>;
+}
+
+/**
+ * Discriminated union for type-safe validation results
+ */
+export type ValidationResult<T> = ValidationSuccess<T> | ValidationFailure;
 
 /**
  * Create a successful validation result
  */
 export function createValidationSuccess<T>(
   data: T,
-  metadata?: Record<string, any>
-): ValidationResult<T> {
+  metadata?: Record<string, any>,
+  warnings?: string[]
+): ValidationSuccess<T> {
   return {
     isValid: true,
     data,
-    metadata,
-  };
+    ...(warnings && warnings.length > 0 && { warnings }),
+    ...(metadata && { metadata })
+  } as const;
 }
 
 /**
  * Create a failed validation result
  */
-export function createValidationFailure<T>(
+export function createValidationFailure(
   errors: ValidationError[],
   warnings?: string[],
   metadata?: Record<string, any>
-): ValidationResult<T> {
+): ValidationFailure {
   return {
     isValid: false,
     errors,
-    warnings,
-    metadata,
-  };
+    ...(warnings && warnings.length > 0 && { warnings }),
+    ...(metadata && { metadata })
+  } as const;
 }
 
 /**
@@ -135,11 +151,80 @@ export function getValidationErrorCodes(errors: ValidationError[]): string[] {
 }
 
 /**
+ * Type guard to check if result is successful
+ */
+export function isValidationSuccess<T>(
+  result: ValidationResult<T>
+): result is ValidationSuccess<T> {
+  return result.isValid === true;
+}
+
+/**
+ * Type guard to check if result is a failure
+ */
+export function isValidationFailure<T>(
+  result: ValidationResult<T>
+): result is ValidationFailure {
+  return result.isValid === false;
+}
+
+/**
  * Utility to check if validation result has specific error code
  */
-export function hasValidationErrorCode(
-  result: ValidationResult,
+export function hasValidationErrorCode<T>(
+  result: ValidationResult<T>,
   code: string
 ): boolean {
-  return result.errors?.some(error => error.code === code) ?? false;
+  if (isValidationFailure(result)) {
+    return result.errors.some(error => error.code === code);
+  }
+  return false;
+}
+
+/**
+ * Safely get data from validation result
+ */
+export function getValidationData<T>(
+  result: ValidationResult<T>
+): T | undefined {
+  return isValidationSuccess(result) ? result.data : undefined;
+}
+
+/**
+ * Safely get errors from validation result
+ */
+export function getValidationErrors<T>(
+  result: ValidationResult<T>
+): ValidationError[] {
+  return isValidationFailure(result) ? result.errors : [];
+}
+
+/**
+ * Map over successful validation result
+ */
+export function mapValidationResult<T, U>(
+  result: ValidationResult<T>,
+  mapper: (data: T) => U
+): ValidationResult<U> {
+  if (isValidationSuccess(result)) {
+    return createValidationSuccess(
+      mapper(result.data),
+      result.metadata,
+      result.warnings
+    );
+  }
+  return result as ValidationFailure;
+}
+
+/**
+ * Chain validation results
+ */
+export function chainValidation<T, U>(
+  result: ValidationResult<T>,
+  validator: (data: T) => ValidationResult<U>
+): ValidationResult<U> {
+  if (isValidationFailure(result)) {
+    return result;
+  }
+  return validator(result.data);
 }

@@ -40,10 +40,10 @@ import type { VoiceLibraryEntry } from '@/types/database';
 import { VoiceSample } from '@/types/voice-identification';
 
 // Sample quality levels (legacy compatibility)
-type QualityLevel = 'excellent' | 'good' | 'fair' | 'poor';
+type QualityLevel = 'excellent' | 'good' | 'fair' | 'poor' | 'low' | 'medium' | 'high';
 
 // Sample source types (legacy compatibility)  
-type SampleSource = 'live-recording' | 'file-upload' | 'meeting-extract' | 'training-session';
+type SampleSource = 'live-recording' | 'file-upload' | 'meeting-extract' | 'training-session' | 'upload' | 'meeting' | 'training';
 
 // Speaker profile interface
 interface SpeakerProfile {
@@ -109,6 +109,25 @@ const QUALITY_CONFIGS = {
     color: 'danger', 
     threshold: 0, 
     label: 'Poor',
+    icon: <FileX className="w-4 h-4" />
+  },
+  // Adding aliases for VoiceSampleAnalysis qualityLevel values
+  high: { 
+    color: 'success', 
+    threshold: 0.85, 
+    label: 'High',
+    icon: <Star className="w-4 h-4" />
+  },
+  medium: { 
+    color: 'warning', 
+    threshold: 0.5, 
+    label: 'Medium',
+    icon: <AlertTriangle className="w-4 h-4" />
+  },
+  low: { 
+    color: 'danger', 
+    threshold: 0, 
+    label: 'Low',
     icon: <FileX className="w-4 h-4" />
   }
 };
@@ -457,10 +476,10 @@ export const VoiceTrainingSampleManager: React.FC<VoiceTrainingSampleManagerProp
   const filteredAndSortedSamples = samples
     .filter(sample => {
       // Apply filters
-      if (filters.qualityLevel?.length && !filters.qualityLevel.includes(sample.qualityLevel)) {
+      if (filters.qualityLevel?.length && sample.qualityLevel && !filters.qualityLevel.includes(sample.qualityLevel)) {
         return false;
       }
-      if (filters.source?.length && !filters.source.includes(sample.source)) {
+      if (filters.source?.length && sample.source && !filters.source.includes(sample.source)) {
         return false;
       }
       if (filters.duration) {
@@ -908,7 +927,7 @@ const SampleCard: React.FC<SampleCardProps> = ({
   onToggleActive,
   onDelete
 }) => {
-  const qualityConfig = QUALITY_CONFIGS[sample.qualityLevel];
+  const qualityConfig = sample.qualityLevel ? QUALITY_CONFIGS[sample.qualityLevel] : QUALITY_CONFIGS.fair;
 
   return (
     <Card className={`

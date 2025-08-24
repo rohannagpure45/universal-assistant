@@ -50,63 +50,128 @@ export interface VoiceQualityAssessment {
   recommendations: string[];
 }
 
+// ============================================
+// SEGREGATED INTERFACES (Interface Segregation Principle)
+// ============================================
+
 /**
- * Unified voice sample interface for all components
- * Combines all variants to ensure compatibility across the codebase
- * Most properties are optional to support partial objects during construction
+ * Core voice sample properties (required for all samples)
+ * This is the minimal set of properties every voice sample must have
  */
-export interface VoiceSample {
+export interface VoiceSampleCore {
   /** Unique identifier for the sample */
   id: string;
   /** URL to the audio file */
   url: string;
-  /** Optional blob for in-memory samples */
-  blob?: Blob;
   /** Transcript text of the audio */
   transcript: string;
   /** Quality score (0-1) */
   quality: number;
   /** Duration in seconds */
   duration: number;
-  /** Sample source type (optional, defaults based on context) */
-  source?: 'live-recording' | 'file-upload' | 'meeting-extract' | 'training-session' | 'upload' | 'meeting' | 'training';
   /** Timestamp when recorded */
   timestamp: Date;
-  /** Additional metadata from storage (optional) */
+}
+
+/**
+ * Storage-related properties for voice samples
+ */
+export interface VoiceSampleStorage {
+  /** File path in storage */
+  filePath?: string;
+  /** Optional blob for in-memory samples */
+  blob?: Blob;
+  /** Additional metadata from storage */
   metadata?: VoiceSampleStorageMetadata;
-  /** Whether sample is starred (optional, defaults to false) */
+}
+
+/**
+ * UI state properties for voice samples
+ */
+export interface VoiceSampleUI {
+  /** Whether sample is starred */
   isStarred?: boolean;
-  /** Active state for UI (optional, defaults to false) */
+  /** Active state for UI */
   isActive?: boolean;
-  /** Quality level indicator (optional, computed from quality score) */
-  qualityLevel?: 'poor' | 'fair' | 'good' | 'excellent' | 'low' | 'medium' | 'high';
-  /** Organizational tags (optional, defaults to empty array) */
-  tags?: string[];
-  /** Optional notes */
-  notes?: string;
-  /** Speaker confidence score */
-  confidence?: number;
+  /** Whether this sample is selected in UI */
+  selected?: boolean;
+}
+
+/**
+ * Identity and context properties for voice samples
+ */
+export interface VoiceSampleIdentity {
   /** Speaker ID who recorded this */
   speakerId?: string;
   /** Meeting ID where this was recorded */
   meetingId?: string;
-  /** Training method used (for training components) */
-  method?: 'self-recording' | 'upload' | 'meeting-clips';
-  /** File path in storage */
-  filePath?: string;
-  /** Whether this sample is selected in UI */
-  selected?: boolean;
+  /** Sample source type */
+  source?: 'live-recording' | 'file-upload' | 'meeting-extract' | 'training-session' | 'upload' | 'meeting' | 'training';
+  /** Speaker confidence score */
+  confidence?: number;
+}
+
+/**
+ * Analysis and quality properties for voice samples
+ */
+export interface VoiceSampleAnalysis {
+  /** Quality level indicator (computed from quality score) */
+  qualityLevel?: 'poor' | 'fair' | 'good' | 'excellent' | 'low' | 'medium' | 'high';
   /** Quality assessment details */
   qualityAssessment?: VoiceQualityAssessment;
 }
 
 /**
- * Enhanced voice sample with metadata and analysis (legacy compatibility)
+ * Organizational properties for voice samples
  */
-export interface EnhancedVoiceSample extends VoiceSample {
-  /** File path in storage */
+export interface VoiceSampleOrganization {
+  /** Organizational tags */
+  tags?: string[];
+  /** Optional notes */
+  notes?: string;
+  /** Training method used (for training components) */
+  method?: 'self-recording' | 'upload' | 'meeting-clips';
+}
+
+// ============================================
+// COMPOSED INTERFACES (Composition over Inheritance)
+// ============================================
+
+/**
+ * Base voice sample for most use cases
+ * Combines core properties with identity information
+ */
+export type VoiceSample = VoiceSampleCore & 
+  VoiceSampleIdentity & 
+  VoiceSampleStorage &
+  VoiceSampleUI &
+  VoiceSampleAnalysis &
+  VoiceSampleOrganization;
+
+/**
+ * Minimal voice sample for playback components
+ * Only needs core properties for audio playback
+ */
+export type PlaybackVoiceSample = VoiceSampleCore;
+
+/**
+ * UI-focused voice sample for interactive components
+ */
+export type UIVoiceSample = VoiceSampleCore & VoiceSampleUI & VoiceSampleIdentity;
+
+/**
+ * Storage-focused voice sample for persistence operations
+ */
+export type StorageVoiceSample = VoiceSampleCore & VoiceSampleStorage & VoiceSampleIdentity;
+
+/**
+ * Enhanced voice sample with additional metadata
+ * Extends the base VoiceSample with guaranteed storage properties
+ */
+export type EnhancedVoiceSample = VoiceSample & {
+  /** Required storage path */
   filePath: string;
-  /** Whether this sample is selected in UI */
+  /** Required selection state */
   selected: boolean;
 }
 
@@ -897,30 +962,5 @@ export type VoiceMeetingId = Branded<string, 'VoiceMeetingId'>;
 
 // Note: VoiceSample is now defined as the unified interface above
 
-/**
- * Training-specific VoiceSample type
- * For components focused on voice profile training
- */
-export type TrainingVoiceSample = Pick<EnhancedVoiceSample,
-  'id' | 'url' | 'transcript' | 'quality' | 'duration' | 'timestamp' | 'source' | 'isStarred'
-> & {
-  /** Training-specific metadata */
-  metadata?: VoiceSampleStorageMetadata;
-  /** Quality level for training assessment */
-  qualityLevel?: 'low' | 'medium' | 'high' | 'excellent';
-  /** Optional blob for immediate processing */
-  blob?: Blob;
-};
-
-/**
- * Playback-compatible VoiceSample type  
- * Minimal interface for audio playback components
- */
-export type PlaybackVoiceSample = Pick<EnhancedVoiceSample,
-  'url' | 'transcript' | 'quality' | 'duration'
-> & {
-  /** Optional ID for tracking */
-  id?: string;
-  /** Optional timestamp for ordering */
-  timestamp?: Date;
-};
+// Note: Removed unused TrainingVoiceSample and PlaybackVoiceSample type aliases
+// Components should use VoiceSample or EnhancedVoiceSample directly

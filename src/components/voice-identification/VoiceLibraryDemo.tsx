@@ -42,7 +42,8 @@ import { VoiceSamplePlayer } from './VoiceSamplePlayer';
 import { VoiceProfileManager } from './VoiceProfileManager';
 import { PostMeetingIdentification } from './PostMeetingIdentification';
 import type { VoiceLibraryEntry } from '@/types/database';
-import type { EnhancedVoiceProfile, VoiceSampleStorageMetadata } from '@/types/voice-identification';
+import type { EnhancedVoiceProfile, VoiceSampleStorageMetadata, SimpleVoiceSample } from '@/types/voice-identification';
+import { createVoiceSample, getQualityLevel, isHighQuality } from '@/utils/voice-sample-helpers';
 
 /**
  * Props for the Voice Library Demo component
@@ -189,8 +190,9 @@ const MOCK_VOICE_PROFILES: VoiceLibraryEntry[] = [
 
 /**
  * Mock voice sample for player demo
+ * Using simplified interface and helper functions
  */
-const MOCK_VOICE_SAMPLE = {
+const MOCK_VOICE_SAMPLE: SimpleVoiceSample = createVoiceSample({
   id: 'demo_sample_1',
   url: '/audio/samples/demo_voice_sample.webm',
   transcript: 'This is a demonstration of our voice identification system. The AI can recognize speakers with high accuracy and provide real-time transcription.',
@@ -199,7 +201,7 @@ const MOCK_VOICE_SAMPLE = {
   timestamp: new Date('2024-01-20T15:30:00'),
   confidence: 0.92,
   speakerId: 'alexandra_chen'
-};
+});
 
 export const VoiceLibraryDemo: React.FC<VoiceLibraryDemoProps> = ({
   userId = 'demo-user',
@@ -400,18 +402,41 @@ export const VoiceLibraryDemo: React.FC<VoiceLibraryDemoProps> = ({
               />
 
               <VoiceSamplePlayer
-                sample={{
+                sample={createVoiceSample({
                   ...MOCK_VOICE_SAMPLE,
                   id: 'demo_sample_2',
                   transcript: 'Compact player view with reduced controls.',
                   duration: 5.8,
                   quality: 0.75
-                }}
+                })}
                 showWaveform={false}
                 compact={true}
                 showTranscript={false}
               />
             </div>
+
+            {/* Quality Assessment Demo using simplified helpers */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Quality Assessment (Simplified)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="font-semibold mb-2">Demo Sample Quality</h4>
+                    <p>Quality Score: {MOCK_VOICE_SAMPLE.quality}</p>
+                    <p>Quality Level: {getQualityLevel(MOCK_VOICE_SAMPLE.quality)}</p>
+                    <p>High Quality: {isHighQuality(MOCK_VOICE_SAMPLE) ? 'Yes' : 'No'}</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2">Compact Sample Quality</h4>
+                    <p>Quality Score: 0.75</p>
+                    <p>Quality Level: {getQualityLevel(0.75)}</p>
+                    <p>High Quality: {isHighQuality({ ...MOCK_VOICE_SAMPLE, quality: 0.75 }) ? 'Yes' : 'No'}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Profile Cards Demo */}
             <div>

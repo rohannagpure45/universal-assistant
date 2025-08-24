@@ -957,9 +957,60 @@ export type VoiceProfileId = Branded<string, 'VoiceProfileId'>;
 export type VoiceMeetingId = Branded<string, 'VoiceMeetingId'>;
 
 // ============================================
+// SIMPLIFIED UNIFIED VOICE SAMPLE INTERFACE
+// ============================================
+
+/**
+ * Simplified unified voice sample interface
+ * Contains all properties that components actually use
+ * 
+ * This interface replaces the complex segregated interface system
+ * with a single, comprehensive interface that matches actual usage patterns.
+ */
+export interface SimpleVoiceSample {
+  // Core required properties (what all components need)
+  id: string;
+  url: string;
+  transcript: string;
+  quality: number;
+  duration: number;
+  timestamp: Date;
+  
+  // Optional properties (from all the segregated interfaces)
+  // Identity properties
+  speakerId?: string;
+  meetingId?: string;
+  source?: 'live-recording' | 'file-upload' | 'meeting-extract' | 'training-session' | 'upload' | 'meeting' | 'training';
+  confidence?: number;
+  
+  // Quality and analysis properties  
+  qualityLevel?: 'poor' | 'fair' | 'good' | 'excellent' | 'low' | 'medium' | 'high';
+  qualityAssessment?: VoiceQualityAssessment;
+  
+  // UI state properties
+  isStarred?: boolean;
+  isActive?: boolean;
+  selected?: boolean;
+  
+  // Storage properties
+  filePath?: string;
+  blob?: Blob;
+  metadata?: VoiceSampleStorageMetadata;
+  
+  // Organizational properties
+  tags?: string[];
+  notes?: string;
+  method?: 'self-recording' | 'upload' | 'meeting-clips';
+}
+
+// ============================================
 // COMPONENT COMPATIBILITY TYPE ALIASES
 // ============================================
 
+// Compatibility alias (keep existing VoiceSample working)
+export type VoiceSampleUnified = SimpleVoiceSample;
+
+// Keep existing complex type as fallback for backward compatibility
 // Note: VoiceSample is now defined as the unified interface above
 
 // Note: Removed unused TrainingVoiceSample and PlaybackVoiceSample type aliases

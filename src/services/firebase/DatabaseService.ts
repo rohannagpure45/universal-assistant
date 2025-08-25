@@ -1,5 +1,5 @@
 import { adminDb } from '@/lib/firebase/admin';
-import { db } from '@/lib/firebase/client';
+import { db, auth } from '@/lib/firebase/client';
 import { 
   collection, 
   doc, 
@@ -202,6 +202,44 @@ export class DatabaseError extends Error {
 }
 
 export class DatabaseService {
+  /**
+   * Check if user is authenticated
+   */
+  private static isAuthenticated(): boolean {
+    return auth.currentUser !== null;
+  }
+
+  /**
+   * Handle Firebase permission errors gracefully
+   */
+  private static handleFirebaseError(error: any, operation: string): DatabaseError {
+    if (error?.code === 'permission-denied') {
+      return new DatabaseError(
+        `Authentication required for ${operation}. Please sign in to continue.`,
+        'permission-denied',
+        operation,
+        error
+      );
+    }
+    if (error?.code === 'not-found') {
+      return new DatabaseError(
+        `Resource not found for ${operation}.`,
+        'not-found', 
+        operation,
+        error
+      );
+    }
+    if (error instanceof DatabaseError) {
+      return error;
+    }
+    return new DatabaseError(
+      `Database error during ${operation}: ${error?.message || 'Unknown error'}`,
+      error?.code || 'unknown',
+      operation,
+      error
+    );
+  }
+
   // ============ USER MANAGEMENT ============
   
   /**
@@ -613,6 +651,14 @@ export class DatabaseService {
     meetingId: string, 
     transcriptData: Omit<TranscriptEntry, 'id'>
   ): Promise<string> {
+    if (!this.isAuthenticated()) {
+      throw new DatabaseError(
+        'Authentication required to add transcript entries. Please sign in to continue.',
+        'permission-denied',
+        'addTranscriptEntry'
+      );
+    }
+
     try {
       // Dedupe-at-write: if the most recent transcript (same speaker) within a short window
       // has identical normalized text, update it instead of creating a new doc.
@@ -657,12 +703,7 @@ export class DatabaseService {
       );
       return transcriptRef.id;
     } catch (error) {
-      throw new DatabaseError(
-        `Failed to add transcript entry to meeting ${meetingId}`,
-        'TRANSCRIPT_ADD_FAILED',
-        'addTranscriptEntry',
-        error as Error
-      );
+      throw this.handleFirebaseError(error, 'transcript entry creation');
     }
   }
 

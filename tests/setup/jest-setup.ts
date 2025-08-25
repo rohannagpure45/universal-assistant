@@ -242,10 +242,12 @@ global.Blob = (jest.fn() as any).mockImplementation((parts: any, options: any) =
   slice: jest.fn(),
 }));
 
-global.URL = {
+// Keep the native URL constructor for validation, add static methods
+const OriginalURL = globalThis.URL;
+global.URL = Object.assign(OriginalURL, {
   createObjectURL: jest.fn(() => 'blob:mock-url'),
   revokeObjectURL: jest.fn(),
-} as any;
+});
 
 // Mock nanoid
 jest.mock('nanoid', () => ({

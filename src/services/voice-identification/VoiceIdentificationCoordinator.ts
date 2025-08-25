@@ -75,6 +75,19 @@ export class VoiceIdentificationCoordinator {
       console.log(`Loaded ${this.knownSpeakers.size} known speaker profiles`);
     } catch (error) {
       console.error('Failed to load known speakers:', error);
+      
+      // Handle authentication errors gracefully
+      if (error instanceof Error) {
+        if (error.message.includes('Authentication required') || 
+            error.message.includes('permission-denied') ||
+            error.message.includes('unauthorized')) {
+          console.warn('Could not load known speakers due to authentication. Voice identification will work with reduced functionality.');
+          return; // Continue without known speakers
+        }
+      }
+      
+      // For other errors, log but continue
+      console.warn('Voice identification will proceed without pre-loaded speaker profiles due to error:', error);
     }
   }
 

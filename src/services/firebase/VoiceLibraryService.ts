@@ -3,7 +3,7 @@
  * Manages voice identification data in the voice_library collection
  */
 
-import { db } from '@/lib/firebase/client';
+import { db, auth } from '@/lib/firebase/client';
 import {
   collection,
   doc,
@@ -29,9 +29,30 @@ export class VoiceLibraryService {
   private static readonly MIN_CONFIDENCE_THRESHOLD = 0.7;
 
   /**
+   * Check if user is authenticated
+   */
+  private static isAuthenticated(): boolean {
+    return auth.currentUser !== null;
+  }
+
+  /**
+   * Handle Firebase permission errors gracefully
+   */
+  private static handleFirebaseError(error: any, operation: string): Error {
+    if (error?.code === 'permission-denied') {
+      return new Error(`Authentication required for ${operation}. Please sign in to continue.`);
+    }
+    return error;
+  }
+
+  /**
    * Get or create a voice library entry
    */
   static async getOrCreateVoiceEntry(deepgramVoiceId: string): Promise<VoiceLibraryEntry> {
+    if (!this.isAuthenticated()) {
+      throw new Error('Authentication required to access voice library. Please sign in to continue.');
+    }
+
     try {
       const voiceRef = doc(db, this.COLLECTION_NAME, deepgramVoiceId);
       const voiceSnap = await getDoc(voiceRef);
@@ -65,7 +86,7 @@ export class VoiceLibraryService {
       return { deepgramVoiceId, ...newEntry };
     } catch (error) {
       console.error('Error getting/creating voice entry:', error);
-      throw error;
+      throw this.handleFirebaseError(error, 'voice library access');
     }
   }
 
@@ -80,8 +101,11 @@ export class VoiceLibraryService {
     meetingId: string,
     confidence: number = 1.0
   ): Promise<void> {
+    if (!this.isAuthenticated()) {
+      throw new Error('Authentication required to identify voices. Please sign in to continue.');
+    }
+
     try {
-      
       const voiceRef = doc(db, this.COLLECTION_NAME, deepgramVoiceId);
       
       await updateDoc(voiceRef, {
@@ -100,7 +124,7 @@ export class VoiceLibraryService {
       });
     } catch (error) {
       console.error('Error identifying voice:', error);
-      throw error;
+      throw this.handleFirebaseError(error, 'voice identification');
     }
   }
 

@@ -4,7 +4,7 @@
  * For server-side operations, use the API routes in /api/storage/
  */
 
-import { storage } from '@/lib/firebase/client';
+import { storage, auth } from '@/lib/firebase/client';
 import { ref, uploadBytes, getDownloadURL, deleteObject, listAll, getMetadata } from 'firebase/storage';
 
 // Voice sample metadata interface
@@ -30,6 +30,29 @@ export interface StorageOperationResult {
 }
 
 export class StorageService {
+  /**
+   * Check if user is authenticated
+   */
+  private static isAuthenticated(): boolean {
+    return auth.currentUser !== null;
+  }
+
+  /**
+   * Handle Firebase permission errors gracefully
+   */
+  private static handleStorageError(error: any, operation: string): Error {
+    if (error?.code === 'storage/unauthorized' || error?.code === 'permission-denied') {
+      return new Error(`Authentication required for ${operation}. Please sign in to continue.`);
+    }
+    if (error?.code === 'storage/quota-exceeded') {
+      return new Error(`Storage quota exceeded for ${operation}. Please contact support.`);
+    }
+    if (error?.code === 'storage/invalid-format') {
+      return new Error(`Invalid file format for ${operation}. Please use a supported audio format.`);
+    }
+    return error;
+  }
+
   // ============================================
   // VOICE SAMPLES - Individual voice clips for identification
   // ============================================
@@ -49,6 +72,13 @@ export class StorageService {
       speakerConfidence?: number;
     }
   ): Promise<StorageOperationResult> {
+    if (!this.isAuthenticated()) {
+      return {
+        success: false,
+        error: 'Authentication required to upload voice samples. Please sign in to continue.'
+      };
+    }
+
     try {
       const timestamp = Date.now();
       const fileName = `voice-samples/${deepgramVoiceId}/${timestamp}_${meetingId}_${duration}s.webm`;
@@ -92,9 +122,10 @@ export class StorageService {
       };
     } catch (error) {
       console.error('Error uploading voice sample:', error);
+      const handledError = this.handleStorageError(error, 'voice sample upload');
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: handledError.message
       };
     }
   }

@@ -3,7 +3,7 @@
  * Manages pending speaker identification requests
  */
 
-import { db } from '@/lib/firebase/client';
+import { db, auth } from '@/lib/firebase/client';
 import {
   collection,
   doc,
@@ -25,11 +25,32 @@ export class NeedsIdentificationService {
   private static readonly COLLECTION_NAME = 'needs_identification';
 
   /**
+   * Check if user is authenticated
+   */
+  private static isAuthenticated(): boolean {
+    return auth.currentUser !== null;
+  }
+
+  /**
+   * Handle Firebase permission errors gracefully
+   */
+  private static handleFirebaseError(error: any, operation: string): Error {
+    if (error?.code === 'permission-denied') {
+      return new Error(`Authentication required for ${operation}. Please sign in to continue.`);
+    }
+    return error;
+  }
+
+  /**
    * Create a new identification request
    */
   static async createIdentificationRequest(
     data: Omit<NeedsIdentification, 'id' | 'createdAt' | 'status' | 'resolvedAt' | 'resolvedUserId' | 'resolvedUserName'>
   ): Promise<string> {
+    if (!this.isAuthenticated()) {
+      throw new Error('Authentication required to create identification requests. Please sign in to continue.');
+    }
+
     try {
       // Use deepgramVoiceId if provided, otherwise fall back to voiceId for backward compatibility
       const voiceId = data.deepgramVoiceId || data.voiceId;
@@ -49,7 +70,7 @@ export class NeedsIdentificationService {
       return docId;
     } catch (error) {
       console.error('Error creating identification request:', error);
-      throw error;
+      throw this.handleFirebaseError(error, 'identification request creation');
     }
   }
 
@@ -88,6 +109,10 @@ export class NeedsIdentificationService {
    * @param meetingIdOrLimit - Either a meetingId string or a number limit
    */
   static async getPendingRequests(meetingIdOrLimit: string | number = 10): Promise<NeedsIdentification[]> {
+    if (!this.isAuthenticated()) {
+      throw new Error('Authentication required to get pending requests. Please sign in to continue.');
+    }
+
     try {
       // If string, it's a meetingId - get requests for that meeting
       if (typeof meetingIdOrLimit === 'string') {
@@ -120,7 +145,7 @@ export class NeedsIdentificationService {
       }
     } catch (error) {
       console.error('Error getting pending requests:', error);
-      throw error;
+      throw this.handleFirebaseError(error, 'pending requests retrieval');
     }
   }
 

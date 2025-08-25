@@ -57,28 +57,20 @@ class RateLimiter {
 const rateLimiter = new RateLimiter(100, 1000); // 100 requests per second
 
 /**
- * Configure DOMPurify with strict settings
+ * Get base DOMPurify configuration for performance optimization
  */
-const configureDOMPurify = () => {
-  // Remove all dangerous elements
-  DOMPurify.setConfig({
-    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'u', 'br', 'p', 'span'],
-    ALLOWED_ATTR: [], // No attributes allowed by default
-    ALLOW_DATA_ATTR: false,
-    ALLOW_UNKNOWN_PROTOCOLS: false,
-    SAFE_FOR_TEMPLATES: true,
-    WHOLE_DOCUMENT: false,
-    RETURN_DOM: false,
-    RETURN_DOM_FRAGMENT: false,
-    FORCE_BODY: true,
-    SANITIZE_DOM: true,
-    KEEP_CONTENT: true,
-    IN_PLACE: false
-  });
-};
-
-// Initialize configuration
-configureDOMPurify();
+const getBaseDOMPurifyConfig = () => ({
+  ALLOW_DATA_ATTR: false,
+  ALLOW_UNKNOWN_PROTOCOLS: false,
+  SAFE_FOR_TEMPLATES: true,
+  WHOLE_DOCUMENT: false,
+  RETURN_DOM: false,
+  RETURN_DOM_FRAGMENT: false,
+  FORCE_BODY: false, // Reduces processing overhead
+  SANITIZE_DOM: false, // Reduces DOM operations for performance
+  KEEP_CONTENT: true,
+  IN_PLACE: false
+});
 
 /**
  * Enhanced HTML sanitization with DOMPurify
@@ -90,6 +82,7 @@ export function sanitizeHTML(
     allowedAttributes?: string[];
     allowLinks?: boolean;
     rateLimitKey?: string;
+    maxLength?: number;
   } = {}
 ): string {
   // Note: Rate limiting removed - utility functions should be fast
@@ -98,12 +91,22 @@ export function sanitizeHTML(
     return '';
   }
 
+  // Prevent DoS with extremely large inputs
+  const maxLength = options.maxLength || 10000; // 10KB limit by default for performance
+  if (html.length > maxLength) {
+    html = html.substring(0, maxLength);
+  }
+
+  // Early return for simple cases to avoid DOMPurify overhead
+  if (html.length < 1000 && !needsSanitization(html)) {
+    return html;
+  }
+
   // Configure DOMPurify for this specific sanitization
   const config: any = {
+    ...getBaseDOMPurifyConfig(),
     ALLOWED_TAGS: options.allowedTags || ['b', 'i', 'em', 'strong', 'u', 'br'],
-    ALLOWED_ATTR: options.allowedAttributes || [],
-    ALLOW_DATA_ATTR: false,
-    ALLOW_UNKNOWN_PROTOCOLS: false
+    ALLOWED_ATTR: options.allowedAttributes || []
   };
 
   // If links are allowed, add safe link handling
@@ -115,12 +118,18 @@ export function sanitizeHTML(
     // Add hook to ensure links are safe
     DOMPurify.addHook('afterSanitizeAttributes', (node) => {
       if (node.tagName === 'A') {
-        node.setAttribute('target', '_blank');
-        node.setAttribute('rel', 'noopener noreferrer');
-        
         const href = node.getAttribute('href');
-        if (href && !isValidUrl(href)) {
-          node.removeAttribute('href');
+        
+        // Only validate and modify if href exists
+        if (href) {
+          if (isValidUrl(href)) {
+            // URL is valid, add security attributes
+            node.setAttribute('target', '_blank');
+            node.setAttribute('rel', 'noopener noreferrer');
+          } else {
+            // URL is invalid, remove href
+            node.removeAttribute('href');
+          }
         }
       }
     });
@@ -224,6 +233,14 @@ export function sanitizeUrl(
     rateLimitKey?: string;
   } = {}
 ): string {
+  // Default to allowing common safe URL types
+  const defaults = {
+    allowRelative: true,
+    allowHash: true,
+    allowMailto: true,
+    allowTel: true,
+    ...options
+  };
   // Note: Rate limiting removed from utility function - should be handled at API level
   // Utility functions should be fast and not have artificial throttling
 
@@ -246,22 +263,30 @@ export function sanitizeUrl(
     const parsed = new URL(trimmed, base);
     
     // Check specific protocol permissions
-    if (parsed.protocol === 'mailto:' && !options.allowMailto) {
+    if (parsed.protocol === 'mailto:' && !defaults.allowMailto) {
       return '';
     }
     
-    if (parsed.protocol === 'tel:' && !options.allowTel) {
+    if (parsed.protocol === 'tel:' && !defaults.allowTel) {
       return '';
     }
     
-    // For relative URLs
-    if (parsed.origin === base && !options.allowRelative) {
-      return '';
+    // Handle relative URLs specially
+    if (trimmed.startsWith('/') && parsed.origin === base) {
+      if (!defaults.allowRelative) {
+        return '';
+      }
+      // Return relative URL as-is after basic sanitization
+      return trimmed.replace(/[<>"'`]/g, '');
     }
     
     // For hash URLs
-    if (trimmed.startsWith('#') && !options.allowHash) {
-      return '';
+    if (trimmed.startsWith('#')) {
+      if (!defaults.allowHash) {
+        return '';
+      }
+      // Return hash as-is after aggressive sanitization (preserve # at start)
+      return '#' + trimmed.slice(1).replace(/[<>"'`();{}[\]\\|=+*&%$@!~^]/g, '');
     }
 
     // Additional sanitization for the URL components
@@ -276,14 +301,14 @@ export function sanitizeUrl(
     return sanitized.href;
   } catch {
     // Handle relative URLs
-    if (trimmed.startsWith('/') && options.allowRelative) {
+    if (trimmed.startsWith('/') && defaults.allowRelative) {
       // Remove any dangerous characters
       return trimmed.replace(/[<>"'`]/g, '');
     }
     
-    if (trimmed.startsWith('#') && options.allowHash) {
-      // Sanitize hash
-      return trimmed.replace(/[<>"'`();]/g, '');
+    if (trimmed.startsWith('#') && defaults.allowHash) {
+      // Sanitize hash with aggressive character removal (preserve # at start)
+      return '#' + trimmed.slice(1).replace(/[<>"'`();{}[\]\\|=+*&%$@!~^]/g, '');
     }
 
     return '';

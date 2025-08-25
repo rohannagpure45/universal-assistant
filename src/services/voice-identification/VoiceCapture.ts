@@ -300,6 +300,19 @@ export class VoiceCaptureService {
       
     } catch (error) {
       console.error('Failed to save voice segment:', error);
+      
+      // Handle authentication errors gracefully
+      if (error instanceof Error) {
+        if (error.message.includes('Authentication required') || 
+            error.message.includes('permission-denied') ||
+            error.message.includes('unauthorized')) {
+          console.warn('Voice segment save failed due to authentication. This is expected if user is not signed in.');
+          return; // Fail silently for auth issues during voice capture
+        }
+      }
+      
+      // For other errors, we might want to retry or notify the user
+      console.error('Unexpected error saving voice segment:', error);
     }
   }
 

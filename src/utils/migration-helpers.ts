@@ -15,6 +15,7 @@ import type {
 } from '@/types/voice-identification';
 // Removed unused VoiceSampleValidator import
 import { createValidationSuccess, createValidationFailure, ValidationResult } from '@/domain/validation/ValidationResult';
+import { isValidVoiceSample } from './voice-sample-helpers';
 
 /**
  * Version tracking for migrations
@@ -313,7 +314,7 @@ export class VoiceSampleMigrator {
         if (result.warnings?.length) {
           warnings.push(...result.warnings.map(w => `Sample ${index}: ${w}`));
         }
-      } else if (VoiceSampleValidator.isValid(sample)) {
+      } else if (isValidVoiceSample(sample)) {
         migrated.push(sample as VoiceSample);
       } else {
         failed.push({

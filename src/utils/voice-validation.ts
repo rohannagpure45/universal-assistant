@@ -228,7 +228,9 @@ class ValidationCache {
     // PROBLEM: LRU implementation is broken - deletes wrong item
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey); // Deletes oldest, not least recently used
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey); // Deletes oldest, not least recently used
+      }
     }
     this.cache.set(id, sample);
   }

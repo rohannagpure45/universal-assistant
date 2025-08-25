@@ -6,13 +6,10 @@
  */
 
 import { getAuth } from 'firebase/auth';
-import { ErrorTracker } from '@/services/monitoring/ErrorTracker';
 import { 
   DEEPGRAM_TOKEN_CONFIG, 
   API_ENDPOINTS, 
-  SECURITY_HEADERS,
-  SECURITY_ERROR_TYPES,
-  type SecurityErrorType 
+  SECURITY_HEADERS
 } from '@/config/securityConfig';
 
 interface DeepgramTokenResponse {
@@ -64,16 +61,7 @@ export class SecureDeepgramTokenClient {
     
     if (!user) {
       const error = new Error('User must be authenticated to get Deepgram token');
-      ErrorTracker.logError(
-        'SecureDeepgramTokenClient',
-        'Authentication required',
-        error,
-        { 
-          category: 'authentication',
-          severity: 'medium',
-          errorType: SECURITY_ERROR_TYPES.CONNECTION_UNAUTHORIZED
-        }
-      );
+      console.error('[SecureDeepgramTokenClient] Authentication required:', error.message);
       throw error;
     }
 
@@ -102,29 +90,13 @@ export class SecureDeepgramTokenClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorType = response.status === 401 ? 
-          SECURITY_ERROR_TYPES.TOKEN_INVALID : 
-          SECURITY_ERROR_TYPES.TOKEN_REFRESH_FAILED;
+        // Error categorization for logging (removed error type enum)
           
         const error = new Error(
           errorData.error || `Token request failed: ${response.status} ${response.statusText}`
         );
         
-        ErrorTracker.logError(
-          'SecureDeepgramTokenClient',
-          'Token request failed',
-          error,
-          {
-            category: 'authentication',
-            severity: response.status === 401 ? 'high' : 'medium',
-            errorType,
-            metadata: { 
-              status: response.status,
-              statusText: response.statusText,
-              responseData: errorData
-            }
-          }
-        );
+        console.error(`[SecureDeepgramTokenClient] Token request failed (${response.status}):`, error.message);
         
         throw error;
       }
@@ -133,17 +105,7 @@ export class SecureDeepgramTokenClient {
       
       if (!data.success || !data.token) {
         const error = new Error('Invalid token response from server');
-        ErrorTracker.logError(
-          'SecureDeepgramTokenClient',
-          'Invalid token response',
-          error,
-          {
-            category: 'network',
-            severity: 'high',
-            errorType: SECURITY_ERROR_TYPES.TOKEN_REFRESH_FAILED,
-            metadata: { responseData: data }
-          }
-        );
+        console.error('[SecureDeepgramTokenClient] Invalid token response:', error.message);
         throw error;
       }
 
@@ -154,16 +116,8 @@ export class SecureDeepgramTokenClient {
       return data.token;
 
     } catch (error) {
-      ErrorTracker.logError(
-        'SecureDeepgramTokenClient',
-        'Token fetch operation failed',
-        error instanceof Error ? error : new Error(String(error)),
-        {
-          category: 'network',
-          severity: 'high',
-          errorType: SECURITY_ERROR_TYPES.TOKEN_REFRESH_FAILED
-        }
-      );
+      console.error('[SecureDeepgramTokenClient] Token fetch operation failed:', 
+        error instanceof Error ? error.message : String(error));
       
       // Clear cached token on error
       this.currentToken = null;

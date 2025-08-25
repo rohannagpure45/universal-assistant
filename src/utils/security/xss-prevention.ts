@@ -92,12 +92,7 @@ export function sanitizeHTML(
     rateLimitKey?: string;
   } = {}
 ): string {
-  // Rate limiting check
-  const limitKey = options.rateLimitKey || 'global';
-  if (!rateLimiter.isAllowed(limitKey)) {
-    console.warn('Rate limit exceeded for sanitization');
-    return '';
-  }
+  // Note: Rate limiting removed - utility functions should be fast
 
   if (typeof html !== 'string') {
     return '';
@@ -229,12 +224,8 @@ export function sanitizeUrl(
     rateLimitKey?: string;
   } = {}
 ): string {
-  // Rate limiting check
-  const limitKey = options.rateLimitKey || 'url';
-  if (!rateLimiter.isAllowed(limitKey)) {
-    console.warn('Rate limit exceeded for URL sanitization');
-    return '';
-  }
+  // Note: Rate limiting removed from utility function - should be handled at API level
+  // Utility functions should be fast and not have artificial throttling
 
   if (!url || typeof url !== 'string') {
     return '';
@@ -424,12 +415,7 @@ export function sanitizeUserInput(
     return '';
   }
 
-  // Rate limiting check
-  const limitKey = options.rateLimitKey || 'input';
-  if (!rateLimiter.isAllowed(limitKey)) {
-    console.warn('Rate limit exceeded for input sanitization');
-    return '';
-  }
+  // Note: Rate limiting removed - utility functions should be fast
 
   let sanitized = String(input);
 

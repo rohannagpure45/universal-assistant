@@ -181,8 +181,8 @@ class ErrorTracker {
               await new Promise(resolve => setTimeout(resolve, 1000));
               await audioModule.audioManager.startRecording();
               
-              logger.info('Audio system restart successful', 'ErrorRecovery', {
-                context, metadata: { originalError: error.message }
+              logger.info('Audio system restart successful', context, {
+                metadata: { originalError: error.message }
               });
               return true;
             }
@@ -190,7 +190,12 @@ class ErrorTracker {
             return false;
           } catch (restartError) {
             logger.error('Audio system restart failed', 'ErrorRecovery', {
-              error: restartError, context
+              error: restartError instanceof Error ? {
+                name: restartError.name,
+                message: restartError.message,
+                stack: restartError.stack
+              } : { name: 'UnknownError', message: String(restartError) },
+              metadata: { context }
             });
             return false;
           }
@@ -203,13 +208,14 @@ class ErrorTracker {
         id: 'ui-refresh',
         name: 'UI Component Refresh',
         category: 'ui',
-        condition: (error) => error.message.includes('render') || context.includes('Component'),
+        condition: (error) => error.message.includes('render'),
+        // Note: context parameter not available in condition function
         execute: async (error, context) => {
           try {
             // Trigger component re-render by clearing state
             if (typeof window !== 'undefined' && (window as any).location) {
               logger.info('Triggering UI refresh', 'ErrorRecovery', {
-                context, metadata: { originalError: error.message }
+                metadata: { context, originalError: error.message }
               });
               
               // Dispatch a custom event that components can listen to for refresh
@@ -223,7 +229,12 @@ class ErrorTracker {
             return false;
           } catch (refreshError) {
             logger.error('UI refresh failed', 'ErrorRecovery', {
-              error: refreshError, context
+              error: refreshError instanceof Error ? {
+                name: refreshError.name,
+                message: refreshError.message,
+                stack: refreshError.stack
+              } : { name: 'UnknownError', message: String(refreshError) },
+              metadata: { context }
             });
             return false;
           }
@@ -311,44 +322,58 @@ class ErrorTracker {
         lastSeen: timestamp
       };
     } else {
-      // Update existing error
-      errorReport.occurrenceCount++;
-      errorReport.lastSeen = timestamp;
-      errorReport.metadata = { ...errorReport.metadata, ...metadata };
+      // Update existing error - add explicit null check for TypeScript
+      if (errorReport) {
+        errorReport.occurrenceCount++;
+        errorReport.lastSeen = timestamp;
+        errorReport.metadata = { ...errorReport.metadata, ...metadata };
+      } else {
+        // This should never happen, but satisfy TypeScript
+        throw new Error(`Unexpected null errorReport for ${errorId}`);
+      }
     }
+    
+    // TypeScript now knows errorReport is defined
+    const finalErrorReport = errorReport;
 
-    this.errors.set(errorId, errorReport);
+    this.errors.set(errorId, finalErrorReport);
     
     // Update error counts for rate calculation
-    const errorKey = `${errorReport.category}-${Date.now()}`;
+    const errorKey = `${finalErrorReport.category}-${Date.now()}`;
     this.errorCounts.set(errorKey, (this.errorCounts.get(errorKey) || 0) + 1);
 
     // Log the error
     logger.error(error.message, context, {
-      error,
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      },
       metadata: {
         ...metadata,
-        errorId,
-        category: errorReport.category,
-        severity: errorReport.severity,
-        occurrenceCount: errorReport.occurrenceCount
+        category: finalErrorReport.category,
+        severity: finalErrorReport.severity,
+        occurrenceCount: finalErrorReport.occurrenceCount
       }
     });
 
     // Attempt recovery for new errors
-    if (isNewError || errorReport.occurrenceCount <= 3) {
+    if (isNewError || finalErrorReport.occurrenceCount <= 3) {
       const recovered = await this.attemptRecovery(error, context, metadata);
-      errorReport.recovered = recovered;
+      finalErrorReport.recovered = recovered;
       
       if (recovered) {
         logger.info(`Error recovery successful for ${errorId}`, 'ErrorRecovery', {
-          errorId, context, strategy: errorReport.recoveryStrategy
+          metadata: {
+            context,
+            strategy: finalErrorReport.recoveryStrategy
+          }
         });
       }
     }
 
     // Check for alert conditions
-    this.checkAlertConditions(errorReport);
+    this.checkAlertConditions(finalErrorReport);
 
     return errorId;
   }
@@ -441,7 +466,7 @@ class ErrorTracker {
     for (const strategy of applicableStrategies) {
       try {
         logger.info(`Attempting recovery strategy: ${strategy.name}`, 'ErrorRecovery', {
-          errorMessage: error.message, context, strategy: strategy.id
+          metadata: { errorMessage: error.message, context, strategy: strategy.id }
         });
 
         const recovered = await strategy.execute(error, context, metadata);
@@ -473,7 +498,12 @@ class ErrorTracker {
         }
       } catch (recoveryError) {
         logger.error(`Recovery strategy ${strategy.name} failed`, 'ErrorRecovery', {
-          error: recoveryError, originalError: error.message
+          error: recoveryError instanceof Error ? {
+            name: recoveryError.name,
+            message: recoveryError.message,
+            stack: recoveryError.stack
+          } : { name: 'UnknownError', message: String(recoveryError) },
+          metadata: { originalError: error.message }
         });
       }
     }

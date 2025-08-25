@@ -180,7 +180,7 @@ export class DeepgramSTT {
         };
 
         this.websocket.onmessage = (event) => {
-          this.handleTranscriptionMessage(event);
+          this.handleWebSocketMessage(event);
         };
 
       } catch (error) {

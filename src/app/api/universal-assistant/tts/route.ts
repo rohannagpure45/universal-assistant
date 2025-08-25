@@ -239,14 +239,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user ID from authorization header
-    let userId: string | null = null;
+    // SECURITY FIX: Enforce authentication
     const authHeader = request.headers.get('authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      const decodedToken = await verifyIdToken(token);
-      userId = decodedToken?.uid || null;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
+      );
     }
+
+    const token = authHeader.substring(7);
+    let decodedToken;
+    try {
+      decodedToken = await verifyIdToken(token);
+      if (!decodedToken) {
+        throw new Error('Invalid token');
+      }
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid authentication token' },
+        { status: 401 }
+      );
+    }
+
+    const userId = decodedToken.uid;
 
     // Process voice settings
     const { voiceId: finalVoiceId, voiceSettings, modelId } = await processVoiceSettings(

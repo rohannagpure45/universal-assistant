@@ -147,7 +147,7 @@ export class VoiceMatchService {
     meetingEntry: MeetingHistoryEntry
   ): Promise<void> {
     try {
-      await this.updateVoiceMatch(deepgramVoiceId, undefined, meetingEntry);
+      await this.updateVoiceMatch(deepgramVoiceId, null, meetingEntry);
     } catch (error) {
       console.error('Error adding meeting history:', error);
       throw error;

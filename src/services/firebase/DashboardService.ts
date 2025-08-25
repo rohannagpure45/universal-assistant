@@ -139,9 +139,9 @@ export class DashboardService {
    */
   static async getUserMeetings(
     userId: string, 
-    limit: number = 10
+    limitCount: number = 10
   ): Promise<Meeting[]> {
-    const cacheKey = `user-meetings:${userId}:${limit}`;
+    const cacheKey = `user-meetings:${userId}:${limitCount}`;
     
     // Check cache first
     const cached = getCachedResult(cacheKey);
@@ -154,7 +154,7 @@ export class DashboardService {
         collection(db, 'meetings'),
         where('participantIds', 'array-contains', userId),
         orderBy('startTime', 'desc'),
-        limit(limit)
+        limit(limitCount)
       );
       
       const snapshot = await getDocs(meetingQuery);

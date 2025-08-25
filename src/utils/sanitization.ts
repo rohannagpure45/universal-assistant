@@ -238,5 +238,43 @@ export {
   batchSanitize
 };
 
+/**
+ * Sanitize VoiceSample object to prevent XSS in voice-related content
+ * @param sample - Voice sample to sanitize
+ * @returns Sanitized voice sample with safe text fields
+ */
+export function sanitizeVoiceSample<T extends { transcript?: string; notes?: string; tags?: string[] }>(
+  sample: T
+): T {
+  const result = { ...sample };
+
+  // Sanitize transcript text if present
+  if (result.transcript) {
+    result.transcript = sanitizeTranscript(result.transcript);
+  }
+
+  // Sanitize notes if present
+  if (result.notes) {
+    result.notes = sanitizeUserInput(result.notes, {
+      allowNewlines: true,
+      maxLength: 1000,
+      allowBasicFormatting: false
+    });
+  }
+
+  // Sanitize tags array if present
+  if (result.tags && Array.isArray(result.tags)) {
+    result.tags = result.tags.map(tag => 
+      sanitizeUserInput(tag, {
+        allowNewlines: false,
+        maxLength: 50,
+        allowBasicFormatting: false
+      })
+    ).filter(tag => tag.trim().length > 0); // Remove empty tags
+  }
+
+  return result;
+}
+
 // Re-export escapeHtml as default for convenience
 export default escapeHtml;

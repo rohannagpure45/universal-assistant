@@ -145,6 +145,31 @@ const DEFAULT_POLLING_CONFIG: PollingConfig = {
   maxBackoffDelay: 30000, // 30 seconds max
 };
 
+// Efficient shallow equality check for polling data comparison
+function shallowEqual(obj1: any, obj2: any): boolean {
+  if (obj1 === obj2) return true;
+  
+  if (!obj1 || !obj2) return false;
+  
+  if (typeof obj1 !== 'object' || typeof obj2 !== 'object') {
+    return obj1 === obj2;
+  }
+  
+  if (Array.isArray(obj1) !== Array.isArray(obj2)) return false;
+  
+  if (Array.isArray(obj1)) {
+    if (obj1.length !== obj2.length) return false;
+    return obj1.every((item, index) => item === obj2[index]);
+  }
+  
+  const keys1 = Object.keys(obj1);
+  const keys2 = Object.keys(obj2);
+  
+  if (keys1.length !== keys2.length) return false;
+  
+  return keys1.every(key => obj1[key] === obj2[key]);
+}
+
 // Polling manager to handle multiple concurrent polls
 class PollingManager {
   private activePolls = new Map<string, {
@@ -170,8 +195,8 @@ class PollingManager {
         const existingPoll = this.activePolls.get(pollId);
         
         if (existingPoll) {
-          // Only call callback if data has changed
-          const dataChanged = JSON.stringify(data) !== JSON.stringify(existingPoll.lastData);
+          // Only call callback if data has changed (using efficient shallow comparison)
+          const dataChanged = !shallowEqual(data, existingPoll.lastData);
           if (dataChanged) {
             callback(data);
             existingPoll.lastData = data;

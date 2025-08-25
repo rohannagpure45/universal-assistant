@@ -92,7 +92,7 @@ class ErrorTracker {
             
             if (response.ok) {
               logger.info(`Network retry successful on attempt ${attempt}`, 'ErrorRecovery', {
-                url, attempt, metadata: { originalError: error.message }
+                metadata: { attempt, originalError: error.message, url }
               });
               return true;
             }
@@ -100,7 +100,8 @@ class ErrorTracker {
             return false;
           } catch (retryError) {
             logger.warn(`Network retry failed on attempt ${attempt}`, 'ErrorRecovery', {
-              url, attempt, error: retryError
+              error: retryError instanceof Error ? retryError : undefined,
+              metadata: { attempt, url }
             });
             return false;
           }
@@ -116,21 +117,16 @@ class ErrorTracker {
         condition: (error) => error.message.includes('401') || error.message.includes('Unauthorized'),
         execute: async (error, context) => {
           try {
-            // Attempt to refresh authentication
-            const authModule = await import('../firebase/AuthService');
-            const refreshed = await authModule.authService.refreshSession();
-            
-            if (refreshed) {
-              logger.info('Authentication refresh successful', 'ErrorRecovery', {
-                context, metadata: { originalError: error.message }
-              });
-              return true;
-            }
-            
+            // Authentication recovery not implemented yet
+            // TODO: Implement proper authentication refresh when AuthService supports it
+            logger.warn('Authentication refresh not available', 'ErrorRecovery', {
+              metadata: { context, originalError: error.message }
+            });
             return false;
           } catch (refreshError) {
             logger.error('Authentication refresh failed', 'ErrorRecovery', {
-              error: refreshError, context
+              error: refreshError instanceof Error ? refreshError : undefined,
+              metadata: { context }
             });
             return false;
           }
@@ -153,17 +149,16 @@ class ErrorTracker {
         condition: (error) => error.message.includes('database') || error.message.includes('firestore'),
         execute: async (error, context) => {
           try {
-            // Attempt to reconnect to database
-            const dbModule = await import('../firebase/DatabaseService');
-            await dbModule.databaseService.reconnect();
-            
-            logger.info('Database reconnection successful', 'ErrorRecovery', {
-              context, metadata: { originalError: error.message }
+            // Database reconnection not implemented yet
+            // TODO: Implement proper database reconnection when DatabaseService supports it
+            logger.warn('Database reconnection not available', 'ErrorRecovery', {
+              metadata: { context, originalError: error.message }
             });
-            return true;
+            return false;
           } catch (reconnectError) {
             logger.error('Database reconnection failed', 'ErrorRecovery', {
-              error: reconnectError, context
+              error: reconnectError instanceof Error ? reconnectError : undefined,
+              metadata: { context }
             });
             return false;
           }

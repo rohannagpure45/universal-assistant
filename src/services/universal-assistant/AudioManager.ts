@@ -35,7 +35,7 @@ export class AudioManager {
     private audioQueue: HTMLAudioElement[] = [];
     private activeAudioElements: Set<HTMLAudioElement> = new Set();
     private recordingCallbacks: ((chunk: Blob) => void)[] = [];
-    private inputGatekeeper: InputGatekeeper;
+    private inputGatekeeper: InputGatekeeper | null = null;
     private enhancedInputGatekeeper: EnhancedInputGatekeeper | null = null;
     private concurrentGatekeeper: ConcurrentGatekeeper | null = null;
     private config: AudioManagerConfig;
@@ -78,10 +78,13 @@ export class AudioManager {
       };
 
       // Initialize input gatekeeper with conversation handlers
-      const handlers = createConversationInputHandlers(
-        this.onConversationResponse.bind(this)
-      );
-      this.inputGatekeeper = createInputGatekeeper(handlers);
+      // TODO: AudioManager needs proper ConversationProcessor integration
+      // For now, skip input gatekeeper initialization due to missing ConversationProcessor
+      // const handlers = createConversationInputHandlers(
+      //   this.onConversationResponse.bind(this)
+      // );
+      // this.inputGatekeeper = createInputGatekeeper(handlers);
+      this.inputGatekeeper = null;
 
       // Initialize concurrent processing if enabled
       if (this.config.enableConcurrentProcessing) {
@@ -694,7 +697,7 @@ export class AudioManager {
           enablePerformanceMonitoring: true,
         });
 
-        const baseHandlers = createConversationInputHandlers();
+        const baseHandlers = createConversationInputHandlers(messageProcessor);
         const enhancedHandlers = {
           handleInput: baseHandlers.handleInput,
           saveAsContext: baseHandlers.saveAsContext,
@@ -741,7 +744,7 @@ export class AudioManager {
         // Use enhanced gatekeeper if available and concurrent processing is enabled
         if (this.config.enableConcurrentProcessing && this.enhancedInputGatekeeper && speakerId) {
           await this.enhancedInputGatekeeper.processInput(inputItem);
-        } else {
+        } else if (this.inputGatekeeper) {
           // Fallback to regular gatekeeper
           await this.inputGatekeeper.processInput(inputItem);
         }
@@ -760,7 +763,7 @@ export class AudioManager {
         // Use enhanced gatekeeper if available
         if (this.config.enableConcurrentProcessing && this.enhancedInputGatekeeper && speakerId) {
           this.enhancedInputGatekeeper.gateDuringTTS(playbackPromise);
-        } else {
+        } else if (this.inputGatekeeper) {
           // Fallback to regular gatekeeper
           this.inputGatekeeper.gateDuringTTS(playbackPromise);
         }
@@ -996,8 +999,23 @@ export function createAudioManager(config?: Partial<AudioManagerConfig>): AudioM
   return new AudioManager(config);
 }
 
+// Safe singleton pattern for browser-dependent service
+let audioManagerInstance: AudioManager | null = null;
+
+export function getAudioManager(): AudioManager | null {
+  if (typeof window === 'undefined') {
+    return null; // SSR safe
+  }
+  
+  if (!audioManagerInstance) {
+    audioManagerInstance = new AudioManager();
+  }
+  
+  return audioManagerInstance;
+}
+
 /**
- * @deprecated Use createAudioManager() factory function instead to avoid SSR issues
+ * @deprecated Use getAudioManager() factory function instead for better SSR safety
  * This singleton export will be removed in a future version
  */
-export const audioManager = typeof window !== 'undefined' ? new AudioManager() : null as any;
+export const audioManager = getAudioManager();

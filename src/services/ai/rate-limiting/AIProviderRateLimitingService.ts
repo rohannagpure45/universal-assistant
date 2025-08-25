@@ -98,9 +98,10 @@ export class AIProviderRateLimitingService {
         
         if (!result.allowed) {
           throw new RateLimitExceededError(
+            `Rate limit exceeded for ${provider}`,
             provider,
             result.retryAfter || 60,
-            estimatedTokens
+            'tokens'
           );
         }
       });
@@ -111,7 +112,12 @@ export class AIProviderRateLimitingService {
       
       // Circuit breaker or other error
       console.error(`[AIProviderRateLimitingService] Error checking rate limit for ${provider}:`, error);
-      throw new RateLimitExceededError(provider, 60, estimatedTokens);
+      throw new RateLimitExceededError(
+        `Rate limit check failed for ${provider}`,
+        provider,
+        60,
+        'tokens'
+      );
     }
   }
 

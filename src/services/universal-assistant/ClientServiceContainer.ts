@@ -9,6 +9,7 @@ import { SpeakerIdentificationService } from './SpeakerIdentificationService';
 import { VocalInterruptService } from './VocalInterruptService';
 import { AIService } from './AIService';
 import { TTSApiClient } from './TTSApiClient';
+import { secureDeepgramTokenClient } from './SecureDeepgramTokenClient';
 
 /**
  * Client-side service container that manages lazy initialization of all Universal Assistant services.
@@ -117,25 +118,23 @@ export class ClientServiceContainer {
   }
   
   /**
-   * Get or create DeepgramSTT instance
+   * Get or create DeepgramSTT instance with secure token-based authentication
    */
   public getDeepgramSTT(): DeepgramSTT {
     this.ensureBrowserEnvironment();
     
     if (!this._deepgramSTT) {
-      // For now, hardcode the API key since env var isn't working properly
-      // TODO: Fix Next.js env var loading
-      const apiKey = '0566346fbc7519739111a82274f6e394c4781d95';
-      
-      if (!apiKey) {
-        throw new Error(
-          'NEXT_PUBLIC_DEEPGRAM_API_KEY is required for speech-to-text. ' +
-          'Please add your Deepgram API key to your .env.local file: NEXT_PUBLIC_DEEPGRAM_API_KEY=your_key_here'
-        );
-      }
-      this._deepgramSTT = this.createDeepgramSTT(apiKey);
+      // Use placeholder API key - actual authentication will use secure tokens
+      this._deepgramSTT = this.createDeepgramSTT('secure-token-placeholder');
     }
     return this._deepgramSTT;
+  }
+
+  /**
+   * Get token provider for secure Deepgram connections
+   */
+  public getDeepgramTokenProvider(): () => Promise<string> {
+    return () => secureDeepgramTokenClient.getToken();
   }
   
   /**

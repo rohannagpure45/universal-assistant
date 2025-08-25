@@ -214,7 +214,7 @@ function createIntegratedInputHandlers(
   errorHandler: GatekeeperErrorHandler | null,
   metrics: GatekeeperMetrics | null
 ): InputHandlers {
-  const baseHandlers = createConversationInputHandlers();
+  const baseHandlers = createConversationInputHandlers(conversationProcessor);
 
   return {
     async handleInput(input) {
@@ -409,7 +409,7 @@ export function createSimpleGatekeeper(
   conversationProcessor: ConversationProcessor,
   config: Partial<ConcurrentGatekeeperConfig> = {}
 ): ConcurrentGatekeeper {
-  const inputHandlers = createConversationInputHandlers();
+  const inputHandlers = createConversationInputHandlers(conversationProcessor);
   
   return createConcurrentGatekeeper(conversationProcessor, {
     maxConcurrentProcessing: 3,

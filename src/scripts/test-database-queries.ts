@@ -13,14 +13,15 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 class QueryTester {
-  private db: FirebaseFirestore.Firestore;
+  private db!: FirebaseFirestore.Firestore;
 
   constructor() {
-    this.db = adminDb();
-    if (!this.db) {
+    const db = adminDb();
+    if (!db) {
       console.error('❌ Failed to initialize Firebase Admin SDK');
       process.exit(1);
     }
+    this.db = db;
   }
 
   private log(message: string, level: 'info' | 'warn' | 'error' = 'info') {

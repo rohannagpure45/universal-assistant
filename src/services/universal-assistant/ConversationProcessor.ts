@@ -386,7 +386,7 @@ export class ConversationProcessor {
 
   private initializeInputGatekeeper(): void {
     try {
-      const handlers = createConversationInputHandlers();
+      const handlers = createConversationInputHandlers(this);
       this.inputGatekeeper = createInputGatekeeper(handlers);
       console.log('ConversationProcessor: Input gatekeeper initialized');
     } catch (error) {
@@ -420,7 +420,7 @@ export class ConversationProcessor {
       });
 
       // Also initialize enhanced input gatekeeper
-      const baseHandlers = createConversationInputHandlers();
+      const baseHandlers = createConversationInputHandlers(this);
       const enhancedHandlers = {
         handleInput: baseHandlers.handleInput,
         saveAsContext: baseHandlers.saveAsContext,
@@ -594,8 +594,23 @@ export function createConversationProcessor(config?: Partial<ConversationProcess
   return new ConversationProcessor(undefined, undefined, undefined, config);
 }
 
+// Safe singleton pattern for browser-dependent service
+let conversationProcessorInstance: ConversationProcessor | null = null;
+
+export function getConversationProcessor(): ConversationProcessor | null {
+  if (typeof window === 'undefined') {
+    return null; // SSR safe
+  }
+  
+  if (!conversationProcessorInstance) {
+    conversationProcessorInstance = new ConversationProcessor();
+  }
+  
+  return conversationProcessorInstance;
+}
+
 /**
- * @deprecated Use createConversationProcessor() factory function instead to avoid SSR issues
+ * @deprecated Use getConversationProcessor() factory function instead for better SSR safety
  * This singleton export will be removed in a future version
  */
-export const conversationProcessor = typeof window !== 'undefined' ? new ConversationProcessor() : null as any;
+export const conversationProcessor = getConversationProcessor();

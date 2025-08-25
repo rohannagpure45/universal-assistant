@@ -28,115 +28,6 @@ interface NavigationState {
   targetPath: string | null;
 }
 
-interface UserMenuProps {
-  user: any;
-  onSignOut: () => void;
-}
-
-const UserMenu: React.FC<UserMenuProps> = ({ user, onSignOut }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  // Handle keyboard navigation for dropdown
-  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      setIsOpen(false);
-      buttonRef.current?.focus();
-    } else if (event.key === 'ArrowDown' && isOpen) {
-      const firstMenuItem = menuRef.current?.querySelector('button');
-      firstMenuItem?.focus();
-    }
-  }, [isOpen]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node) &&
-          buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isOpen]);
-
-  return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
-        onClick={() => setIsOpen(!isOpen)}
-        onKeyDown={handleKeyDown}
-        className="group flex items-center space-x-3 p-2 rounded-xl hover:bg-gradient-to-r hover:from-neutral-100 hover:to-blue-50 dark:hover:from-neutral-700 dark:hover:to-blue-900/20 transition-all duration-200 button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-        aria-label={`User menu for ${user?.displayName || user?.email || 'User'}`}
-        aria-expanded={isOpen}
-        aria-haspopup="menu"
-      >
-        <div className="relative w-9 h-9 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-soft group-hover:scale-105 transition-transform duration-200">
-          <User className="w-4 h-4 text-white" />
-          <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-        </div>
-        <span className="hidden lg:block text-sm font-semibold text-neutral-800 dark:text-neutral-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-200">
-          {user?.displayName || user?.email?.split('@')[0] || 'User'}
-        </span>
-      </button>
-
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setIsOpen(false)}
-            aria-hidden="true"
-          />
-          <div 
-            ref={menuRef}
-            className="absolute right-0 mt-3 w-52 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-20 backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
-            role="menu"
-            aria-labelledby="user-menu-button"
-          >
-            <div className="p-4 border-b border-white/20 dark:border-neutral-700/30">
-              <p className="text-sm font-semibold text-neutral-900 dark:text-white">
-                {user?.displayName || 'User'}
-              </p>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                {user?.email}
-              </p>
-            </div>
-            <div className="py-2" role="none">
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  // Navigate to settings
-                }}
-                className="group w-full px-4 py-3 text-left text-sm text-neutral-800 dark:text-neutral-300 hover:bg-white/30 dark:hover:bg-neutral-800/30 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
-                role="menuitem"
-                tabIndex={0}
-              >
-                <Settings className="w-4 h-4 mr-3 group-hover:scale-110 transition-transform duration-200" aria-hidden="true" />
-                <span className="font-medium">Settings</span>
-              </button>
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  onSignOut();
-                }}
-                className="group w-full px-4 py-3 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50/50 dark:hover:bg-red-900/20 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
-                role="menuitem"
-                tabIndex={0}
-              >
-                <LogOut className="w-4 h-4 mr-3 group-hover:scale-110 transition-transform duration-200" aria-hidden="true" />
-                <span className="font-medium">Sign Out</span>
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
 
 const Header: React.FC<{
   onToggleSidebar: () => void;
@@ -146,12 +37,28 @@ const Header: React.FC<{
   const { notifications } = useAppStore();
   const { isInMeeting, currentMeeting } = useMeetingStore();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const handleSignOut = async () => {
+    setShowUserMenu(false);
     await signOut();
   };
+
+  // Toggle notifications (close user menu if open)
+  const handleToggleNotifications = useCallback(() => {
+    setShowUserMenu(false);
+    setShowNotifications(prev => !prev);
+  }, []);
+
+  // Toggle user menu (close notifications if open)
+  const handleToggleUserMenu = useCallback(() => {
+    setShowNotifications(false);
+    setShowUserMenu(prev => !prev);
+  }, []);
 
   // Handle keyboard navigation for notifications dropdown
   const handleNotificationKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -161,20 +68,40 @@ const Header: React.FC<{
     }
   }, []);
 
-  // Close notifications when clicking outside
+  // Handle keyboard navigation for user menu dropdown
+  const handleUserMenuKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      setShowUserMenu(false);
+      userMenuButtonRef.current?.focus();
+    } else if (event.key === 'ArrowDown' && showUserMenu) {
+      const firstMenuItem = userMenuRef.current?.querySelector('button');
+      firstMenuItem?.focus();
+    }
+  }, [showUserMenu]);
+
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target as Node) &&
+      // Close notifications if clicking outside
+      if (showNotifications && 
+          notificationMenuRef.current && !notificationMenuRef.current.contains(event.target as Node) &&
           notificationButtonRef.current && !notificationButtonRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
       }
+      
+      // Close user menu if clicking outside
+      if (showUserMenu && 
+          userMenuRef.current && !userMenuRef.current.contains(event.target as Node) &&
+          userMenuButtonRef.current && !userMenuButtonRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
     };
 
-    if (showNotifications) {
+    if (showNotifications || showUserMenu) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showNotifications]);
+  }, [showNotifications, showUserMenu]);
 
   return (
     <header 
@@ -216,7 +143,7 @@ const Header: React.FC<{
           <div className="relative">
             <button
               ref={notificationButtonRef}
-              onClick={() => setShowNotifications(!showNotifications)}
+              onClick={handleToggleNotifications}
               onKeyDown={handleNotificationKeyDown}
               className="group p-2.5 rounded-xl hover:bg-white/30 dark:hover:bg-neutral-800/30 transition-all duration-200 relative button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               aria-label={`Notifications ${notifications.length > 0 ? `(${notifications.length} unread)` : ''}`}
@@ -234,13 +161,13 @@ const Header: React.FC<{
             {showNotifications && (
               <>
                 <div
-                  className="fixed inset-0 z-10"
+                  className="fixed inset-0 z-[50]"
                   onClick={() => setShowNotifications(false)}
                   aria-hidden="true"
                 />
                 <div 
                   ref={notificationMenuRef}
-                  className="absolute right-0 mt-3 w-80 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-20 max-h-96 overflow-y-auto backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
+                  className="absolute right-0 mt-3 w-80 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-[100] max-h-96 overflow-y-auto backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
                   role="menu"
                   aria-labelledby="notifications-button"
                 >
@@ -289,7 +216,78 @@ const Header: React.FC<{
           </div>
 
           {/* User Menu */}
-          {user && <UserMenu user={user} onSignOut={handleSignOut} />}
+          {user && (
+            <div className="relative z-[150]">
+              <button
+                ref={userMenuButtonRef}
+                onClick={handleToggleUserMenu}
+                onKeyDown={handleUserMenuKeyDown}
+                className="group flex items-center space-x-3 p-2 rounded-xl hover:bg-gradient-to-r hover:from-neutral-100 hover:to-blue-50 dark:hover:from-neutral-700 dark:hover:to-blue-900/20 transition-all duration-200 button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 relative z-[150]"
+                aria-label={`User menu for ${user?.displayName || user?.email || 'User'}`}
+                aria-expanded={showUserMenu}
+                aria-haspopup="menu"
+              >
+                <div className="relative w-9 h-9 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-soft group-hover:scale-105 transition-transform duration-200">
+                  <User className="w-4 h-4 text-white" />
+                  <div className="absolute inset-0 rounded-full bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                </div>
+                <span className="hidden lg:block text-sm font-semibold text-neutral-800 dark:text-neutral-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-200">
+                  {user?.displayName || user?.email?.split('@')[0] || 'User'}
+                </span>
+              </button>
+
+              {showUserMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[60]"
+                    onClick={() => setShowUserMenu(false)}
+                    aria-hidden="true"
+                  />
+                  <div 
+                    ref={userMenuRef}
+                    className="absolute right-0 mt-3 w-52 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-[150] backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
+                    role="menu"
+                    aria-labelledby="user-menu-button"
+                  >
+                    <div className="p-4 border-b border-white/20 dark:border-neutral-700/30">
+                      <p className="text-sm font-semibold text-neutral-900 dark:text-white">
+                        {user?.displayName || 'User'}
+                      </p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                        {user?.email}
+                      </p>
+                    </div>
+                    <div className="py-2" role="none">
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          // Navigate to settings
+                        }}
+                        className="group w-full px-4 py-3 text-left text-sm text-neutral-800 dark:text-neutral-300 hover:bg-white/30 dark:hover:bg-neutral-800/30 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
+                        role="menuitem"
+                        tabIndex={0}
+                      >
+                        <Settings className="w-4 h-4 mr-3 group-hover:scale-110 transition-transform duration-200" aria-hidden="true" />
+                        <span className="font-medium">Settings</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          handleSignOut();
+                        }}
+                        className="group w-full px-4 py-3 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50/50 dark:hover:bg-red-900/20 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
+                        role="menuitem"
+                        tabIndex={0}
+                      >
+                        <LogOut className="w-4 h-4 mr-3 group-hover:scale-110 transition-transform duration-200" aria-hidden="true" />
+                        <span className="font-medium">Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </header>

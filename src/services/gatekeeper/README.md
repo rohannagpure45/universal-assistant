@@ -53,12 +53,15 @@ import {
   createProductionGatekeeper, 
   integrateWithConversationProcessor 
 } from '@/services/gatekeeper';
-import { conversationProcessor } from '@/services/universal-assistant/ConversationProcessor';
-import { audioManager } from '@/services/universal-assistant/AudioManager';
+import { getConversationProcessor } from '@/services/universal-assistant/ConversationProcessor';
+import { getAudioManager } from '@/services/universal-assistant/AudioManager';
 
-// Create integrated gatekeeper system
+// Create integrated gatekeeper system  
+const conversationProcessor = getConversationProcessor();
+const audioManager = getAudioManager();
+
 const gatekeeperSystem = createProductionGatekeeper(
-  conversationProcessor,
+  conversationProcessor!,
   audioManager
 );
 

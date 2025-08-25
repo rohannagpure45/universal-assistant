@@ -86,7 +86,7 @@ export class EnhancedAIService {
     const config = getModelConfig(workingModel);
     
     // Check rate limits with token estimation
-    const fullPrompt = context ? buildPromptWithContext(prompt, context, config) : prompt;
+    const fullPrompt = context ? buildPromptWithContext(prompt, context, workingModel) : prompt;
     await this.checkRateLimit(workingModel, config, fullPrompt);
     
     // Build context-aware prompt

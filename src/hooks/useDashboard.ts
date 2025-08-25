@@ -135,10 +135,18 @@ export const useDashboard = () => {
     
     try {
       // Load dashboard stats and recent meetings in parallel
-      const [statsResult, meetingsResult] = await Promise.allSettled([
-        DashboardService.getDashboardStats(user.uid),
-        loadRecentMeetings(user.uid, 10)
+      // Use direct API calls to avoid dependency on store function
+      const [statsResult] = await Promise.allSettled([
+        DashboardService.getDashboardStats(user.uid)
       ]);
+      
+      // Load recent meetings independently to avoid store dependencies
+      try {
+        await loadRecentMeetings(user.uid, 10);
+      } catch (meetingError) {
+        console.error('Failed to load recent meetings:', meetingError);
+        // Don't throw here - we can still show stats without recent meetings
+      }
       
       // Handle dashboard stats result
       if (statsResult.status === 'fulfilled') {
@@ -146,12 +154,6 @@ export const useDashboard = () => {
       } else {
         console.error('Failed to load dashboard stats:', statsResult.reason);
         throw new Error('Failed to load dashboard statistics');
-      }
-      
-      // Handle recent meetings result
-      if (meetingsResult.status === 'rejected') {
-        console.error('Failed to load recent meetings:', meetingsResult.reason);
-        // Don't throw here - we can still show stats without recent meetings
       }
       
     } catch (error) {
@@ -169,7 +171,7 @@ export const useDashboard = () => {
       // Short delay to show loading state transition
       setTimeout(() => setStatsReady(true), 200);
     }
-  }, [user?.uid, loadRecentMeetings, addNotification]);
+  }, [user?.uid]); // Only depend on stable user ID
 
   // Initial data loading
   useEffect(() => {

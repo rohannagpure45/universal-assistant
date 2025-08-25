@@ -18,6 +18,7 @@ import {
 } from './index';
 import { cn } from '@/lib/utils';
 import { Settings, Play, Square, Mic, MicOff, Eye, EyeOff, Activity, AlertTriangle } from 'lucide-react';
+import { secureDeepgramTokenClient } from '@/services/universal-assistant/SecureDeepgramTokenClient';
 import { AudioManager } from '@/services/universal-assistant/AudioManager';
 import { DeepgramSTT } from '@/services/universal-assistant/DeepgramSTT';
 import { VoiceIdentificationCoordinator } from '@/services/voice-identification/VoiceIdentificationCoordinator';
@@ -111,10 +112,8 @@ export const RealTimeVoiceIdentificationDemo: React.FC = () => {
         }
       });
 
-      // Initialize DeepgramSTT (if API key available)
-      if (process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY) {
-        deepgramRef.current = new DeepgramSTT(process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY);
-      }
+      // Initialize DeepgramSTT with secure token authentication
+      deepgramRef.current = new DeepgramSTT('secure-token-placeholder');
 
       // Initialize VoiceIdentificationCoordinator
       if (deepgramRef.current) {

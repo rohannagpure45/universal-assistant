@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { VoiceSample } from '@/types/voice-identification';
 import { Button, PrimaryButton, SecondaryButton, DangerButton } from '@/components/ui/Button';
+import { sanitizeVoiceSample } from '@/utils/sanitization';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { 
@@ -981,7 +982,7 @@ export const SpeakerProfileTraining: React.FC<SpeakerProfileTrainingProps> = ({
                   deepgramVoiceId: profile.deepgramVoiceId,
                   userId: profile.userId,
                   userName: profile.userName,
-                  samples: profile.samples.map(sample => ({
+                  samples: profile.samples.map(sample => sanitizeVoiceSample({
                     ...sample,
                     blob: undefined,
                     source: 'training-session' as const,

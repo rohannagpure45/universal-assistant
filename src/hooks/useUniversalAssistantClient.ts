@@ -36,6 +36,9 @@ export function useUniversalAssistantClient() {
   const streamRef = useRef<MediaStream | null>(null);
   const initializationAttempted = useRef(false);
   
+  // Concurrency control for recording operations
+  const recordingMutexRef = useRef(false);
+  
   // Use global service manager for coordinator
   const serviceManager = useGlobalServiceManager();
   const { coordinator, isLoading: isCoordinatorLoading, error: coordinatorError } = useUniversalAssistantCoordinator({
@@ -157,11 +160,20 @@ export function useUniversalAssistantClient() {
   }, []); // No dependencies - only initialize once
 
   const startRecording = useCallback(async () => {
+    // Check concurrency mutex first
+    if (recordingMutexRef.current) {
+      console.warn('Recording operation already in progress');
+      return;
+    }
+    
     if (!isClient || !isInitialized || !servicesRef.current) {
       console.warn('Audio recording requires initialized services');
       setError('Services not initialized. Please wait.');
       return;
     }
+
+    // Set mutex lock
+    recordingMutexRef.current = true;
 
     try {
       console.log('Starting recording...');
@@ -196,6 +208,9 @@ export function useUniversalAssistantClient() {
       setError(err instanceof Error ? err.message : 'Failed to start recording');
       setIsRecording(false);
       setIsProcessing(false);
+    } finally {
+      // Always release the mutex
+      recordingMutexRef.current = false;
     }
   }, [isClient, isInitialized]);
 
@@ -204,6 +219,9 @@ export function useUniversalAssistantClient() {
       console.warn('No services to stop');
       return;
     }
+    
+    // Ensure mutex is properly released when stopping
+    recordingMutexRef.current = false;
     
     try {
       console.log('Stopping recording...');

@@ -1,5 +1,5 @@
 import { InputItem, InputHandlers } from './InputGatekeeper';
-import { conversationProcessor } from '@/services/universal-assistant/ConversationProcessor';
+import { ConversationProcessor } from '@/services/universal-assistant/ConversationProcessor';
 
 export interface ConversationContext {
   speakerId: string;
@@ -22,6 +22,7 @@ export class ConversationInputHandlers implements InputHandlers {
   };
 
   constructor(
+    private conversationProcessor: ConversationProcessor,
     private onProcessedResponse?: (response: any) => Promise<void>
   ) {}
 
@@ -29,7 +30,7 @@ export class ConversationInputHandlers implements InputHandlers {
     try {
       // Process input through the conversation processor
       const conversationEvent = this.convertToConversationEvent(input);
-      const response = await conversationProcessor.processConversationEvent(conversationEvent);
+      const response = await this.conversationProcessor.processConversationEvent(conversationEvent);
 
       // If there's a response callback, call it
       if (this.onProcessedResponse) {
@@ -85,7 +86,7 @@ export class ConversationInputHandlers implements InputHandlers {
       const conversationEvent = this.convertToConversationEvent(input, { isContextOnly: true });
 
       // Process as context-only (no response generation)
-      await conversationProcessor.processConversationEvent(conversationEvent);
+      await this.conversationProcessor.processConversationEvent(conversationEvent);
 
       console.log(`Added input to conversation context: ${input.id}`);
     } catch (error) {
@@ -161,7 +162,8 @@ export class ConversationInputHandlers implements InputHandlers {
 
 // Factory function for creating handlers with response callback
 export function createConversationInputHandlers(
+  conversationProcessor: ConversationProcessor,
   onProcessedResponse?: (response: any) => Promise<void>
 ): ConversationInputHandlers {
-  return new ConversationInputHandlers(onProcessedResponse);
+  return new ConversationInputHandlers(conversationProcessor, onProcessedResponse);
 }

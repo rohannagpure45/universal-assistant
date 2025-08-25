@@ -11,7 +11,7 @@ import { ProductionPerformanceOptimizer } from '../universal-assistant/Productio
 import { optimizedDatabaseService } from '../firebase/OptimizedDatabaseService';
 import { productionCacheManager } from '../cache/ProductionCacheManager';
 import { optimizedRealtimeManager } from '../realtime/OptimizedRealtimeManager';
-import { resourceManager } from '../browser/ResourceManager';
+import { getResourceManager } from '../browser/ResourceManager';
 
 export interface PerformanceBenchmark {
   id: string;
@@ -300,10 +300,28 @@ export class PerformanceDashboard {
     const timestamp = Date.now();
     
     // Collect metrics from various services
-    const resourceMetrics = resourceManager?.getMetrics() || {
-      memory: { used: 0, total: 0, limit: 0 },
-      performance: { fps: 0, responseTime: 0 },
-      connections: { active: 0, total: 0 }
+    const resourceMetrics = getResourceManager()?.getMetrics() || {
+      memory: { 
+        used: 0, 
+        total: 0, 
+        percentage: 0, 
+        jsHeapSizeLimit: 0, 
+        totalJSHeapSize: 0, 
+        usedJSHeapSize: 0 
+      },
+      resources: {
+        mediaRecorders: 0,
+        audioContexts: 0,
+        activeConnections: 0,
+        cachedObjects: 0,
+        eventListeners: 0
+      },
+      performance: { 
+        fps: 0, 
+        cpuUsage: 0, 
+        networkLatency: 0, 
+        renderTime: 0 
+      }
     };
     const cacheStats = productionCacheManager.getStats();
     const dbMetrics = optimizedDatabaseService.getConnectionMetrics();
@@ -402,7 +420,7 @@ export class PerformanceDashboard {
     const bundleSize = await this.measureBundleSize();
     this.updateBenchmark('frontend-bundle-size', bundleSize / 1024); // Convert to KB
 
-    const fps = resourceManager?.getMetrics().performance.fps || 0;
+    const fps = getResourceManager()?.getMetrics().performance.fps || 0;
     this.updateBenchmark('frontend-fps', fps);
   }
 
@@ -416,7 +434,7 @@ export class PerformanceDashboard {
   }
 
   private async measureMemoryBenchmarks(): Promise<void> {
-    const memoryMetrics = resourceManager?.getMetrics().memory || { used: 0, total: 0, limit: 0 };
+    const memoryMetrics = getResourceManager()?.getMetrics().memory || { used: 0, total: 0, limit: 0 };
     
     this.updateBenchmark('memory-usage', memoryMetrics.used / (1024 * 1024)); // Convert to MB
     
@@ -476,10 +494,28 @@ export class PerformanceDashboard {
 
   private async measureBufferHealth(): Promise<number> {
     // Measure audio buffer health (0-100 scale)
-    const resourceMetrics = resourceManager?.getMetrics() || {
-      memory: { used: 0, total: 0, limit: 0, percentage: 0 },
-      performance: { fps: 0, responseTime: 0 },
-      connections: { active: 0, total: 0 }
+    const resourceMetrics = getResourceManager()?.getMetrics() || {
+      memory: { 
+        used: 0, 
+        total: 0, 
+        percentage: 0, 
+        jsHeapSizeLimit: 0, 
+        totalJSHeapSize: 0, 
+        usedJSHeapSize: 0 
+      },
+      resources: {
+        mediaRecorders: 0,
+        audioContexts: 0,
+        activeConnections: 0,
+        cachedObjects: 0,
+        eventListeners: 0
+      },
+      performance: { 
+        fps: 0, 
+        cpuUsage: 0, 
+        networkLatency: 0, 
+        renderTime: 0 
+      }
     };
     const memoryUsage = resourceMetrics.memory.percentage || 0;
     

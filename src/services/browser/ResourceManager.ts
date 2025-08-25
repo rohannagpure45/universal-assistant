@@ -424,9 +424,9 @@ export class ResourceManager {
   }
 
   private cleanupPools(): void {
-    // Clean up MediaRecorder pool
+    // Clean up MediaRecorder pool - keep only active recorders
     this.mediaRecorderPool = this.mediaRecorderPool.filter(recorder => 
-      recorder.state !== 'inactive' || Date.now() - recorder.stream?.getTracks()[0]?.enabled < 300000
+      recorder.state !== 'inactive'
     );
     
     // Clean up AudioContext pool
@@ -499,7 +499,7 @@ export class ResourceManager {
   private updatePerformanceMetrics(entry: PerformanceEntry): void {
     if (entry.entryType === 'navigation') {
       const navEntry = entry as PerformanceNavigationTiming;
-      this.performanceMetrics.performance.renderTime = navEntry.loadEventEnd - navEntry.navigationStart;
+      this.performanceMetrics.performance.renderTime = navEntry.loadEventEnd - navEntry.fetchStart;
     }
   }
 
@@ -624,39 +624,20 @@ export class ResourceManager {
   }
 }
 
-// Singleton instance - only create on client side
-export const resourceManager = typeof window !== 'undefined' ? new ResourceManager() : null;
+// Safe singleton pattern for browser-dependent service
+let resourceManagerInstance: ResourceManager | null = null;
 
-// React hook for resource management
-export function useResourceManager() {
-  const defaultMetrics: ResourceMetrics = {
-    memory: { used: 0, total: 0, limit: 0, percentage: 0 },
-    performance: { fps: 0, responseTime: 0 },
-    connections: { active: 0, total: 0 }
-  };
+export function getResourceManager(): ResourceManager | null {
+  if (typeof window === 'undefined') {
+    return null; // SSR safe
+  }
   
-  const [metrics, setMetrics] = useState<ResourceMetrics>(resourceManager?.getMetrics() || defaultMetrics);
+  if (!resourceManagerInstance) {
+    resourceManagerInstance = new ResourceManager();
+  }
   
-  useEffect(() => {
-    if (!resourceManager) return;
-    
-    const interval = setInterval(() => {
-      setMetrics(resourceManager.getMetrics());
-    }, 2000);
-    
-    return () => clearInterval(interval);
-  }, []);
-  
-  return {
-    metrics,
-    createManagedMediaRecorder: (stream: MediaStream, options?: MediaRecorderOptions) =>
-      resourceManager?.createManagedMediaRecorder(stream, options),
-    createManagedAudioContext: (options?: AudioContextOptions) =>
-      resourceManager?.createManagedAudioContext(options),
-    registerResource: (type: string, resource: any, cleanup: () => void) =>
-      resourceManager?.registerResource(type, resource, cleanup),
-    releaseResource: (id: string) => resourceManager?.releaseResource(id),
-    forceCleanup: () => resourceManager?.forceCleanup(),
-    getResourceCount: () => resourceManager?.getResourceCount() || 0
-  };
+  return resourceManagerInstance;
 }
+
+// Legacy singleton instance - only create on client side
+export const resourceManager = getResourceManager();

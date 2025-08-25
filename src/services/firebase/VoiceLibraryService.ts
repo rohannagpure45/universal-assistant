@@ -21,6 +21,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import type { VoiceLibraryEntry } from '@/types/database';
+import { sanitizeVoiceSample } from '@/utils/sanitization';
 
 export class VoiceLibraryService {
   private static readonly COLLECTION_NAME = 'voice_library';
@@ -126,11 +127,11 @@ export class VoiceLibraryService {
       const currentData = voiceSnap.data();
       let audioSamples = currentData?.audioSamples || [];
 
-      // Add new sample with timestamp
-      audioSamples.push({
+      // Add new sample with timestamp and sanitization
+      audioSamples.push(sanitizeVoiceSample({
         ...sample,
         timestamp: new Date()
-      });
+      }));
 
       // Keep only the best N samples (sorted by quality)
       audioSamples.sort((a: any, b: any) => b.quality - a.quality);
@@ -280,8 +281,72 @@ export class VoiceLibraryService {
 
   /**
    * Convert Firestore data to VoiceLibraryEntry
+   * 
+   * FEATURE FLAG: Voice validation can be enabled via environment variable
+   * WARNING: Validation adds 5-50ms overhead per call
    */
   private static convertFromFirestore(data: any): Omit<VoiceLibraryEntry, 'deepgramVoiceId'> {
+    // Feature flag for gradual rollout
+    const shouldValidate = process.env.NEXT_PUBLIC_VOICE_VALIDATION === 'true';
+    const enableMetrics = process.env.NEXT_PUBLIC_VOICE_METRICS === 'true';
+    
+    // Import validation lazily to avoid overhead when disabled
+    const processAudioSamples = (samples: any[]) => {
+      if (!shouldValidate) {
+        // Current working path - unchanged
+        return (samples || []).map((s: any) => ({
+          ...s,
+          timestamp: s.timestamp?.toDate() || new Date()
+        }));
+      }
+      
+      // New validation path - WITH PERFORMANCE TRACKING
+      const { VoiceValidator, validationCache } = require('@/utils/voice-validation');
+      const processedSamples = [];
+      
+      for (const sample of (samples || [])) {
+        const start = enableMetrics ? performance.now() : 0;
+        
+        // Check cache first
+        const cached = sample.id ? validationCache.get(sample.id) : null;
+        if (cached) {
+          processedSamples.push(cached);
+          continue;
+        }
+        
+        // Validate and sanitize
+        try {
+          const validated = VoiceValidator.sanitize(sample);
+          if (validated.id) {
+            validationCache.set(validated.id, validated);
+          }
+          processedSamples.push(validated);
+        } catch (error) {
+          // CRITICAL: Validation failure - fall back to original
+          console.error('[VoiceLibraryService] Validation failed:', error);
+          processedSamples.push({
+            ...sample,
+            timestamp: sample.timestamp?.toDate() || new Date()
+          });
+        }
+        
+        if (enableMetrics) {
+          const duration = performance.now() - start;
+          if (duration > 10) {
+            console.warn(`[PERF] Sample validation took ${duration.toFixed(2)}ms`);
+          }
+        }
+      }
+      
+      // Log cache stats periodically
+      if (enableMetrics && Math.random() < 0.01) { // 1% of calls
+        const stats = validationCache.getStats();
+        console.log('[CACHE] Voice validation cache stats:', stats);
+      }
+      
+      return processedSamples;
+    };
+    
     return {
       userId: data.userId || null,
       userName: data.userName || null,
@@ -291,10 +356,7 @@ export class VoiceLibraryService {
       lastHeard: data.lastHeard?.toDate() || new Date(),
       meetingsCount: data.meetingsCount || 0,
       totalSpeakingTime: data.totalSpeakingTime || 0,
-      audioSamples: (data.audioSamples || []).map((s: any) => ({
-        ...s,
-        timestamp: s.timestamp?.toDate() || new Date()
-      })),
+      audioSamples: processAudioSamples(data.audioSamples),
       identificationHistory: (data.identificationHistory || []).map((h: any) => ({
         ...h,
         timestamp: h.timestamp?.toDate() || new Date()

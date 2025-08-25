@@ -411,8 +411,8 @@ export class ProductionCacheManager {
           }
         };
         
-        this.compressionWorker.addEventListener('message', handleMessage);
-        this.compressionWorker.postMessage({
+        this.compressionWorker!.addEventListener('message', handleMessage);
+        this.compressionWorker!.postMessage({
           id: messageId,
           action: 'compress',
           data: data
@@ -444,8 +444,8 @@ export class ProductionCacheManager {
           }
         };
         
-        this.compressionWorker.addEventListener('message', handleMessage);
-        this.compressionWorker.postMessage({
+        this.compressionWorker!.addEventListener('message', handleMessage);
+        this.compressionWorker!.postMessage({
           id: messageId,
           action: 'decompress',
           data: data
@@ -476,7 +476,7 @@ export class ProductionCacheManager {
       localStorage.setItem(storageKey, JSON.stringify(entry));
     } catch (error) {
       // Handle storage quota exceeded
-      if (error.name === 'QuotaExceededError') {
+      if (error instanceof Error && error.name === 'QuotaExceededError') {
         await this.clearOldStorageEntries();
       }
     }

@@ -22,15 +22,16 @@ interface VerificationResult {
 }
 
 class DatabaseVerifier {
-  private db: FirebaseFirestore.Firestore;
+  private db!: FirebaseFirestore.Firestore;
   private results: VerificationResult[] = [];
 
   constructor() {
-    this.db = adminDb();
-    if (!this.db) {
+    const db = adminDb();
+    if (!db) {
       console.error('❌ Failed to initialize Firebase Admin SDK');
       process.exit(1);
     }
+    this.db = db;
   }
 
   private log(message: string, level: 'info' | 'warn' | 'error' = 'info') {

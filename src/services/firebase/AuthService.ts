@@ -906,6 +906,22 @@ export class AuthService {
       name: 'AuthError',
     };
   }
+
+  /**
+   * Get current user's ID token for API authentication
+   */
+  public async getCurrentIdToken(): Promise<string | null> {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        return null;
+      }
+      return await currentUser.getIdToken();
+    } catch (error) {
+      console.error('Failed to get current ID token:', error);
+      return null;
+    }
+  }
 }
 
 // Export singleton instance

@@ -12,6 +12,7 @@ import { EnhancedMessageQueueManager } from './EnhancedMessageQueueManager';
 import { StreamingTTSService } from './StreamingTTSService';
 import { VocalInterruptService } from './VocalInterruptService';
 import { VoiceProfileManager } from './VoiceProfileManager';
+import { secureDeepgramTokenClient } from './SecureDeepgramTokenClient';
 // Note: Store imports commented out - not available in current implementation
 // import { useAppStore } from '@/stores/appStore';
 // import { useMeetingStore } from '@/stores/meetingStore';
@@ -184,12 +185,14 @@ export class RealtimeAudioPipeline {
   }
 
   /**
-   * Initialize all enhanced services
+   * Initialize all enhanced services with secure authentication
    */
   private initializeServices(): void {
     this.audioManager = new EnhancedAudioManager();
+    
+    // Use secure token-based authentication instead of exposed API key
     this.sttService = new EnhancedDeepgramSTT(
-      process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY || '',
+      'secure-token-placeholder', // Placeholder - will use token provider
       undefined,
       undefined,
       true
@@ -321,9 +324,9 @@ export class RealtimeAudioPipeline {
       this.currentSession = this.createSession();
       this.updatePipelineState('initializing');
 
-      // Start all services with individual error handling
+      // Start all services with individual error handling using secure authentication
       const services = [
-        { name: 'sttService', promise: this.sttService.startLiveTranscription() },
+        { name: 'sttService', promise: this.sttService.startLiveTranscriptionSecure(() => secureDeepgramTokenClient.getToken()) },
         // Note: Other services commented out due to missing dependencies or parameters
         // Note: startVoiceActivityDetection is private in EnhancedAudioManager
         // Note: StreamingTTSService initializes automatically in constructor

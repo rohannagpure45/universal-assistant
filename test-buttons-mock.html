@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Button Accessibility Test - Universal Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <style>
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .button-press:active {
+            transform: scale(0.98);
+        }
+        .pulse-soft {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .animate-in {
+            animation: slideIn 0.2s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-neutral-50 min-h-screen">
+    <!-- Mock Header with Test Buttons -->
+    <header class="glass-morphism border-b border-white/20 px-6 py-4 backdrop-blur-xl" role="banner">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-6">
+                <h1 class="text-xl font-bold text-neutral-900">Universal Assistant</h1>
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <!-- Notifications Button -->
+                <div class="relative">
+                    <button
+                        id="notification-button"
+                        class="group p-2.5 rounded-xl hover:bg-white/30 transition-all duration-200 relative button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                        aria-label="Notifications (2 unread)"
+                        aria-expanded="false"
+                        aria-haspopup="menu"
+                        onclick="toggleNotifications()"
+                    >
+                        <i data-lucide="bell" class="w-5 h-5 text-neutral-600 group-hover:scale-110 transition-transform duration-200"></i>
+                        <!-- Notification Badge -->
+                        <span class="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-semibold rounded-full flex items-center justify-center pulse-soft">
+                            2
+                        </span>
+                    </button>
+
+                    <!-- Notification Dropdown -->
+                    <div 
+                        id="notification-dropdown"
+                        class="absolute right-0 mt-3 w-80 glass-morphism rounded-xl shadow-lg border border-white/30 z-[200] max-h-96 overflow-y-auto backdrop-blur-xl animate-in hidden"
+                        role="menu"
+                        aria-labelledby="notification-button"
+                    >
+                        <div class="p-4 border-b border-white/20">
+                            <h3 class="text-sm font-semibold text-neutral-900">Notifications</h3>
+                        </div>
+                        <div class="py-1">
+                            <div class="group p-4 hover:bg-white/30 border-b border-white/10 last:border-b-0 transition-all duration-200">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1 mr-3">
+                                        <p class="text-sm font-semibold text-neutral-900">Meeting Started</p>
+                                        <p class="text-xs text-neutral-600 mt-1 leading-relaxed">Your weekly team meeting has begun</p>
+                                        <p class="text-xs text-neutral-400 mt-2">2:35 PM</p>
+                                    </div>
+                                    <button class="p-1.5 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-200/50 rounded-lg transition-all duration-200 button-press opacity-0 group-hover:opacity-100">
+                                        <i data-lucide="x" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="group p-4 hover:bg-white/30 transition-all duration-200">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1 mr-3">
+                                        <p class="text-sm font-semibold text-neutral-900">AI Response Ready</p>
+                                        <p class="text-xs text-neutral-600 mt-1 leading-relaxed">Your AI assistant has processed the latest conversation</p>
+                                        <p class="text-xs text-neutral-400 mt-2">2:30 PM</p>
+                                    </div>
+                                    <button class="p-1.5 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-200/50 rounded-lg transition-all duration-200 button-press opacity-0 group-hover:opacity-100">
+                                        <i data-lucide="x" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Profile Button -->
+                <div class="relative z-[150]">
+                    <button
+                        id="user-profile-button"
+                        class="group flex items-center space-x-3 p-2 rounded-xl hover:bg-gradient-to-r hover:from-neutral-100 hover:to-blue-50 transition-all duration-200 button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 relative z-[150]"
+                        aria-label="User menu for Test User"
+                        aria-expanded="false"
+                        aria-haspopup="menu"
+                        onclick="toggleUserMenu()"
+                    >
+                        <div class="relative w-9 h-9 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-soft group-hover:scale-105 transition-transform duration-200">
+                            <i data-lucide="user" class="w-4 h-4 text-white"></i>
+                            <div class="absolute inset-0 rounded-full bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+                        </div>
+                        <span class="hidden lg:block text-sm font-semibold text-neutral-800 group-hover:text-blue-600 transition-colors duration-200">
+                            Test User
+                        </span>
+                    </button>
+
+                    <!-- User Menu Dropdown -->
+                    <div 
+                        id="user-menu-dropdown"
+                        class="absolute right-0 mt-3 w-52 glass-morphism rounded-xl shadow-lg border border-white/30 z-[400] backdrop-blur-xl animate-in hidden"
+                        role="menu"
+                        aria-labelledby="user-profile-button"
+                    >
+                        <div class="p-4 border-b border-white/20">
+                            <p class="text-sm font-semibold text-neutral-900">Test User</p>
+                            <p class="text-xs text-neutral-500 mt-1">test@example.com</p>
+                        </div>
+                        <div class="py-2" role="none">
+                            <button
+                                class="group w-full px-4 py-3 text-left text-sm text-neutral-800 hover:bg-white/30 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
+                                role="menuitem"
+                                tabindex="0"
+                                onclick="navigateToSettings()"
+                            >
+                                <i data-lucide="settings" class="w-4 h-4 mr-3 group-hover:scale-110 transition-transform duration-200" aria-hidden="true"></i>
+                                <span class="font-medium">Settings</span>
+                            </button>
+                            <button
+                                class="group w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50/50 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
+                                role="menuitem"
+                                tabindex="0"
+                                onclick="signOut()"
+                            >
+                                <i data-lucide="log-out" class="w-4 h-4 mr-3 group-hover:scale-110 transition-transform duration-200" aria-hidden="true"></i>
+                                <span class="font-medium">Sign Out</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Background Overlay for Dropdowns -->
+    <div id="dropdown-overlay" class="fixed inset-0 z-[100] hidden" onclick="closeAllDropdowns()"></div>
+
+    <!-- Main Content Area -->
+    <main class="p-8">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-2xl font-bold text-neutral-900 mb-6">Button Accessibility Test Page</h2>
+            <div class="bg-white rounded-lg shadow-sm p-6 border border-neutral-200">
+                <p class="text-neutral-600 mb-4">
+                    This page contains mock versions of the notification and user profile buttons from the Universal Assistant application.
+                    Use this page to test:
+                </p>
+                <ul class="list-disc list-inside space-y-2 text-neutral-600">
+                    <li>Button accessibility and keyboard navigation</li>
+                    <li>Dropdown functionality and visibility</li>
+                    <li>Z-index stacking and click interactions</li>
+                    <li>ARIA labels and screen reader compatibility</li>
+                    <li>Focus indicators and visual feedback</li>
+                </ul>
+                
+                <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h3 class="font-semibold text-blue-900 mb-2">Test Instructions:</h3>
+                    <ol class="list-decimal list-inside space-y-1 text-blue-800 text-sm">
+                        <li>Click the bell icon (notification button) to test dropdown</li>
+                        <li>Click the "Test User" button to test user menu</li>
+                        <li>Use Tab key to navigate between buttons</li>
+                        <li>Use Enter or Space to activate buttons</li>
+                        <li>Use Escape key to close dropdowns</li>
+                        <li>Click outside dropdowns to close them</li>
+                        <li>Test the Sign Out button functionality</li>
+                    </ol>
+                </div>
+
+                <!-- Test Results Area -->
+                <div class="mt-6">
+                    <h3 class="font-semibold text-neutral-900 mb-3">Test Results:</h3>
+                    <div id="test-results" class="p-4 bg-neutral-50 rounded-lg border border-neutral-200 min-h-[100px]">
+                        <p class="text-neutral-600 text-sm">Test results will appear here...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        let currentDropdown = null;
+        
+        function logResult(message) {
+            const resultsDiv = document.getElementById('test-results');
+            const timestamp = new Date().toLocaleTimeString();
+            resultsDiv.innerHTML += `<p class="text-sm text-neutral-800 mb-1">[${timestamp}] ${message}</p>`;
+            console.log(message);
+        }
+
+        function closeAllDropdowns() {
+            const notificationDropdown = document.getElementById('notification-dropdown');
+            const userMenuDropdown = document.getElementById('user-menu-dropdown');
+            const overlay = document.getElementById('dropdown-overlay');
+            const notificationButton = document.getElementById('notification-button');
+            const userProfileButton = document.getElementById('user-profile-button');
+
+            notificationDropdown.classList.add('hidden');
+            userMenuDropdown.classList.add('hidden');
+            overlay.classList.add('hidden');
+            
+            notificationButton.setAttribute('aria-expanded', 'false');
+            userProfileButton.setAttribute('aria-expanded', 'false');
+            
+            currentDropdown = null;
+            logResult('All dropdowns closed');
+        }
+
+        function toggleNotifications() {
+            const dropdown = document.getElementById('notification-dropdown');
+            const overlay = document.getElementById('dropdown-overlay');
+            const button = document.getElementById('notification-button');
+            const userMenuDropdown = document.getElementById('user-menu-dropdown');
+            
+            // Close user menu if open
+            userMenuDropdown.classList.add('hidden');
+            document.getElementById('user-profile-button').setAttribute('aria-expanded', 'false');
+            
+            if (dropdown.classList.contains('hidden')) {
+                dropdown.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+                button.setAttribute('aria-expanded', 'true');
+                currentDropdown = 'notifications';
+                logResult('✅ Notification dropdown opened successfully');
+            } else {
+                closeAllDropdowns();
+            }
+        }
+
+        function toggleUserMenu() {
+            const dropdown = document.getElementById('user-menu-dropdown');
+            const overlay = document.getElementById('dropdown-overlay');
+            const button = document.getElementById('user-profile-button');
+            const notificationDropdown = document.getElementById('notification-dropdown');
+            
+            // Close notifications if open
+            notificationDropdown.classList.add('hidden');
+            document.getElementById('notification-button').setAttribute('aria-expanded', 'false');
+            
+            if (dropdown.classList.contains('hidden')) {
+                dropdown.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+                button.setAttribute('aria-expanded', 'true');
+                currentDropdown = 'user-menu';
+                logResult('✅ User profile dropdown opened successfully');
+            } else {
+                closeAllDropdowns();
+            }
+        }
+
+        function navigateToSettings() {
+            closeAllDropdowns();
+            logResult('✅ Settings menu item clicked - would navigate to settings');
+        }
+
+        function signOut() {
+            closeAllDropdowns();
+            logResult('✅ Sign Out button clicked - would sign out user');
+            alert('Sign Out functionality tested successfully!');
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && currentDropdown) {
+                closeAllDropdowns();
+                logResult('✅ Escape key closed dropdown');
+            }
+        });
+
+        // Click outside to close
+        document.addEventListener('click', function(e) {
+            const notificationButton = document.getElementById('notification-button');
+            const userProfileButton = document.getElementById('user-profile-button');
+            const notificationDropdown = document.getElementById('notification-dropdown');
+            const userMenuDropdown = document.getElementById('user-menu-dropdown');
+            
+            if (currentDropdown && 
+                !notificationButton.contains(e.target) && 
+                !userProfileButton.contains(e.target) &&
+                !notificationDropdown.contains(e.target) &&
+                !userMenuDropdown.contains(e.target)) {
+                closeAllDropdowns();
+                logResult('✅ Clicked outside - dropdown closed');
+            }
+        });
+
+        // Log initial state
+        document.addEventListener('DOMContentLoaded', function() {
+            logResult('🚀 Button accessibility test page loaded successfully');
+            logResult('📋 Ready to test notification and user profile buttons');
+        });
+    </script>
+</body>
+</html>

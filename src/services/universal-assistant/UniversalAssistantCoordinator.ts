@@ -1,11 +1,12 @@
-import { conversationProcessor } from './ConversationProcessor';
-import { audioManager } from './AudioManager';
+import { getConversationProcessor } from './ConversationProcessor';
+import { getAudioManager } from './AudioManager';
 import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor';
 import { TTSApiClient } from './TTSApiClient';
 import { DeepgramSTT } from './DeepgramSTT';
 import { VoiceIdentificationCoordinator } from '../voice-identification/VoiceIdentificationCoordinator';
 import type { TranscriptEntry, Meeting } from '@/types';
 import { useMeetingStore, useAppStore } from '@/stores';
+import { authService } from '@/services/firebase/AuthService';
 
 // Define store types based on the actual Zustand store instances
 // useMeetingStore and useAppStore are Zustand stores, so we get the store API type
@@ -72,18 +73,36 @@ export class UniversalAssistantCoordinator {
     
     // Initialize concurrent processing if enabled
     if (config.enableConcurrentProcessing) {
-      conversationProcessor.updateConfig({ enableConcurrentProcessing: true });
-      audioManager.enableConcurrentProcessing();
+      this.getConversationProcessorSafe().updateConfig({ enableConcurrentProcessing: true });
+      this.getAudioManagerSafe().enableConcurrentProcessing();
     }
 
     // Set up audio manager callbacks
-    audioManager.setTranscriptionCallback(this.handleTranscriptionResponse.bind(this));
+    this.getAudioManagerSafe().setTranscriptionCallback(this.handleTranscriptionResponse.bind(this));
     
     // Set up store synchronization if available
     this.setupStoreSynchronization();
     
     // Initialize authentication
     this.initializeAuth();
+  }
+
+  // Safe audio manager access
+  private getAudioManagerSafe() {
+    const manager = getAudioManager();
+    if (!manager) {
+      throw new Error('AudioManager not available (likely SSR environment)');
+    }
+    return manager;
+  }
+
+  // Safe conversation processor access
+  private getConversationProcessorSafe() {
+    const processor = getConversationProcessor();
+    if (!processor) {
+      throw new Error('ConversationProcessor not available (likely SSR environment)');
+    }
+    return processor;
   }
 
   // Authentication initialization
@@ -205,8 +224,25 @@ export class UniversalAssistantCoordinator {
   // Deepgram Integration
   public async initializeDeepgram(): Promise<void> {
     try {
-      const response = await fetch('/api/universal-assistant/deepgram-key');
-      const { key } = await response.json();
+      // Get authentication token
+      const idToken = await authService.getCurrentIdToken();
+      if (!idToken) {
+        throw new Error('User not authenticated');
+      }
+
+      const response = await fetch('/api/universal-assistant/deepgram-key', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const key = data.apiKey;
 
       const ws = new WebSocket(
         `wss://api.deepgram.com/v1/listen?` +
@@ -238,9 +274,25 @@ export class UniversalAssistantCoordinator {
   // Helper method to get Deepgram API key
   private async getDeepgramApiKey(): Promise<string> {
     try {
-      const response = await fetch('/api/universal-assistant/deepgram-key');
-      const { key } = await response.json();
-      return key;
+      // Get authentication token
+      const idToken = await authService.getCurrentIdToken();
+      if (!idToken) {
+        throw new Error('User not authenticated');
+      }
+
+      const response = await fetch('/api/universal-assistant/deepgram-key', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data.apiKey;
     } catch (error) {
       console.error('Failed to get Deepgram API key:', error);
       throw new Error('Unable to retrieve Deepgram API key');
@@ -257,7 +309,7 @@ export class UniversalAssistantCoordinator {
     const audioChunkBuffer: Map<string, Blob[]> = new Map();
 
     // Register audio chunk callback for voice capture
-    audioManager.addRecordingCallback(async (audioChunk: Blob) => {
+    this.getAudioManagerSafe().addRecordingCallback(async (audioChunk: Blob) => {
       try {
         const currentSpeaker = this.state.currentSpeaker;
         
@@ -352,7 +404,7 @@ export class UniversalAssistantCoordinator {
       }
 
       // Start audio recording through AudioManager
-      await audioManager.startRecording(this.handleAudioChunk.bind(this));
+      await this.getAudioManagerSafe().startRecording(this.handleAudioChunk.bind(this));
       
       this.setState({ isRecording: true });
       
@@ -368,7 +420,7 @@ export class UniversalAssistantCoordinator {
   public async stopRecording(): Promise<void> {
     try {
       // Stop audio recording through AudioManager
-      audioManager.stopRecording();
+      this.getAudioManagerSafe().stopRecording();
 
       // Close Deepgram connection
       if (this.deepgramConnection) {
@@ -383,7 +435,7 @@ export class UniversalAssistantCoordinator {
           console.log('Voice identification stats:', stats);
           
           // Clear recording callbacks to prevent memory leaks
-          audioManager.clearRecordingCallbacks();
+          this.getAudioManagerSafe().clearRecordingCallbacks();
           
           console.log(`Meeting ended with ${stats.totalSpeakers} speakers: ${stats.identifiedCount} identified, ${stats.unidentifiedCount} unidentified`);
         } catch (voiceIdError) {
@@ -466,7 +518,7 @@ export class UniversalAssistantCoordinator {
 
       // Process through concurrent conversation processor
       if (this.config.enableConcurrentProcessing) {
-        await audioManager.processTranscriptionInput(transcript, speakerId);
+        await this.getAudioManagerSafe().processTranscriptionInput(transcript, speakerId);
       } else {
         // Fallback to regular processing
         const event = {
@@ -479,7 +531,7 @@ export class UniversalAssistantCoordinator {
           }
         };
 
-        const response = await conversationProcessor.processConversationEvent(event);
+        const response = await this.getConversationProcessorSafe().processConversationEvent(event);
         
         if (response.shouldRespond) {
           await this.generateAIResponse(response.processedText);
@@ -682,9 +734,9 @@ export class UniversalAssistantCoordinator {
       
       // Use AudioManager with speaker-specific gating if available
       if (this.config.enableConcurrentProcessing && this.state.currentSpeaker) {
-        await audioManager.play(url, this.state.currentSpeaker);
+        await this.getAudioManagerSafe().play(url, this.state.currentSpeaker);
       } else {
-        await audioManager.play(url);
+        await this.getAudioManagerSafe().play(url);
       }
 
       this.setState({ isPlaying: false });
@@ -700,7 +752,7 @@ export class UniversalAssistantCoordinator {
   public handleVocalInterrupt(): void {
     try {
       // Stop current audio playback
-      audioManager.stopAllAudio();
+      this.getAudioManagerSafe().stopAllAudio();
       
       // Clear processing states
       this.setState({ isPlaying: false, isProcessing: false });
@@ -774,7 +826,7 @@ export class UniversalAssistantCoordinator {
 
   private getConversationContext(): string[] {
     // Get recent conversation context
-    const stats = conversationProcessor.getProcessorStats();
+    const stats = this.getConversationProcessorSafe().getProcessorStats();
     return stats.conversationTopics.slice(-5); // Last 5 topics
   }
 
@@ -794,14 +846,14 @@ export class UniversalAssistantCoordinator {
     
     // Update related services
     if (newConfig.enableConcurrentProcessing !== undefined) {
-      conversationProcessor.updateConfig({ 
+      this.getConversationProcessorSafe().updateConfig({ 
         enableConcurrentProcessing: newConfig.enableConcurrentProcessing 
       });
       
       if (newConfig.enableConcurrentProcessing) {
-        audioManager.enableConcurrentProcessing();
+        this.getAudioManagerSafe().enableConcurrentProcessing();
       } else {
-        audioManager.disableConcurrentProcessing();
+        this.getAudioManagerSafe().disableConcurrentProcessing();
       }
     }
 
@@ -905,12 +957,49 @@ export class UniversalAssistantCoordinator {
 
   // Cleanup
   public cleanup(): void {
-    this.stopRecording();
-    audioManager.stopAllAudio();
-    this.ttsClient.cancelAllRequests();
-    this.stateListeners.clear();
-    this.deepgramConnection = null;
-    this.authToken = null;
+    try {
+      this.stopRecording();
+      this.getAudioManagerSafe().stopAllAudio();
+      this.ttsClient.cancelAllRequests();
+      
+      // Properly close WebSocket connection
+      if (this.deepgramConnection) {
+        if (this.deepgramConnection.readyState === WebSocket.OPEN) {
+          this.deepgramConnection.close();
+        }
+        this.deepgramConnection = null;
+      }
+      
+      // Clean up media streams
+      if (this.audioStream) {
+        this.audioStream.getTracks().forEach(track => track.stop());
+        this.audioStream = null;
+      }
+      
+      // Clean up media recorder
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        this.mediaRecorder.stop();
+        this.mediaRecorder = null;
+      }
+      
+      // Clean up voice identification coordinator
+      if (this.voiceIdentificationCoordinator) {
+        this.voiceIdentificationCoordinator.endMeeting().catch(error => {
+          console.error('Error cleaning up voice identification:', error);
+        });
+        this.voiceIdentificationCoordinator = null;
+      }
+      
+      // Clear all listeners and references
+      this.stateListeners.clear();
+      this.currentAudioUrl = null;
+      this.authToken = null;
+      this.currentMeeting = null;
+      
+      console.log('UniversalAssistantCoordinator cleanup completed');
+    } catch (error) {
+      console.error('Error during UniversalAssistantCoordinator cleanup:', error);
+    }
   }
 }
 

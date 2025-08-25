@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { audioManager } from '@/services/universal-assistant/AudioManager';
+import { getAudioManager } from '@/services/universal-assistant/AudioManager';
 
 export function useAudioRecording() {
   const [isRecording, setIsRecording] = useState(false);
@@ -28,7 +28,10 @@ export function useAudioRecording() {
         setRecordingDuration(prev => prev + 0.1);
       }, 100);
 
-      await audioManager.startRecording();
+      const manager = getAudioManager();
+      if (manager) {
+        await manager.startRecording();
+      }
     } catch (error) {
       console.error('Failed to start recording:', error);
       setIsRecording(false);
@@ -44,7 +47,8 @@ export function useAudioRecording() {
       intervalRef.current = null;
     }
 
-    const blob = audioManager.stopRecording();
+    const manager = getAudioManager();
+    const blob = manager?.stopRecording() || null;
     if (blob) {
       setAudioBlob(blob);
     }

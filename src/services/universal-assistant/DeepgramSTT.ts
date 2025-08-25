@@ -61,6 +61,139 @@ export class DeepgramSTT {
     this.apiKey = apiKey;
   }
 
+  /**
+   * Start live transcription using secure token-based authentication
+   * This method fetches a secure token instead of using the exposed API key
+   */
+  async startLiveTranscriptionSecure(
+    tokenProvider: () => Promise<string>,
+    options?: {
+      model?: string;
+      language?: string;
+      punctuate?: boolean;
+      diarize?: boolean;
+      smart_format?: boolean;
+      utterances?: boolean;
+    }
+  ): Promise<void> {
+    try {
+      console.log('[DeepgramSTT] Starting secure live transcription...');
+      this.isIntentionalDisconnect = false;
+      this.reconnectAttempts = 0;
+      this.audioChunkCount = 0;
+      
+      // Get secure token
+      const secureToken = await tokenProvider();
+      
+      // Establish secure connection directly with token
+      await this.establishSecureWebSocketConnection(secureToken, options);
+    } catch (error) {
+      console.error('[DeepgramSTT] Failed to start secure live transcription:', error);
+      this.updateConnectionStatus({ 
+        status: 'error', 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Establish secure WebSocket connection using token instead of API key
+   * This prevents token exposure in instance variables
+   */
+  private async establishSecureWebSocketConnection(
+    token: string,
+    options?: {
+      model?: string;
+      language?: string;
+      punctuate?: boolean;
+      diarize?: boolean;
+      smart_format?: boolean;
+      utterances?: boolean;
+    }
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('[DeepgramSTT] Establishing secure WebSocket connection...');
+        this.updateConnectionStatus({ status: 'connecting' });
+
+        // Build WebSocket URL with required parameters
+        const wsUrl = new URL('wss://api.deepgram.com/v1/listen');
+        wsUrl.searchParams.set('model', options?.model || 'nova-2');
+        wsUrl.searchParams.set('language', options?.language || 'en-US');
+        wsUrl.searchParams.set('smart_format', String(options?.smart_format !== false));
+        wsUrl.searchParams.set('diarize', String(options?.diarize !== false));
+        wsUrl.searchParams.set('punctuate', String(options?.punctuate !== false));
+        wsUrl.searchParams.set('interim_results', 'true');
+        
+        if (options?.utterances) {
+          wsUrl.searchParams.set('utterances', 'true');
+        }
+
+        console.log('[DeepgramSTT] Secure WebSocket URL:', wsUrl.toString());
+
+        // Create WebSocket connection using secure token directly (no instance variable exposure)
+        this.websocket = new WebSocket(wsUrl.toString(), ['token', token]);
+
+        // Set up connection timeout
+        const connectionTimeout = setTimeout(() => {
+          console.error('[DeepgramSTT] Secure connection timeout');
+          if (this.websocket && this.websocket.readyState === WebSocket.CONNECTING) {
+            this.websocket.close();
+            reject(new Error('Secure connection timeout'));
+          }
+        }, 10000);
+
+        this.websocket.onopen = () => {
+          clearTimeout(connectionTimeout);
+          console.log('[DeepgramSTT] Secure WebSocket connection established');
+          this.updateConnectionStatus({ status: 'connected' });
+          this.reconnectAttempts = 0;
+          this.startHeartbeat();
+          resolve();
+        };
+
+        this.websocket.onclose = (event) => {
+          clearTimeout(connectionTimeout);
+          console.log(`[DeepgramSTT] Secure WebSocket connection closed:`, event.code, event.reason);
+          this.stopHeartbeat();
+          
+          if (event.code !== 1000 && !this.isIntentionalDisconnect) {
+            this.updateConnectionStatus({ 
+              status: 'error', 
+              error: `Connection closed unexpectedly: ${event.code} ${event.reason}` 
+            });
+            this.attemptReconnection(options);
+          } else {
+            this.updateConnectionStatus({ status: 'disconnected' });
+          }
+        };
+
+        this.websocket.onerror = (error) => {
+          clearTimeout(connectionTimeout);
+          console.error('[DeepgramSTT] Secure WebSocket error:', error);
+          this.updateConnectionStatus({ 
+            status: 'error', 
+            error: 'Secure WebSocket error occurred' 
+          });
+          reject(error);
+        };
+
+        this.websocket.onmessage = (event) => {
+          this.handleTranscriptionMessage(event);
+        };
+
+      } catch (error) {
+        console.error('[DeepgramSTT] Failed to establish secure WebSocket connection:', error);
+        this.updateConnectionStatus({ 
+          status: 'error', 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        });
+        reject(error);
+      }
+    });
+  }
+
   async startLiveTranscription(options?: {
     model?: string;
     language?: string;

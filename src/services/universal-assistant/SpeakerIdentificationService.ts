@@ -1,6 +1,7 @@
 import { NameRecognitionService, NameDetectionResult, NameSuggestion } from './NameRecognitionService';
 import { DiarizationService } from './DiarizationService';
-import { ConversationProcessor, ConversationEvent } from './ConversationProcessor';
+import { ConversationProcessor } from './ConversationProcessor';
+import { ConversationEvent } from './ConversationProcessor';
 
 export interface SpeakerIdentificationResult {
   speakerId: string;

@@ -9,7 +9,7 @@ import { AudioChunkBufferConfig } from './AudioChunkBuffer';
 import { VADConfig } from './VoiceActivityDetection';
 import { AudioFormat, ConversionOptions } from './AudioFormatConverter';
 import { SegmentExtractionConfig } from './AudioSegmentExtractor';
-import { EnhancedAudioConfig } from './EnhancedAudioProcessor';
+import { EnhancedAudioConfig } from './types';
 
 export interface AudioProcessingPreset {
   name: string;

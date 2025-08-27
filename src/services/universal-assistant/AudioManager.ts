@@ -2,7 +2,7 @@ import { InputGatekeeper, InputItem, createInputGatekeeper } from '@/services/ga
 import { createConversationInputHandlers } from '@/services/gating/ConversationInputHandlers';
 import { EnhancedInputGatekeeper } from '@/services/gatekeeper/EnhancedInputGatekeeper';
 import { ConcurrentGatekeeper } from '@/services/gatekeeper/ConcurrentGatekeeper';
-import { ConversationResponse } from '@/services/universal-assistant/ConversationProcessor';
+import { ConversationResponse } from './ConversationProcessor';
 
 export interface AudioManagerConfig {
   enableInputGating: boolean;
@@ -1016,8 +1016,5 @@ export function getAudioManager(): AudioManager | null {
   return audioManagerInstance;
 }
 
-/**
- * @deprecated Use getAudioManager() factory function instead for better SSR safety
- * This singleton export will be removed in a future version
- */
-export const audioManager = getAudioManager();
+// Deprecated singleton export removed to fix webpack factory issues
+// Use getAudioManager() factory function instead

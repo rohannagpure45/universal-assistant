@@ -322,5 +322,3 @@ export interface User {
 
   // Re-export Firebase-specific types
   export * from './firebase';
-  export * from './database';
-  export * from './admin';

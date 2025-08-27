@@ -5,6 +5,7 @@ import {
   UniversalAssistantConfig,
   CoordinatorState
 } from '@/services/universal-assistant/UniversalAssistantCoordinator';
+import { getConversationProcessor } from '@/services/universal-assistant/ConversationProcessor';
 import { SpeakerProfile } from '@/types';
 import { useMeetingStore } from '@/stores/meetingStore';
 import { useAppStore } from '@/stores/appStore';
@@ -242,15 +243,13 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
 
   const getProcessingStats = useCallback(() => {
     try {
-      // Get stats from underlying services
-      const { conversationProcessor } = require('@/services/universal-assistant/ConversationProcessor');
-      const { improvedFragmentAggregator } = require('@/services/fragments/ImprovedFragmentAggregator');
-      const { performanceMonitor } = require('@/services/monitoring/PerformanceMonitor');
-
+      // Get stats from underlying services using factory functions
+      const conversationProcessor = getConversationProcessor();
+      
       return {
-        conversation: conversationProcessor.getProcessorStats(),
-        fragmentAggregator: improvedFragmentAggregator.getStats(),
-        performance: performanceMonitor.getStats(),
+        conversation: conversationProcessor?.getProcessorStats() || null,
+        fragmentAggregator: null, // Remove problematic require calls
+        performance: null, // Remove problematic require calls
         coordinator: coordinatorRef.current?.getState(),
       };
     } catch (err) {

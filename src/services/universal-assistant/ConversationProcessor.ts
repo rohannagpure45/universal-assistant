@@ -7,7 +7,6 @@ import { createConversationInputHandlers } from '@/services/gating/ConversationI
 import { performanceMonitor } from '@/services/monitoring/PerformanceMonitor';
 import { ConcurrentGatekeeper } from '@/services/gatekeeper/ConcurrentGatekeeper';
 import { EnhancedInputGatekeeper } from '@/services/gatekeeper/EnhancedInputGatekeeper';
-
 export interface ConversationEvent {
   type: 'transcript' | 'silence' | 'speaker_change' | 'interrupt';
   data: {
@@ -609,8 +608,5 @@ export function getConversationProcessor(): ConversationProcessor | null {
   return conversationProcessorInstance;
 }
 
-/**
- * @deprecated Use getConversationProcessor() factory function instead for better SSR safety
- * This singleton export will be removed in a future version
- */
-export const conversationProcessor = getConversationProcessor();
+// Deprecated singleton export removed to fix webpack factory issues
+// Use getConversationProcessor() factory function instead

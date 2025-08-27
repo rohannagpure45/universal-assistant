@@ -1,8 +1,9 @@
-import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { immer } from 'zustand/middleware/immer';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { User, UserPreferences } from '@/types';
-import { authService, SignUpData, SignInData, LocalAuthError } from '@/services/firebase/AuthService';
+import { authService } from '@/services/firebase/AuthService';
+import type { SignUpData, SignInData, LocalAuthError } from '@/services/firebase/AuthService';
 
 // Store the auth unsubscribe function outside the store
 let authUnsubscribe: (() => void) | null = null;
@@ -53,7 +54,7 @@ export interface AuthActions {
 
 type AuthStore = AuthState & AuthActions;
 
-export const useAuthStore = create<AuthStore>()(
+export const useAuthStore = createWithEqualityFn<AuthStore>()(
   subscribeWithSelector(
     immer((set, get) => ({
       // Initial state
@@ -76,6 +77,7 @@ export const useAuthStore = create<AuthStore>()(
         });
 
         try {
+          // Use static import to prevent webpack module loading failures during hydration
           const result = await authService.signUp(data);
           
           if (result.error) {
@@ -187,6 +189,7 @@ export const useAuthStore = create<AuthStore>()(
         });
 
         try {
+          // Use static import to prevent webpack module loading failures during hydration
           const result = await authService.signOut();
           
           if (result.error) {
@@ -224,6 +227,7 @@ export const useAuthStore = create<AuthStore>()(
         });
 
         try {
+          // Use static import to prevent webpack module loading failures during hydration
           const result = await authService.resetPassword(email);
           
           if (result.error) {
@@ -260,6 +264,7 @@ export const useAuthStore = create<AuthStore>()(
         });
 
         try {
+          // Use static import to prevent webpack module loading failures during hydration
           const result = await authService.updateUserPassword(currentPassword, newPassword);
           
           if (result.error) {
@@ -296,6 +301,7 @@ export const useAuthStore = create<AuthStore>()(
         });
 
         try {
+          // Use static import to prevent webpack module loading failures during hydration
           const result = await authService.updateUserProfile(data);
           
           if (result.error) {
@@ -354,6 +360,7 @@ export const useAuthStore = create<AuthStore>()(
       // Utility actions
       refreshUser: async () => {
         try {
+          // Use static import to prevent webpack module loading failures during hydration
           const user = await authService.getCurrentUser();
           set((state) => {
             state.user = user;
@@ -364,18 +371,37 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       initialize: () => {
-        // Set up auth state listener
-        const unsubscribe = authService.onAuthStateChanged((user) => {
+        // FOUNDATION PRINCIPLE: Direct, synchronous initialization
+        // EFFICIENCY: Use static import instead of dynamic import to eliminate async issues
+        try {
+          console.log('[AuthStore] Setting up Firebase auth state listener...');
+          
+          const unsubscribe = authService.onAuthStateChanged((user) => {
+            console.log('[AuthStore] Auth state changed:', user ? 'authenticated' : 'unauthenticated');
+            set((state) => {
+              state.user = user;
+              state.isInitialized = true;
+              state.isLoading = false;
+              state.error = null; // Clear any previous errors
+            });
+          });
+          
+          // Store unsubscribe function for cleanup
+          authUnsubscribe = unsubscribe;
+          
+          console.log('[AuthStore] Auth listener initialized successfully');
+        } catch (error) {
+          console.error('[AuthStore] Failed to initialize auth listener:', error);
           set((state) => {
-            state.user = user;
+            state.error = {
+              code: 'auth/initialization-failed',
+              message: 'Failed to initialize authentication listener',
+              name: 'LocalAuthError',
+            };
             state.isInitialized = true;
             state.isLoading = false;
           });
-        });
-
-        // Store unsubscribe function for cleanup if needed
-        // We'll store it in a closure variable outside the store
-        authUnsubscribe = unsubscribe;
+        }
       },
 
       initializeAuth: async () => {
@@ -386,6 +412,17 @@ export const useAuthStore = create<AuthStore>()(
           
           // Initialize auth service - this will trigger the auth state listener
           get().initialize();
+          
+          // Set a timeout to ensure loading state is cleared
+          setTimeout(() => {
+            set((state) => {
+              // If still loading after 2 seconds, clear the loading state
+              if (state.isLoading) {
+                state.isLoading = false;
+                state.isInitialized = true;
+              }
+            });
+          }, 2000);
           
         } catch (error) {
           console.error('Auth initialization failed:', error);
@@ -435,6 +472,7 @@ export const useAuth = () => {
     refreshUser: store.refreshUser,
     initialize: store.initialize,
     initializeAuth: store.initializeAuth,
+    setInitialized: store.setInitialized,
   };
 };
 

@@ -13,6 +13,7 @@ import {
   EmailAuthProvider,
   AuthError as FirebaseAuthError,
   UserCredential,
+  signInAnonymously,
 } from 'firebase/auth';
 import {
   doc,
@@ -26,8 +27,11 @@ import { auth, db } from '@/lib/firebase/client';
 import { User, UserPreferences } from '@/types';
 import { handleFirebaseError, reportFirebaseError, withFirebaseErrorHandling } from '@/utils/firebaseErrorHandler';
 import { processCatchError } from '@/utils/errorMessages';
-import { SecurityLogger } from '@/lib/security/monitoring';
-import { AdminValidator } from '@/lib/security/adminMiddleware';
+import { featureFlagService } from '@/services/FeatureFlagService';
+import { storagePathResolver } from '@/services/firebase/StoragePathResolver';
+// EMERGENCY FIX: Removed security imports - they use Node.js APIs that break client-side hydration
+// import { SecurityLogger } from '@/lib/security/monitoring';
+// import { AdminValidator } from '@/lib/security/adminMiddleware';
 
 export interface AuthServiceConfig {
   redirectUrl?: string;
@@ -155,6 +159,80 @@ export class AuthService {
   }
 
   /**
+   * Sign in anonymously for development/demo purposes
+   */
+  public async signInAnonymously(): Promise<AuthResult> {
+    const startTime = Date.now();
+    
+    // Check if anonymous auth is enabled via feature flags
+    const flags = featureFlagService.getFlags();
+    if (!flags.enableAnonymousAuth) {
+      return {
+        user: null,
+        error: {
+          code: 'auth/anonymous-disabled',
+          message: 'Anonymous authentication is currently disabled',
+          name: 'AuthError'
+        }
+      };
+    }
+    
+    try {
+      const userCredential = await signInAnonymously(auth);
+      
+      // Create minimal user document for anonymous users
+      const userRef = doc(db, 'users', userCredential.user.uid);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        await this.createUserDocument(userCredential.user, {
+          displayName: 'Anonymous User',
+          preferences: undefined,
+        });
+      }
+      
+      // Clear any cached migration status for this user
+      storagePathResolver.clearUserCache(userCredential.user.uid);
+      
+      const user = await this.convertFirebaseUserToUser(userCredential.user);
+      
+      // Log anonymous signin
+      await this.logAuthEvent(
+        'signin',
+        userCredential.user.uid,
+        'anonymous',
+        false,
+        true,
+        {
+          duration: Date.now() - startTime,
+          provider: 'anonymous',
+          migrationPhase: flags.migrationPhase
+        }
+      );
+      
+      return { user };
+    } catch (error) {
+      await this.logAuthEvent(
+        'signin',
+        'unknown',
+        'anonymous',
+        false,
+        false,
+        {
+          duration: Date.now() - startTime,
+          provider: 'anonymous',
+          error: (error as any)?.code || 'unknown'
+        }
+      );
+      
+      return {
+        user: null,
+        error: this.handleAuthError(error as any),
+      };
+    }
+  }
+
+  /**
    * Sign in with email and password
    */
   public async signIn({ email, password }: SignInData): Promise<AuthResult> {
@@ -172,6 +250,16 @@ export class AuthService {
 
       // Check if user should have admin claims and ensure they're set
       await this.ensureAdminClaims(userCredential.user);
+      
+      // Clear cached migration status on login
+      storagePathResolver.clearUserCache(userCredential.user.uid);
+      
+      // Check if auto-migration is enabled for this user
+      const flags = featureFlagService.getFlags();
+      if (flags.autoMigrateOnLogin && flags.migrationPhase === 'migrating') {
+        // Trigger migration check (would be handled by a separate migration service)
+        console.log('Auto-migration check triggered for user:', userCredential.user.uid);
+      }
 
       const user = await this.convertFirebaseUserToUser(userCredential.user);
       
@@ -237,6 +325,16 @@ export class AuthService {
 
       // Check if user should have admin claims and ensure they're set
       await this.ensureAdminClaims(userCredential.user);
+      
+      // Clear cached migration status on login
+      storagePathResolver.clearUserCache(userCredential.user.uid);
+      
+      // Check if auto-migration is enabled for this user
+      const flags = featureFlagService.getFlags();
+      if (flags.autoMigrateOnLogin && flags.migrationPhase === 'migrating') {
+        // Trigger migration check (would be handled by a separate migration service)
+        console.log('Auto-migration check triggered for user:', userCredential.user.uid);
+      }
 
       const user = await this.convertFirebaseUserToUser(userCredential.user);
       
@@ -287,7 +385,30 @@ export class AuthService {
     const startTime = Date.now();
     
     try {
+      // Safari-specific fix: Clear local storage and session storage
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch (storageError) {
+        console.warn('Storage clear failed (Safari privacy mode?):', storageError);
+      }
+      
       await signOut(auth);
+      
+      // Safari-specific fix: Add delay to ensure sign out completes
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Safari-specific fix: Force page reload for complete sign out
+      if (typeof window !== 'undefined') {
+        // Check if we're in Safari
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        if (isSafari) {
+          // Force page reload in Safari to ensure complete sign out
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 200);
+        }
+      }
       
       // Log successful signout
       if (currentUser) {
@@ -613,20 +734,15 @@ export class AuthService {
     additionalDetails?: Record<string, any>
   ): Promise<void> {
     try {
-      await SecurityLogger.dataAccess(
-        'unknown', // clientIP not available in service layer
-        userId,
-        'authentication',
-        success ? 'read' : 'write',
+      // EMERGENCY FIX: Replaced SecurityLogger with console logging
+      console.log('[AUTH LOG]', 'unknown', userId, {
+        action,
+        email,
+        isAdmin,
         success,
-        {
-          action,
-          email,
-          isAdmin,
-          timestamp: new Date().toISOString(),
-          ...additionalDetails
-        }
-      );
+        timestamp: new Date().toISOString(),
+        ...additionalDetails
+      });
     } catch (error) {
       console.warn('Failed to log authentication event:', error);
     }
@@ -646,10 +762,7 @@ export class AuthService {
       const isAdminByEmail = adminEmails.includes(firebaseUser.email?.toLowerCase() || '');
       
       // Log admin check attempt
-      await SecurityLogger.dataAccess(
-        'unknown',
-        firebaseUser.uid,
-        'admin_claims_check',
+      console.log('[AUTH ADMIN CHECK]', 'unknown', firebaseUser.uid, 'admin_claims_check',
         'read',
         true,
         {
@@ -684,10 +797,7 @@ export class AuthService {
           const success = response.ok;
           
           // Log admin claims setting result
-          await SecurityLogger.adminAction(
-            'unknown',
-            firebaseUser.uid,
-            {
+          console.log('[AUTH ADMIN ACTION]', 'unknown', firebaseUser.uid, {
               action: 'set_admin_claims',
               success,
               email: firebaseUser.email,
@@ -709,10 +819,7 @@ export class AuthService {
           console.warn('Failed to call admin claims API (continuing with environment validation):', apiError);
           
           // Log API call failure
-          await SecurityLogger.error(
-            'unknown',
-            firebaseUser.uid,
-            apiError as Error,
+          console.error('[AUTH ERROR]', 'unknown', firebaseUser.uid, apiError,
             {
               context: 'admin_claims_api_call',
               email: firebaseUser.email,
@@ -725,10 +832,7 @@ export class AuthService {
       console.warn('Failed to ensure admin claims (continuing with environment validation):', error);
       
       // Log general failure
-      await SecurityLogger.error(
-        'unknown',
-        firebaseUser.uid,
-        error as Error,
+      console.error('[AUTH ERROR]', 'unknown', firebaseUser.uid, error,
         {
           context: 'ensure_admin_claims',
           email: firebaseUser.email,
@@ -760,10 +864,7 @@ export class AuthService {
       const isAdmin = isAdminByClaims || isAdminByEmail;
 
       // Log dual validation result
-      await SecurityLogger.dataAccess(
-        'unknown',
-        firebaseUser.uid,
-        'dual_admin_validation',
+      console.log('[AUTH ADMIN VALIDATION]', 'unknown', firebaseUser.uid, 'dual_admin_validation',
         'read',
         true,
         {

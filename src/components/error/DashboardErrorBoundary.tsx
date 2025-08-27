@@ -143,21 +143,12 @@ export class DashboardErrorBoundary extends Component<Props, State> {
   }
 }
 
-// Type-safe Higher-order component for wrapping dashboard sections
-export function withDashboardErrorBoundary<P extends Record<string, any>>(
-  Component: React.ComponentType<P>,
-  sectionName: string
-): React.ForwardRefExoticComponent<React.PropsWithoutRef<P> & React.RefAttributes<any>>;
-
-export function withDashboardErrorBoundary<P extends Record<string, any>>(
-  Component: React.ComponentType<P>
-): React.ForwardRefExoticComponent<React.PropsWithoutRef<P> & React.RefAttributes<any>>;
-
-export function withDashboardErrorBoundary<P extends Record<string, any>>(
-  Component: React.ComponentType<P>,
+// Simplified Higher-order component for wrapping dashboard sections
+export function withDashboardErrorBoundary(
+  Component: React.ComponentType<any>,
   sectionName: string = 'Dashboard Section'
-): React.ForwardRefExoticComponent<React.PropsWithoutRef<P> & React.RefAttributes<any>> {
-  const WrappedComponent = React.forwardRef<any, P>((props, ref) => (
+): React.ComponentType<any> {
+  const WrappedComponent = React.forwardRef<any, any>((props, ref) => (
     <DashboardErrorBoundary
       fallback={
         <MotionCard className="p-6 border-2 border-dashed border-danger-200 dark:border-danger-800 bg-danger-50/50 dark:bg-danger-900/20 rounded-xl">
@@ -180,7 +171,7 @@ export function withDashboardErrorBoundary<P extends Record<string, any>>(
         </MotionCard>
       }
     >
-      <Component {...(props as P)} ref={ref} />
+      <Component {...props} ref={ref} />
     </DashboardErrorBoundary>
   ));
 

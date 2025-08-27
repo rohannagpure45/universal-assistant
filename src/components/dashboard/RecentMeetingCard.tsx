@@ -71,7 +71,7 @@ export const RecentMeetingCard = React.memo<RecentMeetingProps>(({
       aria-label={`View details for ${meeting.title}`}
     >
       {/* Enhanced gradient overlay with design system colors */}
-      <div className="absolute inset-0 bg-gradient-to-r from-neutral-50/20 to-primary-50/20 dark:from-neutral-800/20 dark:to-primary-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="absolute inset-0 bg-gradient-to-r from-neutral-50/20 to-primary-50/20 dark:from-neutral-800/20 dark:to-primary-900/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
       
       <div className="relative flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">

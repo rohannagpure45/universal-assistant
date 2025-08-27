@@ -117,11 +117,11 @@ class ProductionLogger {
           obj[key] = '[REDACTED]';
         } else if (Array.isArray(obj[key])) {
           obj[key].forEach((item: any, index: number) => {
-            if (typeof item === 'object') {
+            if (typeof item === 'object' && item !== null) {
               Object.keys(item).forEach(subKey => sanitizeValue(item, subKey));
             }
           });
-        } else if (typeof obj[key] === 'object') {
+        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
           Object.keys(obj[key]).forEach(subKey => sanitizeValue(obj[key], subKey));
         }
       }

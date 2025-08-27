@@ -1,14 +1,13 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { AIModel, AIResponse } from '@/types';
-import { useCostStore } from '@/stores/costStore';
-import { getModelConfig, estimateTokens, calculateCost } from '@/config/modelConfigs';
-import { APICall } from '@/types/cost';
+import { getModelConfig, estimateTokens } from '@/config/modelConfigs';
+import { APICall } from '@/types/performance';
 
 export class AIService {
   private openai: OpenAI | null = null;
   private anthropic: Anthropic | null = null;
-  private costStore = useCostStore;
+  // Cost tracking removed
 
   constructor() {
     if (process.env.OPENAI_API_KEY) {
@@ -28,7 +27,7 @@ export class AIService {
     prompt: string,
     model: AIModel,
     context?: string[],
-    metadata?: { userId?: string; meetingId?: string; operation?: string }
+    metadata?: { userId?: string; meetingId?: string }
   ): Promise<AIResponse & { cost?: number; costMetadata?: any }> {
     const startTime = Date.now();
     let responseText = '';
@@ -55,33 +54,12 @@ export class AIService {
 
       const latency = Date.now() - startTime;
 
-      // Track cost after successful response
-      try {
-        cost = await this.trackResponseCost({
-          model,
-          tokenUsage: tokensUsed,
-          latency,
-          metadata: {
-            userId: metadata?.userId,
-            meetingId: metadata?.meetingId,
-            operation: metadata?.operation || 'generate_response',
-            contextLength: context?.length || 0,
-          },
-        });
-        
-        costMetadata = {
-          tracked: true,
-          inputTokens: tokensUsed.inputTokens,
-          outputTokens: tokensUsed.outputTokens,
-          estimatedCost: cost,
-        };
-      } catch (costError) {
-        console.warn('Failed to track response cost:', costError);
-        costMetadata = {
-          tracked: false,
-          error: costError instanceof Error ? costError.message : 'Unknown cost tracking error',
-        };
-      }
+      // Cost tracking removed
+      cost = 0;
+      costMetadata = {
+        tracked: false,
+        note: 'Cost tracking disabled',
+      };
 
       return {
         text: responseText,
@@ -157,54 +135,6 @@ export class AIService {
     };
   }
 
-  /**
-   * Track cost for AI response and update cost store
-   */
-  async trackResponseCost(callData: {
-    model: AIModel;
-    tokenUsage: { inputTokens: number; outputTokens: number; totalTokens: number };
-    latency: number;
-    metadata?: Record<string, any>;
-  }): Promise<number> {
-    try {
-      const { trackAPICall } = this.costStore.getState();
-      
-      // Determine service provider
-      const service = callData.model.startsWith('gpt-') ? 'openai' : 'anthropic';
-      
-      // Calculate cost first
-      const cost = calculateCost(callData.model, callData.tokenUsage.inputTokens, callData.tokenUsage.outputTokens);
-      
-      const apiCall: Omit<APICall, 'id' | 'timestamp'> = {
-        model: callData.model,
-        service,
-        operation: callData.metadata?.operation || 'generate_response',
-        tokenUsage: callData.tokenUsage,
-        latency: callData.latency,
-        metadata: callData.metadata,
-        cost,
-      };
-
-      const trackedCall = await trackAPICall(apiCall);
-      return trackedCall.cost;
-    } catch (error) {
-      console.error('Failed to track AI response cost:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Estimate cost for a prompt before generating response
-   */
-  estimateResponseCost(prompt: string, model: AIModel, context?: string[]): number {
-    try {
-      const { estimateCost } = this.costStore.getState();
-      const estimation = estimateCost(prompt, model, context);
-      return estimation.estimatedCost;
-    } catch (error) {
-      console.warn('Failed to estimate response cost:', error);
-      return 0;
-    }
-  }
+  // Cost tracking methods removed
 
 }

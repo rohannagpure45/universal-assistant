@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React from 'react';
 import { PageErrorBoundary } from '@/components/error-boundaries/PageErrorBoundary';
 import { MainLayout } from '@/components/layouts/MainLayout';
 import { Button } from '@/components/ui/Button';
@@ -15,36 +15,24 @@ import {
 import { SkeletonDashboardCard } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/utils';
 
-// Lazy load modular components to reduce bundle size
-const DashboardCard = React.lazy(() => import('@/components/dashboard/DashboardCard').then(m => ({default: m.DashboardCard})));
-const RecentMeetingCard = React.lazy(() => import('@/components/dashboard/RecentMeetingCard').then(m => ({default: m.RecentMeetingCard})));
-const QuickActions = React.lazy(() => import('@/components/dashboard/QuickActions').then(m => ({default: m.QuickActions})));
-const MeetingControls = React.lazy(() => import('@/components/dashboard/MeetingControls').then(m => ({default: m.MeetingControls})));
+// Direct imports to avoid webpack factory issues
+import { DashboardCard } from '@/components/dashboard/DashboardCard';
+import { RecentMeetingCard } from '@/components/dashboard/RecentMeetingCard';
+import { QuickActions } from '@/components/dashboard/QuickActions';
+import { MeetingControls } from '@/components/dashboard/MeetingControls';
 
 // Import error boundary and hooks
 import { DashboardErrorBoundary, withDashboardErrorBoundary } from '@/components/error/DashboardErrorBoundary';
 import { useDashboard } from '@/hooks/useDashboard';
 import { LoadingSpinner, PulsingDots } from '@/components/ui';
 
-
-// Component loading fallback
-const ComponentFallback = ({ name }: { name: string }) => (
-  <div className="animate-pulse bg-gray-100 dark:bg-gray-800 rounded-lg h-32 flex items-center justify-center">
-    <span className="text-sm text-gray-700 dark:text-gray-400">Loading {name}...</span>
-  </div>
-);
-
 // Enhanced dashboard components with error boundaries
 const EnhancedQuickActions = withDashboardErrorBoundary(React.memo(() => (
-  <Suspense fallback={<ComponentFallback name="Quick Actions" />}>
-    <QuickActions />
-  </Suspense>
+  <QuickActions />
 )), 'Quick Actions');
 
 const EnhancedMeetingControls = withDashboardErrorBoundary(React.memo(() => (
-  <Suspense fallback={<ComponentFallback name="Meeting Controls" />}>
-    <MeetingControls />
-  </Suspense>
+  <MeetingControls />
 )), 'Meeting Controls');
 
 // Error display component
@@ -162,39 +150,31 @@ const DashboardPage = React.memo(() => {
 
           {/* Stats Cards with improved grid spacing */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5 lg:gap-6">
-            <Suspense fallback={<SkeletonDashboardCard showTrend />}>
-              <DashboardCard
-                title="Total Meetings"
-                value={statsReady ? dashboardStats.totalMeetings : 0}
-                icon={Calendar}
-                isLoading={!statsReady}
-              />
-            </Suspense>
-            <Suspense fallback={<SkeletonDashboardCard />}>
-              <DashboardCard
-                title="Active Meetings"
-                value={statsReady ? dashboardStats.activeMeetings : 0}
-                icon={Activity}
-                isActive={isInMeeting}
-                isLoading={!statsReady}
-              />
-            </Suspense>
-            <Suspense fallback={<SkeletonDashboardCard showTrend />}>
-              <DashboardCard
-                title="Total Hours"
-                value={statsReady ? `${dashboardStats.totalHours.toFixed(1)}h` : "0h"}
-                icon={Clock}
-                isLoading={!statsReady}
-              />
-            </Suspense>
-            <Suspense fallback={<SkeletonDashboardCard showTrend />}>
-              <DashboardCard
-                title="Participants"
-                value={statsReady ? dashboardStats.uniqueParticipants : 0}
-                icon={Users}
-                isLoading={!statsReady}
-              />
-            </Suspense>
+            <DashboardCard
+              title="Total Meetings"
+              value={statsReady ? dashboardStats.totalMeetings : 0}
+              icon={Calendar}
+              isLoading={!statsReady}
+            />
+            <DashboardCard
+              title="Active Meetings"
+              value={statsReady ? dashboardStats.activeMeetings : 0}
+              icon={Activity}
+              isActive={isInMeeting}
+              isLoading={!statsReady}
+            />
+            <DashboardCard
+              title="Total Hours"
+              value={statsReady ? `${dashboardStats.totalHours.toFixed(1)}h` : "0h"}
+              icon={Clock}
+              isLoading={!statsReady}
+            />
+            <DashboardCard
+              title="Participants"
+              value={statsReady ? dashboardStats.uniqueParticipants : 0}
+              icon={Users}
+              isLoading={!statsReady}
+            />
           </div>
 
           {/* Main Content Grid with consistent spacing */}
@@ -246,12 +226,11 @@ const DashboardPage = React.memo(() => {
                   </div>
                 ) : (
                   recentMeetingsForDisplay.map((meeting) => (
-                    <Suspense key={meeting.id} fallback={<ComponentFallback name="Meeting Card" />}>
-                      <RecentMeetingCard 
-                        meeting={meeting} 
-                        onMeetingClick={handleMeetingClick}
-                      />
-                    </Suspense>
+                    <RecentMeetingCard 
+                      key={meeting.id}
+                      meeting={meeting} 
+                      onMeetingClick={handleMeetingClick}
+                    />
                   ))
                 )}
               </div>

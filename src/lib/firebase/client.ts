@@ -1,6 +1,6 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, initializeFirestore, Firestore } from 'firebase/firestore';
+import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { getAnalytics, Analytics } from 'firebase/analytics';
 
@@ -28,20 +28,13 @@ if (!getApps().length) {
 
 auth = getAuth(app);
 
-// IMPORTANT: Use REST-only mode to eliminate streaming transport issues
-// This prevents WebSocket/WebChannel errors in Brave, Safari, and strict networks
+// Initialize Firestore with standard configuration
 try {
-  db = initializeFirestore(app, {
-    // Force REST-only mode - no WebSocket connections
-    experimentalForceLongPolling: false, // Disable polling to force REST
-    experimentalAutoDetectLongPolling: false, // Don't auto-detect
-    useFetchStreams: false, // Disable streaming completely
-    ignoreUndefinedProperties: true, // Handle undefined values gracefully
-  } as any);
-} catch (_e) {
-  // Fallback to default if initializeFirestore already called elsewhere
-  console.warn('Firestore already initialized, using existing instance');
   db = getFirestore(app);
+} catch (error) {
+  console.error('Failed to initialize Firestore:', error);
+  // If Firestore initialization fails, throw the error to be caught by error boundaries
+  throw new Error('Failed to initialize Firebase Firestore. Please check your configuration.');
 }
 
 storage = getStorage(app);
@@ -51,7 +44,7 @@ if (typeof window !== 'undefined') {
   analytics = getAnalytics(app);
 }
 
-// Add runtime flag to indicate REST-only mode
-const FIRESTORE_REST_MODE = true;
+// Runtime flag indicating standard Firestore mode
+const FIRESTORE_REST_MODE = false;
 
 export { app, auth, db, storage, analytics, FIRESTORE_REST_MODE };

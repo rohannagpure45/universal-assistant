@@ -1,21 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { 
-  LiveSpeakerIndicator, 
-  VoiceActivityVisualizer, 
-  SpeakerIdentificationOverlay, 
-  UnknownSpeakerAlert,
-  useLiveSpeakerData,
-  useVoiceActivity,
-  useSpeakerIdentificationOverlay,
-  useUnknownSpeakerDetection,
-  LiveSpeakerData,
-  VoiceActivityData,
-  SpeakerIdentificationEvent,
-  UnknownSpeakerDetection,
-  IdentificationAction
-} from './index';
+import { LiveSpeakerIndicator, useLiveSpeakerData, LiveSpeakerData } from './LiveSpeakerIndicator';
+import { VoiceActivityVisualizer, useVoiceActivity, VoiceActivityData } from './VoiceActivityVisualizer';
+import { SpeakerIdentificationOverlay, useSpeakerIdentificationOverlay, SpeakerIdentificationEvent } from './SpeakerIdentificationOverlay';
+import { UnknownSpeakerAlert, useUnknownSpeakerDetection, UnknownSpeakerDetection, IdentificationAction } from './UnknownSpeakerAlert';
 import { cn } from '@/lib/utils';
 import { Settings, Play, Square, Mic, MicOff, Eye, EyeOff, Activity, AlertTriangle } from 'lucide-react';
 import { secureDeepgramTokenClient } from '@/services/universal-assistant/SecureDeepgramTokenClient';

@@ -19,8 +19,7 @@ interface ThemeProviderProps {
 }
 
 // Theme script to prevent FOUC - this should be inlined in the document head
-export const THEME_SCRIPT = `
-  (function() {
+export const THEME_SCRIPT = `(function() {
     function getThemePreference() {
       const stored = localStorage.getItem('theme');
       if (stored && ['light', 'dark', 'system'].includes(stored)) {
@@ -80,8 +79,7 @@ export const THEME_SCRIPT = `
         applyTheme(currentTheme);
       }
     });
-  })();
-`;
+  })();`;
 
 /**
  * Enhanced Theme provider that manages dark/light mode with:
@@ -98,9 +96,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   const [actualTheme, setActualTheme] = useState<'light' | 'dark'>('light');
   const [isThemeLoaded, setIsThemeLoaded] = useState(false);
 
-  // Use useLayoutEffect to sync with DOM before first paint
-  useLayoutEffect(() => {
-    // Load theme from localStorage with fallback
+  // Use useEffect to prevent hydration mismatch
+  useEffect(() => {
+    // Load theme from localStorage with fallback (after hydration)
     const savedTheme = localStorage.getItem('theme') as Theme;
     const initialTheme = savedTheme && ['light', 'dark', 'system'].includes(savedTheme) 
       ? savedTheme 

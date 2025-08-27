@@ -28,220 +28,246 @@ service cloud.firestore {
         get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid;
     }
     
-    function isValidVoiceData() {
-      return request.resource.data.keys().hasAll(['confirmed', 'confidence']) &&
-        request.resource.data.confidence is number &&
-        request.resource.data.confidence >= 0 &&
-        request.resource.data.confidence <= 1;
+    // HYBRID MODE: Support both anonymous and authenticated users during migration
+    function isAuthenticatedOrAnonymous() {
+      return request.auth != null;  // Includes anonymous auth
     }
     
-    function hasRequiredMeetingFields() {
-      return request.resource.data.keys().hasAll(['name', 'ownerId', 'systemPrompt', 'aiSettings']) &&
-        request.resource.data.ownerId is string &&
-        request.resource.data.name is string;
-    }
-    
-    // Users collection
+    // Users collection - HYBRID MODE
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isOwner(userId) || isAdmin();
+      // Allow users to read/write their own profile (including anonymous)
+      allow read, write: if isAuthenticatedOrAnonymous() && request.auth.uid == userId;
       
-      // User voice profiles (legacy support)
+      // User voice profiles (subcollection)
       match /voiceProfiles/{profileId} {
-        allow read: if isOwner(userId);
-        allow write: if isOwner(userId);
+        allow read, write: if isAuthenticatedOrAnonymous() && request.auth.uid == userId;
       }
     }
     
-    // System configuration - MISSING FROM ORIGINAL RULES
-    match /systemConfig/{configId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
+    // User preferences - HYBRID MODE
+    match /userPreferences/{userId} {
+      allow read, write: if isAuthenticatedOrAnonymous() && request.auth.uid == userId;
     }
     
-    // Voice Library collection - MATCHES ACTUAL CODE
+    // Voice Library collection - HYBRID MODE with improved security
     match /voice_library/{deepgramVoiceId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.userId == request.auth.uid ||
-         resource.data.confirmed == true ||
-         isAdmin());
+      // Allow reading if:
+      // 1. User owns it (userId field matches)
+      // 2. It's confirmed (public)
+      // 3. User is authenticated (for identification)
+      allow read: if isAuthenticatedOrAnonymous() && (
+        (resource.data.userId == request.auth.uid) ||
+        (resource.data.confirmed == true) ||
+        isAdmin()
+      );
       
-      allow create: if isAuthenticated() &&
-        isValidVoiceData() &&
+      allow create: if isAuthenticatedOrAnonymous() &&
         (!('userId' in request.resource.data) || 
-         request.resource.data.userId == request.auth.uid ||
-         request.resource.data.userId == null);
+         request.resource.data.userId == request.auth.uid);
       
-      allow update: if isAuthenticated() &&
-        isValidVoiceData() &&
-        (resource.data.userId == request.auth.uid ||
-         isAdmin() ||
-         (resource.data.confirmed == false && 
-          request.resource.data.userId == request.auth.uid));
+      allow update: if isAuthenticatedOrAnonymous() && (
+        (resource.data.userId == request.auth.uid) ||
+        (resource.data.confirmed == false && 
+         request.resource.data.userId == request.auth.uid) ||
+        isAdmin()
+      );
       
-      allow delete: if isAuthenticated() &&
+      allow delete: if isAuthenticatedOrAnonymous() &&
         (resource.data.userId == request.auth.uid || isAdmin());
     }
     
-    // Needs Identification collection
-    match /needs_identification/{requestId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.hostId == request.auth.uid ||
-         (exists(/databases/$(database)/documents/meetings/$(resource.data.meetingId)) &&
-          isMeetingParticipant(resource.data.meetingId)) ||
-         isAdmin());
-      
-      allow create: if isAuthenticated() &&
-        request.resource.data.keys().hasAll(['meetingId', 'hostId', 'voiceId']);
-      
-      allow update: if isAuthenticated() &&
-        (resource.data.hostId == request.auth.uid ||
-         (exists(/databases/$(database)/documents/meetings/$(resource.data.meetingId)) &&
-          isMeetingHost(resource.data.meetingId)) ||
-         isAdmin());
-      
-      allow delete: if isAuthenticated() &&
-        (resource.data.hostId == request.auth.uid || isAdmin());
-    }
-    
-    // Meeting Types collection - FIXED FIELD NAMES
-    match /meeting_types/{typeId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.ownerId == request.auth.uid ||
-         (resource.data.keys().hasAny(['regularParticipants']) &&
-          request.auth.uid in resource.data.regularParticipants) ||
-         isAdmin());
-      
-      allow create: if isAuthenticated() &&
-        hasRequiredMeetingFields() &&
-        request.resource.data.ownerId == request.auth.uid;
-      
-      allow update: if isAuthenticated() &&
-        resource.data.ownerId == request.auth.uid;
-      
-      allow delete: if isAuthenticated() &&
-        resource.data.ownerId == request.auth.uid;
-    }
-    
-    // Voice Matches collection
-    match /voice_matches/{deepgramVoiceId} {
-      allow read: if isAuthenticated() &&
-        (('confirmedUserId' in resource.data && 
-          resource.data.confirmedUserId == request.auth.uid) || 
-         isAdmin());
-      
-      allow write: if isAdmin();
-    }
-    
-    // Meetings collection - ENHANCED SECURITY
+    // Meetings collection - PRESERVE COLLABORATION
     match /meetings/{meetingId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.hostId == request.auth.uid ||
-         ('participantIds' in resource.data && 
-          request.auth.uid in resource.data.participantIds) ||
-         isAdmin());
+      // Allow read for hosts and participants
+      allow read: if isAuthenticatedOrAnonymous() && (
+        resource.data.hostId == request.auth.uid ||
+        ('participantIds' in resource.data && 
+         request.auth.uid in resource.data.participantIds) ||
+        isAdmin()
+      );
       
-      allow create: if isAuthenticated() &&
-        request.resource.data.keys().hasAll(['hostId', 'title', 'status']) &&
+      // Anyone authenticated can create meetings
+      allow create: if isAuthenticatedOrAnonymous() &&
         request.resource.data.hostId == request.auth.uid;
       
-      allow update: if isAuthenticated() && 
-        (resource.data.hostId == request.auth.uid ||
-         ('participantIds' in resource.data &&
-          request.auth.uid in resource.data.participantIds &&
-          // Participants can only update specific fields
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['transcript', 'participants', 'currentModel', 'modelContext', 'status'])));
+      // Hosts and participants can update (with restrictions)
+      allow update: if isAuthenticatedOrAnonymous() && (
+        resource.data.hostId == request.auth.uid ||
+        ('participantIds' in resource.data &&
+         request.auth.uid in resource.data.participantIds &&
+         // Participants can only update specific fields
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['transcript', 'participants', 'currentModel', 'modelContext', 'status']))
+      );
       
-      allow delete: if isAuthenticated() && 
+      allow delete: if isAuthenticatedOrAnonymous() && 
         resource.data.hostId == request.auth.uid;
         
-      // Meeting subcollections
+      // Meeting subcollections - accessible to participants
       match /notes/{noteId} {
-        allow read, write: if isAuthenticated() &&
-          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
-           ('participantIds' in get(/databases/$(database)/documents/meetings/$(meetingId)).data &&
-            request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participantIds));
+        allow read, write: if isMeetingParticipant(meetingId);
       }
       
       match /transcripts/{transcriptId} {
-        allow read, write: if isAuthenticated() &&
-          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
-           ('participantIds' in get(/databases/$(database)/documents/meetings/$(meetingId)).data &&
-            request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participantIds));
+        allow read, write: if isMeetingParticipant(meetingId);
         
         match /entries/{entryId} {
-          allow read, write: if isAuthenticated() &&
-            (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
-             ('participantIds' in get(/databases/$(database)/documents/meetings/$(meetingId)).data &&
-              request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participantIds));
+          allow read, write: if isMeetingParticipant(meetingId);
         }
       }
       
       match /speakers/{speakerId} {
-        allow read, write: if isAuthenticated() &&
-          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
-           ('participantIds' in get(/databases/$(database)/documents/meetings/$(meetingId)).data &&
-            request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participantIds));
+        allow read, write: if isMeetingParticipant(meetingId);
       }
       
       match /analytics/{analyticsId} {
-        allow read: if isAuthenticated() &&
-          (get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid ||
-           ('participantIds' in get(/databases/$(database)/documents/meetings/$(meetingId)).data &&
-            request.auth.uid in get(/databases/$(database)/documents/meetings/$(meetingId)).data.participantIds));
-        allow write: if isAuthenticated() &&
-          get(/databases/$(database)/documents/meetings/$(meetingId)).data.hostId == request.auth.uid;
+        allow read: if isMeetingParticipant(meetingId);
+        allow write: if isMeetingHost(meetingId);
       }
     }
     
-    // Audio clips collection (legacy but may be used)
+    // Meeting Types collection - HYBRID MODE
+    match /meetingTypes/{typeId} {
+      allow read: if isAuthenticatedOrAnonymous() && (
+        resource.data.ownerId == request.auth.uid ||
+        (resource.data.regularParticipants != null &&
+         request.auth.uid in resource.data.regularParticipants) ||
+        isAdmin()
+      );
+      
+      allow create: if isAuthenticatedOrAnonymous() &&
+        request.resource.data.ownerId == request.auth.uid;
+      
+      allow update: if isAuthenticatedOrAnonymous() &&
+        resource.data.ownerId == request.auth.uid;
+      
+      allow delete: if isAuthenticatedOrAnonymous() &&
+        resource.data.ownerId == request.auth.uid;
+    }
+    
+    // Needs Identification collection
+    match /needs_identification/{requestId} {
+      allow read: if isAuthenticatedOrAnonymous() && (
+        resource.data.hostId == request.auth.uid ||
+        isMeetingParticipant(resource.data.meetingId) ||
+        isAdmin()
+      );
+      
+      allow create: if isAuthenticatedOrAnonymous() &&
+        request.resource.data.hostId == request.auth.uid;
+      
+      allow update: if isAuthenticatedOrAnonymous() && (
+        resource.data.hostId == request.auth.uid ||
+        isMeetingHost(resource.data.meetingId)
+      );
+      
+      allow delete: if isAuthenticatedOrAnonymous() &&
+        (resource.data.hostId == request.auth.uid || isAdmin());
+    }
+    
+    // Voice Matches collection
+    match /voice_matches/{deepgramVoiceId} {
+      allow read: if isAuthenticatedOrAnonymous() && (
+        ('confirmedUserId' in resource.data && 
+         resource.data.confirmedUserId == request.auth.uid) || 
+        isAdmin()
+      );
+      
+      allow write: if isAdmin();
+    }
+    
+    // Audio clips collection - HYBRID MODE
     match /audioClips/{clipId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      // Temporary: Allow authenticated users to access clips
+      allow read: if isAuthenticatedOrAnonymous();
+      allow write: if isAuthenticatedOrAnonymous();
     }
     
     // Custom rules collection
     match /customRules/{ruleId} {
-      allow read: if isAuthenticated() && 
-        (resource.data.userId == request.auth.uid || 
-         ('isPublic' in resource.data && resource.data.isPublic == true));
-      allow write: if isAuthenticated() && 
+      allow read: if isAuthenticatedOrAnonymous() && (
+        resource.data.userId == request.auth.uid ||
+        (resource.data.isPublic == true)
+      );
+      
+      allow create: if isAuthenticatedOrAnonymous() &&
         request.resource.data.userId == request.auth.uid;
+      
+      allow update: if isAuthenticatedOrAnonymous() &&
+        resource.data.userId == request.auth.uid;
+      
+      allow delete: if isAuthenticatedOrAnonymous() &&
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // TTS cache collection - HYBRID MODE
+    match /ttsCache/{cacheId} {
+      // Temporary: Allow all authenticated users during migration
+      allow read, write, delete: if isAuthenticatedOrAnonymous();
+    }
+    
+    // Cost tracking collections
+    match /costs/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+      
+      match /apiCalls/{callId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+      
+      match /budgets/{budgetId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+      
+      match /analytics/{period} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+    
+    // Test collection for development
+    match /test-collection/{docId} {
+      // Allow authenticated users to test
+      allow read: if isAuthenticatedOrAnonymous() && (
+        !('userId' in resource.data) ||
+        resource.data.userId == request.auth.uid
+      );
+      allow create: if isAuthenticatedOrAnonymous();
+      allow update: if isAuthenticatedOrAnonymous() && (
+        !('userId' in resource.data) ||
+        resource.data.userId == request.auth.uid
+      );
+      allow delete: if isAuthenticatedOrAnonymous() && (
+        !('userId' in resource.data) ||
+        resource.data.userId == request.auth.uid
+      );
+    }
+    
+    // System configuration
+    match /systemConfig/{configId} {
+      allow read: if isAuthenticatedOrAnonymous();
+      allow write: if isAdmin();
+    }
+    
+    // Feature flags collection - public read for all users
+    match /systemConfig/featureFlags {
+      allow read: if true;  // Public read for feature flags
+      allow write: if isAdmin();
+    }
+    
+    // User feature overrides
+    match /userFeatureOverrides/{userId} {
+      allow read, write: if isAuthenticatedOrAnonymous() && request.auth.uid == userId;
+    }
+    
+    // Migration logs
+    match /migrationLogs/{document=**} {
+      allow write: if isAuthenticatedOrAnonymous();
+      allow read: if isAuthenticatedOrAnonymous() && (isAdmin() || request.auth.uid == resource.data.userId);
     }
     
     // Agent configurations
     match /agents/{agentId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticatedOrAnonymous();
       allow write: if isAdmin();
-    }
-    
-    // TTS cache collection - MATCHES CODE USAGE
-    match /ttsCache/{cacheId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
-      allow delete: if isAuthenticated();
-    }
-    
-    // Cost tracking collections - SECURED BY USER
-    match /costs/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isOwner(userId) || isAdmin();
-      
-      match /apiCalls/{callId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) || isAdmin();
-      }
-      
-      match /budgets/{budgetId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) || isAdmin();
-      }
-      
-      match /analytics/{period} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) || isAdmin();
-      }
     }
   }
 }

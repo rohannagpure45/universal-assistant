@@ -43,9 +43,24 @@ const Header: React.FC<{
   const userMenuButtonRef = useRef<HTMLButtonElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (event?: React.MouseEvent) => {
+    // Safari-specific fix: Prevent event bubbling and default behavior
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     setShowUserMenu(false);
-    await signOut();
+    
+    // Safari-specific fix: Add small delay to ensure dropdown closes
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Sign out error:', error);
+      // Safari-specific: ensure error handling doesn't break the UI
+    }
   };
 
   // Toggle notifications (close user menu if open)
@@ -79,27 +94,50 @@ const Header: React.FC<{
     }
   }, [showUserMenu]);
 
-  // Close dropdowns when clicking outside
+  // Close dropdowns when clicking outside - Safari-specific fixes
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      
       // Close notifications if clicking outside
       if (showNotifications && 
-          notificationMenuRef.current && !notificationMenuRef.current.contains(event.target as Node) &&
-          notificationButtonRef.current && !notificationButtonRef.current.contains(event.target as Node)) {
+          notificationMenuRef.current && !notificationMenuRef.current.contains(target) &&
+          notificationButtonRef.current && !notificationButtonRef.current.contains(target)) {
         setShowNotifications(false);
       }
       
       // Close user menu if clicking outside
       if (showUserMenu && 
-          userMenuRef.current && !userMenuRef.current.contains(event.target as Node) &&
-          userMenuButtonRef.current && !userMenuButtonRef.current.contains(event.target as Node)) {
+          userMenuRef.current && !userMenuRef.current.contains(target) &&
+          userMenuButtonRef.current && !userMenuButtonRef.current.contains(target)) {
         setShowUserMenu(false);
       }
     };
 
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (showUserMenu) {
+          setShowUserMenu(false);
+          userMenuButtonRef.current?.focus();
+        }
+        if (showNotifications) {
+          setShowNotifications(false);
+          notificationButtonRef.current?.focus();
+        }
+      }
+    };
+
     if (showNotifications || showUserMenu) {
+      // Safari-specific: Listen to both mouse and touch events
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+      document.addEventListener('keydown', handleEscapeKey);
+      
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('touchstart', handleClickOutside);
+        document.removeEventListener('keydown', handleEscapeKey);
+      };
     }
   }, [showNotifications, showUserMenu]);
 
@@ -161,13 +199,13 @@ const Header: React.FC<{
             {showNotifications && (
               <>
                 <div
-                  className="fixed inset-0 z-[50]"
+                  className="fixed inset-0 z-[9998]"
                   onClick={() => setShowNotifications(false)}
                   aria-hidden="true"
                 />
                 <div 
                   ref={notificationMenuRef}
-                  className="absolute right-0 mt-3 w-80 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-[100] max-h-96 overflow-y-auto backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
+                  className="absolute right-0 mt-3 w-80 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-[9999] max-h-96 overflow-y-auto backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
                   role="menu"
                   aria-labelledby="notifications-button"
                 >
@@ -217,15 +255,34 @@ const Header: React.FC<{
 
           {/* User Menu */}
           {user && (
-            <div className="relative z-[150]">
+            <div className="relative z-[9997]">
               <button
                 ref={userMenuButtonRef}
-                onClick={handleToggleUserMenu}
+                onClick={(e) => {
+                  // Safari-specific fix: Handle click events properly
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleToggleUserMenu();
+                }}
+                onTouchStart={(e) => {
+                  // Safari iOS-specific fix: Handle touch events
+                  e.preventDefault();
+                }}
                 onKeyDown={handleUserMenuKeyDown}
-                className="group flex items-center space-x-3 p-2 rounded-xl hover:bg-gradient-to-r hover:from-neutral-100 hover:to-blue-50 dark:hover:from-neutral-700 dark:hover:to-blue-900/20 transition-all duration-200 button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 relative z-[150]"
+                className="group flex items-center space-x-3 p-2 rounded-xl hover:bg-gradient-to-r hover:from-neutral-100 hover:to-blue-50 dark:hover:from-neutral-700 dark:hover:to-blue-900/20 transition-all duration-200 button-press focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 relative z-[9997]"
+                style={{
+                  // Safari-specific fix: Ensure button is clickable
+                  pointerEvents: 'auto',
+                  cursor: 'pointer',
+                  // Safari-specific fix: Force hardware acceleration
+                  transform: 'translateZ(0)',
+                  WebkitBackfaceVisibility: 'hidden',
+                  backfaceVisibility: 'hidden'
+                }}
                 aria-label={`User menu for ${user?.displayName || user?.email || 'User'}`}
                 aria-expanded={showUserMenu}
                 aria-haspopup="menu"
+                type="button"
               >
                 <div className="relative w-9 h-9 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-soft group-hover:scale-105 transition-transform duration-200">
                   <User className="w-4 h-4 text-white" />
@@ -239,15 +296,24 @@ const Header: React.FC<{
               {showUserMenu && (
                 <>
                   <div
-                    className="fixed inset-0 z-[60]"
+                    className="fixed inset-0 z-[9996]"
                     onClick={() => setShowUserMenu(false)}
                     aria-hidden="true"
                   />
                   <div 
                     ref={userMenuRef}
-                    className="absolute right-0 mt-3 w-52 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-[150] backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
+                    className="absolute right-0 mt-3 w-52 glass-morphism dark:glass-morphism-dark rounded-xl shadow-glow border border-white/30 dark:border-neutral-700/30 z-[9997] backdrop-blur-xl animate-in slide-in-from-top-2 fade-in duration-200"
                     role="menu"
                     aria-labelledby="user-menu-button"
+                    style={{
+                      // Safari-specific fix: Force stacking context
+                      position: 'absolute',
+                      zIndex: 9997,
+                      // Safari-specific fix: Ensure proper positioning
+                      top: '100%',
+                      right: 0,
+                      marginTop: '0.75rem'
+                    }}
                   >
                     <div className="p-4 border-b border-white/20 dark:border-neutral-700/30">
                       <p className="text-sm font-semibold text-neutral-900 dark:text-white">
@@ -271,13 +337,29 @@ const Header: React.FC<{
                         <span className="font-medium">Settings</span>
                       </button>
                       <button
-                        onClick={() => {
-                          setShowUserMenu(false);
-                          handleSignOut();
+                        onClick={(e) => {
+                          // Safari-specific fix: Handle event explicitly
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleSignOut(e);
+                        }}
+                        onTouchStart={(e) => {
+                          // Safari iOS-specific fix: Handle touch events
+                          e.preventDefault();
                         }}
                         className="group w-full px-4 py-3 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50/50 dark:hover:bg-red-900/20 flex items-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
+                        style={{
+                          // Safari-specific fix: Ensure button is clickable
+                          pointerEvents: 'auto',
+                          cursor: 'pointer',
+                          // Safari-specific fix: Force hardware acceleration
+                          transform: 'translateZ(0)',
+                          WebkitBackfaceVisibility: 'hidden',
+                          backfaceVisibility: 'hidden'
+                        }}
                         role="menuitem"
                         tabIndex={0}
+                        type="button"
                       >
                         <LogOut className="w-4 h-4 mr-3 group-hover:scale-110 transition-transform duration-200" aria-hidden="true" />
                         <span className="font-medium">Sign Out</span>
@@ -479,7 +561,7 @@ const Sidebar: React.FC<{
                     )}
                     
                     {/* Hover gradient overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 rounded-xl pointer-events-none" />
                   </button>
                 );
               })
@@ -513,11 +595,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   
   // Track route changes for loading state
   useEffect(() => {
-    const handleStart = () => setPageLoading(true);
     const handleComplete = () => setPageLoading(false);
     
-    // Listen for route changes
-    handleComplete(); // Reset on component mount
+    // Reset on component mount
+    handleComplete();
     
     return () => {
       handleComplete();

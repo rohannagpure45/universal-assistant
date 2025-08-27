@@ -8,46 +8,71 @@
 
 import { AudioSegmentExtractor, SegmentExtractionConfig, ExtractedSegment, SpeakerChangeEvent } from './AudioSegmentExtractor';
 import { AudioManager, AudioManagerConfig } from '../universal-assistant/AudioManager';
-import type { UniversalAssistantCoordinator } from '../universal-assistant/UniversalAssistantCoordinator';
+import type { AudioFormat, ConversionOptions } from './AudioFormatConverter';
+import type { EnhancedAudioConfig, ProcessingStats } from './types';
 
-export interface EnhancedAudioConfig {
-  // Audio manager configuration
-  audioManager: Partial<AudioManagerConfig>;
-  
-  // Segment extraction configuration
-  segmentExtraction: Partial<SegmentExtractionConfig>;
-  
-  // Integration settings
-  integration: {
-    enableVoiceCapture: boolean;
-    enableRealtimeProcessing: boolean;
-    enableSpeakerTracking: boolean;
-    autoUploadSegments: boolean;
-    uploadQualityThreshold: number;
+// Use dynamic import for UniversalAssistantCoordinator to avoid circular dependency
+type UniversalAssistantCoordinator = any; // Will be properly typed when imported dynamically
+
+/**
+ * Configuration mapper to transform EnhancedAudioConfig.segmentExtraction 
+ * into the nested structure expected by AudioSegmentExtractor
+ */
+function createSegmentExtractionConfig(
+  enhancedConfig: EnhancedAudioConfig['segmentExtraction']
+): Partial<SegmentExtractionConfig> {
+  // Default audio format for voice identification
+  const defaultAudioFormat: AudioFormat = {
+    mimeType: 'audio/webm;codecs=opus',
+    codec: 'opus',
+    sampleRate: 16000,
+    channels: 1,
+    bitRate: 64000,
   };
-  
-  // Voice identification settings
-  voiceIdentification: {
-    minSampleDuration: number; // Minimum duration for voice samples (ms)
-    maxSampleDuration: number; // Maximum duration for voice samples (ms)
-    targetSamplesPerSpeaker: number; // Target number of samples per speaker
-    qualityThreshold: number; // Minimum quality for voice identification
+
+  // Default conversion options
+  const defaultConversionOptions: Partial<ConversionOptions> = {
+    quality: 'medium',
+    normalize: true,
+    removeNoise: false,
+    trimSilence: false,
   };
-  
-  // Storage settings
-  storage: {
-    enableLocalCache: boolean;
-    cacheSize: number; // Maximum cache size in bytes
-    autoCleanup: boolean;
-    cleanupInterval: number; // Cleanup interval in ms
+
+  return {
+    // Component configurations with safe defaults
+    bufferConfig: {},
+    vadConfig: {},
+    
+    // Extraction settings mapping from flat config to nested structure
+    extractionSettings: {
+      minSegmentDuration: enhancedConfig.minSegmentDuration || 3000,
+      maxSegmentDuration: enhancedConfig.maxSegmentDuration || 15000,
+      qualityThreshold: 0.5, // Reasonable default for voice identification
+      maxSegmentsPerSpeaker: 10,
+      segmentOverlap: 500,
+    },
+    
+    // Speaker change detection with sensible defaults
+    speakerChangeDetection: {
+      enabled: true,
+      confidenceThreshold: 0.7,
+      transitionGracePeriod: 1000,
+      forceSegmentOnChange: true,
+    },
+    
+    // Audio format and conversion
+    outputFormat: defaultAudioFormat,
+    conversionOptions: defaultConversionOptions,
+    
+    // Performance settings
+    realtimeProcessing: true,
+    processingBatchSize: 5,
+    maxMemoryUsage: 100 * 1024 * 1024, // 100MB
   };
 }
 
-export interface ProcessingStats {
-  totalChunksProcessed: number;
-  totalSegmentsExtracted: number;
-  totalSamplesUploaded: number;
-  averageProcessingTime: number;
+// Extended ProcessingStats with additional fields
+export interface ExtendedProcessingStats extends ProcessingStats {
   memoryUsage: number;
   speakerStats: Map<string, {
     segmentCount: number;
@@ -71,11 +96,13 @@ export class EnhancedAudioProcessor {
   private speakerMapping: Map<string, string> = new Map(); // deepgram ID -> user ID
   
   // Statistics
-  private stats: ProcessingStats = {
+  private stats: ExtendedProcessingStats = {
     totalChunksProcessed: 0,
     totalSegmentsExtracted: 0,
     totalSamplesUploaded: 0,
     averageProcessingTime: 0,
+    errorRate: 0,
+    cacheHitRate: 0,
     memoryUsage: 0,
     speakerStats: new Map(),
   };
@@ -162,7 +189,7 @@ export class EnhancedAudioProcessor {
     this.audioManager = new AudioManager(this.config.audioManager);
     
     // Initialize segment extractor
-    this.segmentExtractor = new AudioSegmentExtractor(this.config.segmentExtraction);
+    this.segmentExtractor = new AudioSegmentExtractor(createSegmentExtractionConfig(this.config.segmentExtraction));
   }
 
   /**
@@ -647,7 +674,7 @@ export class EnhancedAudioProcessor {
     }
     
     if (newConfig.segmentExtraction) {
-      this.segmentExtractor.updateConfig(newConfig.segmentExtraction);
+      this.segmentExtractor.updateConfig(createSegmentExtractionConfig(newConfig.segmentExtraction));
     }
   }
 

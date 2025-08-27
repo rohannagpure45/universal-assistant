@@ -1,0 +1,351 @@
+/* =================================================================
+   NO-JAVASCRIPT FALLBACK STYLES
+   Ensures usability when JavaScript fails to load or is disabled
+   ================================================================= */
+
+/* Base Reset for No-JS State */
+html.no-js {
+  /* Ensure scrolling works without JS */
+  scroll-behavior: auto !important;
+}
+
+/* =================================================================
+   PROGRESSIVE ENHANCEMENT PATTERNS
+   ================================================================= */
+
+/* Hide JS-dependent elements by default */
+.js-only {
+  display: none !important;
+}
+
+/* Show no-JS fallbacks only when JS is unavailable */
+.no-js .js-only {
+  display: none !important;
+}
+
+.no-js .no-js-only {
+  display: block !important;
+}
+
+/* =================================================================
+   FORM FALLBACKS
+   ================================================================= */
+
+/* Ensure forms work without JavaScript */
+.no-js form {
+  /* Enable native validation */
+  novalidate: false;
+}
+
+.no-js input:invalid,
+.no-js textarea:invalid,
+.no-js select:invalid {
+  border-color: #ef4444 !important;
+  background-color: #fef2f2 !important;
+}
+
+.no-js input:valid,
+.no-js textarea:valid,
+.no-js select:valid {
+  border-color: #10b981 !important;
+  background-color: #f0fdf4 !important;
+}
+
+/* Show validation messages without JS */
+.no-js .form-validation-message {
+  display: block;
+  color: #ef4444;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* Make submit buttons more prominent in no-JS mode */
+.no-js button[type="submit"],
+.no-js input[type="submit"] {
+  background-color: #3b82f6 !important;
+  color: white !important;
+  padding: 0.75rem 1.5rem !important;
+  font-weight: 600 !important;
+  border-radius: 0.375rem !important;
+  cursor: pointer !important;
+  transition: background-color 0.2s !important;
+}
+
+.no-js button[type="submit"]:hover,
+.no-js input[type="submit"]:hover {
+  background-color: #2563eb !important;
+}
+
+.no-js button[type="submit"]:focus,
+.no-js input[type="submit"]:focus {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: 2px !important;
+}
+
+/* =================================================================
+   NAVIGATION FALLBACKS
+   ================================================================= */
+
+/* Ensure navigation works without JS */
+.no-js nav a {
+  display: inline-block !important;
+  padding: 0.5rem 1rem !important;
+  text-decoration: underline !important;
+  color: #2563eb !important;
+}
+
+.no-js nav a:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.no-js nav a:focus {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: 2px !important;
+}
+
+/* Mobile menu fallback - show all items */
+.no-js .mobile-menu {
+  position: static !important;
+  display: block !important;
+  background: transparent !important;
+  transform: none !important;
+}
+
+.no-js .mobile-menu-toggle {
+  display: none !important;
+}
+
+/* =================================================================
+   INTERACTIVE COMPONENT FALLBACKS
+   ================================================================= */
+
+/* Accordion/Collapsible fallback - show all content */
+.no-js .accordion-content,
+.no-js .collapsible-content,
+.no-js details {
+  display: block !important;
+  height: auto !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Tab fallback - show all tab contents as sections */
+.no-js .tab-content {
+  display: block !important;
+  padding-top: 1rem !important;
+  border-top: 1px solid #e5e7eb !important;
+  margin-top: 1rem !important;
+}
+
+.no-js .tab-button {
+  display: none !important;
+}
+
+.no-js .tab-label {
+  display: block !important;
+  font-size: 1.125rem !important;
+  font-weight: 600 !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* Modal/Dialog fallback - show inline */
+.no-js .modal,
+.no-js .dialog {
+  position: static !important;
+  display: block !important;
+  background: #f9fafb !important;
+  padding: 1rem !important;
+  margin: 1rem 0 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 0.375rem !important;
+}
+
+.no-js .modal-backdrop,
+.no-js .dialog-backdrop {
+  display: none !important;
+}
+
+/* Dropdown fallback - show as list */
+.no-js .dropdown-content {
+  position: static !important;
+  display: block !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.no-js .dropdown-trigger {
+  display: none !important;
+}
+
+/* =================================================================
+   LOADING STATES
+   ================================================================= */
+
+/* Show loading skeleton in no-JS mode */
+.no-js .skeleton {
+  animation: skeleton-pulse 2s infinite !important;
+  background: linear-gradient(
+    90deg,
+    #f3f4f6 25%,
+    #e5e7eb 50%,
+    #f3f4f6 75%
+  ) !important;
+  background-size: 200% 100% !important;
+}
+
+@keyframes skeleton-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* =================================================================
+   ACCESSIBILITY ENHANCEMENTS
+   ================================================================= */
+
+/* Ensure focus indicators are always visible in no-JS mode */
+.no-js *:focus {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: 2px !important;
+}
+
+/* Skip links always visible in no-JS mode */
+.no-js .skip-link {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  background: #1f2937 !important;
+  color: white !important;
+  padding: 0.5rem 1rem !important;
+  text-decoration: none !important;
+  z-index: 10000 !important;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .no-js * {
+    border-width: 2px !important;
+  }
+  
+  .no-js button,
+  .no-js input,
+  .no-js select,
+  .no-js textarea {
+    border: 2px solid currentColor !important;
+  }
+}
+
+/* =================================================================
+   PRINT STYLES
+   ================================================================= */
+
+@media print {
+  .no-js .no-print,
+  .no-js .js-only,
+  .no-js .loading-indicator {
+    display: none !important;
+  }
+  
+  .no-js .print-only {
+    display: block !important;
+  }
+}
+
+/* =================================================================
+   ERROR STATES
+   ================================================================= */
+
+/* JavaScript load error banner */
+.js-load-error {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #fef2f2;
+  border-bottom: 2px solid #ef4444;
+  padding: 1rem;
+  z-index: 9999;
+  display: none;
+}
+
+.no-js .js-load-error {
+  display: block !important;
+}
+
+.js-load-error-message {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.js-load-error-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  color: #ef4444;
+}
+
+.js-load-error-text {
+  flex-grow: 1;
+  color: #991b1b;
+}
+
+.js-load-error-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* =================================================================
+   PERFORMANCE OPTIMIZATIONS
+   ================================================================= */
+
+/* Reduce animations in no-JS mode for better performance */
+.no-js * {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+
+/* Except for essential loading animations */
+.no-js .skeleton,
+.no-js .spinner {
+  animation-duration: 2s !important;
+}
+
+/* =================================================================
+   RESPONSIVE FALLBACKS
+   ================================================================= */
+
+@media (max-width: 768px) {
+  .no-js {
+    font-size: 16px !important; /* Prevent zoom on iOS */
+  }
+  
+  .no-js .container {
+    padding: 1rem !important;
+  }
+  
+  .no-js button,
+  .no-js input,
+  .no-js select,
+  .no-js textarea {
+    min-height: 44px !important; /* Touch-friendly size */
+    font-size: 16px !important;
+  }
+}
+
+/* =================================================================
+   CRITICAL CSS INLINING MARKERS
+   These styles should be inlined in the HTML head
+   ================================================================= */
+
+/* @critical-start */
+.no-js-only { display: none; }
+html:not(.no-js) .no-js-only { display: none !important; }
+html.no-js .js-only { display: none !important; }
+/* @critical-end */

@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { immer } from 'zustand/middleware/immer';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { devtools } from 'zustand/middleware';
@@ -357,7 +357,7 @@ const defaultNotificationSettings: NotificationSettings = {
   securityAlerts: true,
 };
 
-export const useAppStore = create<AppStore>()(
+export const useAppStore = createWithEqualityFn<AppStore>()(
   devtools(
     persist(
       subscribeWithSelector(
@@ -374,7 +374,7 @@ export const useAppStore = create<AppStore>()(
           ttsSettings: defaultTTSSettings,
           notificationSettings: defaultNotificationSettings,
           
-          isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+          isOnline: true, // Will be updated after hydration
           appVersion: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
           lastSyncTime: null,
           
@@ -427,7 +427,7 @@ export const useAppStore = create<AppStore>()(
             });
 
             try {
-              if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+              if (typeof window === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
                 throw new Error('Media devices API not supported');
               }
 
@@ -471,7 +471,7 @@ export const useAppStore = create<AppStore>()(
 
           setAudioInputDevice: async (deviceId) => {
             try {
-              if (deviceId) {
+              if (deviceId && typeof window !== 'undefined' && navigator.mediaDevices) {
                 // Test the device before setting it
                 await navigator.mediaDevices.getUserMedia({
                   audio: { deviceId: { exact: deviceId } }
@@ -518,7 +518,7 @@ export const useAppStore = create<AppStore>()(
 
           testAudioDevice: async (deviceId, type) => {
             try {
-              if (type === 'input') {
+              if (type === 'input' && typeof window !== 'undefined' && navigator.mediaDevices) {
                 const stream = await navigator.mediaDevices.getUserMedia({
                   audio: { deviceId: { exact: deviceId } }
                 });
@@ -834,7 +834,17 @@ export const useAppStore = create<AppStore>()(
       ),
       {
         name: 'app-store',
-        storage: createJSONStorage(() => localStorage),
+        storage: createJSONStorage(() => {
+          // Safe localStorage access for hydration
+          if (typeof window === 'undefined') {
+            return {
+              getItem: () => null,
+              setItem: () => {},
+              removeItem: () => {},
+            };
+          }
+          return localStorage;
+        }),
         partialize: (state) => ({
           audioSettings: state.audioSettings,
           uiSettings: state.uiSettings,

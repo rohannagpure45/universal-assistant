@@ -1,7 +1,9 @@
 'use client';
 
 import { GlobalServiceManager } from './GlobalServiceManager';
-import { useMeetingStore, type MeetingActions } from '@/stores/meetingStore';
+import type { MeetingStoreInterface } from '@/interfaces/StoreInterfaces';
+import { serviceProvider } from '@/services/ServiceProvider';
+import { useMeetingStore } from '@/stores/meetingStore';
 
 /**
  * Integration utilities for coordinating Universal Assistant services with meeting operations
@@ -34,7 +36,7 @@ export class MeetingServiceIntegration {
       
       // Then end the meeting through the store
       console.log('MeetingServiceIntegration: Ending meeting via store...');
-      const meetingStore = useMeetingStore.getState();
+      const meetingStore = serviceProvider.getMeetingStore();
       const success = await meetingStore.endMeeting(meetingId);
       
       if (success) {
@@ -53,12 +55,16 @@ export class MeetingServiceIntegration {
   /**
    * Start meeting with service initialization (if needed)
    */
-  async startMeetingWithServiceSetup(meetingData: Parameters<MeetingActions['startMeeting']>[0]): Promise<string | null> {
+  async startMeetingWithServiceSetup(meetingData: {
+    type: string;
+    title?: string;
+    description?: string;
+  }): Promise<string | null> {
     console.log('MeetingServiceIntegration: Starting meeting with service setup...');
     
     try {
       // Start the meeting through the store first
-      const meetingStore = useMeetingStore.getState();
+      const meetingStore = serviceProvider.getMeetingStore();
       const meetingId = await meetingStore.startMeeting(meetingData);
       
       if (meetingId) {
@@ -121,6 +127,7 @@ export function useCoordinatedMeetingOperations() {
   const meetingStore = useMeetingStore();
 
   return {
+    // Spread all the original meetingStore methods and properties
     ...meetingStore,
     // Override endMeeting with coordinated version
     endMeeting: integration.endMeetingWithServiceCleanup.bind(integration),

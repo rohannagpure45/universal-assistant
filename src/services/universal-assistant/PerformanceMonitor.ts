@@ -25,7 +25,7 @@ import {
   PerformanceRecommendation
 } from '@/types/performance';
 import { AIModel } from '@/types';
-import { APICall, CostBreakdown } from '@/types/cost';
+import { APICall } from '@/types/performance';
 
 export interface PerformanceReport {
   id: string;
@@ -107,7 +107,7 @@ export class PerformanceMonitor {
   private resourceHistory: ResourceMonitoring[] = [];
   private performanceThresholds: Map<string, PerformanceThreshold> = new Map();
   private modelAnalytics: Map<AIModel, ModelPerformanceAnalysis> = new Map();
-  private costData: APICall[] = [];
+  private apiCalls: APICall[] = [];
   private optimizations: Map<string, PerformanceOptimization> = new Map();
   private trends: Map<string, PerformanceTrend> = new Map();
   

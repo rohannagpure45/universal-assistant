@@ -47,7 +47,7 @@ export { EnhancedAudioProcessor, createEnhancedAudioProcessor } from './Enhanced
 export type { 
   EnhancedAudioConfig, 
   ProcessingStats 
-} from './EnhancedAudioProcessor';
+} from './types';
 import { EnhancedAudioProcessor, createEnhancedAudioProcessor } from './EnhancedAudioProcessor';
 
 // Configuration management

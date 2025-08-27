@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -12,7 +12,8 @@ import { useAuth } from '@/hooks/useAuth';
 
 type AuthMode = 'login' | 'signup';
 
-const AuthPage: React.FC = () => {
+// Component that uses search params - needs to be wrapped in Suspense
+const AuthContent: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const modeParam = searchParams.get('mode') as AuthMode | null;
@@ -153,6 +154,26 @@ const AuthPage: React.FC = () => {
         </div>
       </div>
     </AuthLayout>
+  );
+};
+
+const AuthPage: React.FC = () => {
+  return (
+    <Suspense fallback={
+      <AuthLayout
+        title="Welcome back"
+        subtitle="Loading authentication..."
+        showBackButton={false}
+      >
+        <div className="w-full max-w-md mx-auto">
+          <div className="flex items-center justify-center p-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        </div>
+      </AuthLayout>
+    }>
+      <AuthContent />
+    </Suspense>
   );
 };
 

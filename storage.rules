@@ -15,37 +15,63 @@ service firebase.storage {
         request.auth.token.admin == true;
     }
     
-    // Voice samples storage - MATCHES ACTUAL CODE USAGE
+    // HYBRID MODE: Support both old and new path structures
+    
+    // Voice samples - LEGACY PATH (existing data)
     match /voice-samples/{deepgramVoiceId}/{fileName} {
+      // Allow authenticated users to access during migration
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && 
-        request.resource.size < 25 * 1024 * 1024 && // 25MB limit for long voice clips
+        request.resource.size < 25 * 1024 * 1024 &&
         request.resource.contentType.matches('audio/.*');
     }
     
-    // Meeting recordings - MATCHES ACTUAL CODE USAGE  
-    match /meeting-recordings/{meetingId}/{fileName} {
-      // Read: Meeting participants or admin
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        // Check if user is in meeting participants via token claim or firestore lookup
-        resource.metadata.custom.hostId == request.auth.uid
-      );
-      allow write: if isAuthenticated() && 
-        request.resource.size < 500 * 1024 * 1024 && // 500MB for full recordings
-        (request.resource.contentType.matches('audio/.*') || 
-         request.resource.contentType == 'application/json'); // metadata files
+    // Voice samples - NEW PATH (user-isolated)
+    match /voice-samples/{userId}/{deepgramVoiceId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && 
+        request.resource.size < 25 * 1024 * 1024 &&
+        request.resource.contentType.matches('audio/.*');
+      allow delete: if isOwner(userId) || isAdmin();
     }
     
-    // Meeting clips - MATCHES ACTUAL CODE USAGE
+    // Meeting recordings - LEGACY PATH
+    match /meeting-recordings/{meetingId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        request.resource.size < 500 * 1024 * 1024 &&
+        (request.resource.contentType.matches('audio/.*') || 
+         request.resource.contentType == 'application/json');
+    }
+    
+    // Meeting recordings - NEW PATH
+    match /meeting-recordings/{userId}/{meetingId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && 
+        request.resource.size < 500 * 1024 * 1024 &&
+        (request.resource.contentType.matches('audio/.*') || 
+         request.resource.contentType == 'application/json');
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+    
+    // Meeting clips - LEGACY PATH
     match /meeting-clips/{meetingId}/{fileName} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && 
-        request.resource.size < 50 * 1024 * 1024 && // 50MB for clips
+        request.resource.size < 50 * 1024 * 1024 &&
         request.resource.contentType.matches('audio/.*');
     }
     
-    // Identification samples pending classification
+    // Meeting clips - NEW PATH
+    match /meeting-clips/{userId}/{meetingId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && 
+        request.resource.size < 50 * 1024 * 1024 &&
+        request.resource.contentType.matches('audio/.*');
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+    
+    // Identification samples - LEGACY PATH
     match /identification-samples/{meetingId}/{deepgramVoiceId}/{fileName} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && 
@@ -53,54 +79,83 @@ service firebase.storage {
         request.resource.contentType.matches('audio/.*');
     }
     
-    // User uploads for voice training
+    // Identification samples - NEW PATH
+    match /identification-samples/{userId}/{meetingId}/{deepgramVoiceId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && 
+        request.resource.size < 25 * 1024 * 1024 &&
+        request.resource.contentType.matches('audio/.*');
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+    
+    // User uploads - Already user-isolated
     match /user-uploads/{userId}/voice-training/{fileName} {
       allow read: if isOwner(userId) || isAdmin();
       allow write: if isOwner(userId) && 
         request.resource.size < 25 * 1024 * 1024 &&
         request.resource.contentType.matches('audio/.*');
+      allow delete: if isOwner(userId) || isAdmin();
     }
     
-    // TTS cache - MATCHES ACTUAL CODE USAGE
+    // TTS cache - LEGACY PATH
     match /tts-cache/{fileName} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && 
-        request.resource.size < 10 * 1024 * 1024; // 10MB TTS files
-      allow delete: if isAuthenticated(); // For cache cleanup
-    }
-    
-    // Temporary processing files
-    match /temp/{sessionId}/{fileName} {
-      allow read, write: if isAuthenticated() && 
-        request.resource.size < 100 * 1024 * 1024; // 100MB temp limit
+        request.resource.size < 10 * 1024 * 1024;
       allow delete: if isAuthenticated();
     }
     
-    // Exports folder
+    // TTS cache - NEW PATH
+    match /tts-cache/{userId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && 
+        request.resource.size < 10 * 1024 * 1024;
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+    
+    // Temp files - LEGACY PATH
+    match /temp/{sessionId}/{fileName} {
+      allow read, write: if isAuthenticated() && 
+        request.resource.size < 100 * 1024 * 1024;
+      allow delete: if isAuthenticated();
+    }
+    
+    // Temp files - NEW PATH
+    match /temp/{userId}/{sessionId}/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) && 
+        request.resource.size < 100 * 1024 * 1024;
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+    
+    // Exports - Already user-isolated
     match /exports/{userId}/{fileName} {
       allow read: if isOwner(userId) || isAdmin();
       allow write: if isOwner(userId) && 
-        request.resource.size < 1024 * 1024 * 1024; // 1GB export limit
+        request.resource.size < 1024 * 1024 * 1024;
+      allow delete: if isOwner(userId) || isAdmin();
     }
     
-    // System folder - admin only
+    // Profile images
+    match /profile-images/{userId}/{fileName} {
+      allow read: if isAuthenticated(); // Public profiles
+      allow write: if isOwner(userId) && 
+        request.resource.size < 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+    
+    // Audio clips - LEGACY (compatibility)
+    match /audio-clips/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && 
+        request.resource.size < 25 * 1024 * 1024;
+    }
+    
+    // System folder - Admin only
     match /system/{allPaths=**} {
       allow read: if isAdmin();
       allow write: if isAdmin();
-    }
-    
-    // Legacy audio-clips path - redirect/migrate
-    match /audio-clips/{allPaths=**} {
-      allow read: if isAuthenticated();
-      allow write: if false; // Block new writes to legacy path
-    }
-    
-    // Profile images (if needed)
-    match /profile-images/{userId}/{fileName} {
-      allow read: if isAuthenticated();
-      allow write: if isOwner(userId) && 
-        request.resource.size < 5 * 1024 * 1024 && // 5MB limit
-        request.resource.contentType.matches('image/.*');
     }
   }
 }

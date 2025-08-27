@@ -394,8 +394,8 @@ function MeetingPageContent() {
   const initializingRef = useRef<boolean>(false);
   
   // Store references - avoid direct store usage in effects
-  const meetingStoreRef = useRef(useMeetingStore);
-  const appStoreRef = useRef(useAppStore);
+  const meetingStoreRef = useRef(useMeetingStore as any);
+  const appStoreRef = useRef(useAppStore as any);
 
   // Initialize Universal Assistant when meeting starts with proper race condition handling
   useEffect(() => {
@@ -666,11 +666,23 @@ function MeetingPageContent() {
     };
   }, [isInMeeting, currentMeeting, handleEndMeeting]);
 
-  // Authentication guard - redirect to home if not authenticated
+  // Authentication guard - sign in anonymously if not authenticated
   useEffect(() => {
+    console.log('[Meeting] Auth state:', { isInitialized, authLoading, isAuthenticated });
+    
     if (isInitialized && !authLoading && !isAuthenticated) {
-      console.log('User not authenticated, redirecting to home page');
-      router.push('/?message=Please sign in to access the meeting room');
+      console.log('[Meeting] User not authenticated, signing in anonymously');
+      import('@/services/firebase/AuthService').then(({ authService }) => {
+        authService.signInAnonymously().then((result) => {
+          if (result.user) {
+            console.log('[Meeting] Signed in anonymously:', result.user.uid);
+          } else {
+            console.error('[Meeting] Failed to sign in anonymously:', result.error);
+          }
+        }).catch(error => {
+          console.error('[Meeting] Anonymous sign in error:', error);
+        });
+      });
     }
   }, [isInitialized, authLoading, isAuthenticated, router]);
 
@@ -686,9 +698,16 @@ function MeetingPageContent() {
     );
   }
 
-  // Don't render if not authenticated (will redirect via useEffect)
+  // Wait for authentication (anonymous will be triggered automatically)
   if (!isAuthenticated) {
-    return null;
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Signing in...</p>
+        </div>
+      </div>
+    );
   }
 
   // Loading state
@@ -830,3 +849,4 @@ export default function MeetingPage() {
     </PageErrorBoundary>
   );
 }
+

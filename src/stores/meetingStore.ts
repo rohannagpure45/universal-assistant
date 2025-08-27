@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import { subscribeWithSelector } from 'zustand/middleware';
@@ -125,7 +125,7 @@ export interface MeetingActions {
 
 type MeetingStore = MeetingState & MeetingActions;
 
-export const useMeetingStore = create<MeetingStore>()(
+export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
   devtools(
     subscribeWithSelector(
       immer((set, get) => ({

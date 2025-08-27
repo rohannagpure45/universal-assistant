@@ -175,11 +175,12 @@ class ErrorTracker {
         execute: async (error, context, metadata) => {
           try {
             // Restart audio processing
-            const audioModule = await import('../universal-assistant/AudioManager');
-            if (audioModule.audioManager) {
-              await audioModule.audioManager.stopRecording();
+            const { getAudioManager } = await import('../universal-assistant/AudioManager');
+            const audioManager = getAudioManager();
+            if (audioManager) {
+              await audioManager.stopRecording();
               await new Promise(resolve => setTimeout(resolve, 1000));
-              await audioModule.audioManager.startRecording();
+              await audioManager.startRecording();
               
               logger.info('Audio system restart successful', context, {
                 metadata: { originalError: error.message }

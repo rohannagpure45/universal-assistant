@@ -17,7 +17,7 @@ const nextConfig = {
     },
     eslint: {
       ignoreDuringBuilds: false,
-    }
+    },
   }),
   
   // Security: Essential headers for production
@@ -51,30 +51,30 @@ const nextConfig = {
             key: 'Referrer-Policy',
             value: 'strict-origin-when-cross-origin'
           },
-          // Content Security Policy (Enhanced for Firebase, relaxed for development)
+          // Content Security Policy (Optimized for Firebase)
           {
             key: 'Content-Security-Policy',
             value: process.env.NODE_ENV === 'development' ? [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://apis.google.com/js/api.js https://*.googleapis.com https://www.googletagmanager.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com https://*.firebaseapp.com https://*.firebaseio.com https://www.googletagmanager.com https://www.google-analytics.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' data: https://fonts.gstatic.com",
-              "img-src 'self' data: blob:",
-              "connect-src 'self' ws: wss: https://*.firebase.com https://*.firebaseio.com https://*.firebasestorage.app https://*.googleapis.com https://apis.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net",
+              "img-src 'self' data: blob: https://*.googleapis.com",
+              "connect-src 'self' ws: wss: http://localhost:* ws://localhost:* https://*.firebase.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebasestorage.app https://*.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com",
               "media-src 'self' blob: data:",
               "worker-src 'self' blob:",
-              "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
+              "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
               "object-src 'none'"
             ].join('; ') : [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://apis.google.com https://apis.google.com/js/api.js https://*.googleapis.com https://*.firebase.com https://*.firebaseapp.com https://www.gstatic.com https://securetoken.googleapis.com https://www.googletagmanager.com https://*.google-analytics.com https://analytics.google.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com https://*.firebaseapp.com https://*.firebaseio.com https://*.googletagmanager.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.gstatic.com",
-              "font-src 'self' https://fonts.gstatic.com https://www.gstatic.com data:",
-              "img-src 'self' data: blob: https://*.googleapis.com https://*.firebase.com https://*.firebaseapp.com https://www.gstatic.com",
-              "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepgram.com https://api.elevenlabs.io https://*.firebase.com https://*.firebaseio.com https://*.firebasestorage.app https://*.googleapis.com https://apis.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com wss://*.firebaseio.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com",
+              "font-src 'self' https://fonts.gstatic.com data:",
+              "img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com",
+              "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepgram.com https://api.elevenlabs.io https://*.firebase.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebasestorage.app https://*.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com https://*.google-analytics.com https://*.googletagmanager.com",
               "media-src 'self' blob: data:",
               "worker-src 'self' blob:",
-              "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
+              "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'"
@@ -103,8 +103,8 @@ const nextConfig = {
     minimumCacheTTL: 60,
   },
 
-  // Minimal webpack configuration
-  webpack: (config, { isServer }) => {
+  // Webpack configuration with CORS fixes
+  webpack: (config, { dev, isServer }) => {
     // Only essential fallbacks
     if (!isServer) {
       config.resolve.fallback = {
@@ -113,6 +113,35 @@ const nextConfig = {
         tls: false,
       };
     }
+    
+    // Fix chunk loading timeouts (addresses "Invalid token" errors)
+    if (dev && !isServer) {
+      // Add CORS headers for hot reload
+      config.devServer = {
+        ...config.devServer,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        },
+      };
+      
+      // Optimize chunk loading to prevent timeout errors
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: {
+          chunks: 'all',
+          cacheGroups: {
+            vendor: {
+              test: /[\\/]node_modules[\\/]/,
+              name: 'vendors',
+              chunks: 'all',
+            },
+          },
+        },
+      };
+    }
+    
     return config;
   },
 };

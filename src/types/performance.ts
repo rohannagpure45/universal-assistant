@@ -1,5 +1,21 @@
 import { AIModel } from '@/types';
-import { CostBreakdown, APICall, TimeBasedUsage } from './cost';
+
+// Simple API call type without cost tracking
+export interface APICall {
+  id: string;
+  timestamp: number;
+  service: string;
+  model?: string;
+  tokens?: number;
+  latency: number;
+  success: boolean;
+  error?: string;
+}
+
+// Extended API call type with cost tracking for performance monitoring
+export interface APICallWithCost extends APICall {
+  cost: number;
+}
 
 // Enhanced performance monitoring types for Step 2.1 of Phase 4.2
 

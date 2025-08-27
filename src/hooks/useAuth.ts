@@ -15,17 +15,30 @@ export const useAuth = () => {
   const meetingStore = useMeetingStore();
   const isInitializedRef = useRef(false);
 
-  // Initialize auth on first render
+  // FOUNDATION SOLUTION: Direct, efficient initialization
+  // SOLID PRINCIPLE: Single Responsibility - this hook manages auth initialization
   useEffect(() => {
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
       
-      // Only initialize if not already initialized
+      console.log('[useAuth] Starting efficient auth initialization...');
+      
+      // DIRECT APPROACH: Initialize auth immediately without complex provider chains
       if (!auth.isInitialized) {
+        console.log('[useAuth] Calling auth.initialize()...');
         auth.initialize();
+        
+        // EFFICIENCY: Set timeout fallback for resilience
+        setTimeout(() => {
+          if (!auth.isInitialized) {
+            console.warn('[useAuth] Auth initialization timeout - setting fallback state');
+            // Force initialization if it hasn't completed
+            auth.setInitialized(true);
+          }
+        }, 2000);
       }
     }
-  }, [auth.initialize, auth.isInitialized]);
+  }, [auth.initialize, auth.isInitialized, auth.setInitialized]);
 
   // Auto-clear errors after a timeout
   useEffect(() => {

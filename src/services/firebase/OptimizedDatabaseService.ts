@@ -569,11 +569,18 @@ export class OptimizedDatabaseService {
     // Monitor network connectivity and database health
     setInterval(async () => {
       try {
-        // Test connection with a simple query
-        const testRef = doc(db, '_health', 'test');
-        await getDoc(testRef);
+        // Only test connection if we have auth
+        const { auth } = await import('@/lib/firebase/client');
+        if (auth.currentUser) {
+          // Test with a user-specific document that should exist
+          const testRef = doc(db, 'users', auth.currentUser.uid);
+          await getDoc(testRef);
+        }
       } catch (error) {
-        console.warn('Database connection health check failed:', error);
+        // Silently ignore auth errors, only warn for real connection issues
+        if (error instanceof FirestoreError && error.code !== 'permission-denied') {
+          console.warn('Database connection issue:', error.message);
+        }
       }
     }, 30000); // Check every 30 seconds
   }

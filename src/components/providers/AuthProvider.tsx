@@ -19,6 +19,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const { addNotification } = useAppStore();
   const [localInitialized, setLocalInitialized] = useState(false);
   const [forceInitialized, setForceInitialized] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatches by only showing conditional content after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -26,34 +32,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const initializeAuthentication = async () => {
       try {
-        console.log('Starting auth initialization...');
+        console.log('[AuthProvider] Starting efficient auth initialization...');
         
+        // FOUNDATION PRINCIPLE: Direct initialization without complex async chains
         // Initialize the auth store - this sets up the auth listener
         await initializeAuth();
-        console.log('Auth store initialized');
+        console.log('[AuthProvider] Auth store initialized successfully');
         
         // Set local initialized flag once auth store is set up
         if (isMounted) {
           setLocalInitialized(true);
         }
 
-        // Set a timeout to force initialization if auth state doesn't settle
+        // EFFICIENT PATTERN: Shorter timeout with progressive fallback
         timeoutId = setTimeout(() => {
           if (isMounted && !authStoreInitialized) {
-            console.warn('Auth initialization timeout - forcing initialization');
+            console.warn('[AuthProvider] Auth initialization timeout - graceful fallback');
             setForceInitialized(true);
           }
-        }, 3000);
+        }, 2000); // Reduced from 3000ms for better UX
 
       } catch (error) {
-        console.error('Auth initialization error:', error);
+        console.error('[AuthProvider] Auth initialization error:', error);
+        // RESILIENCE: Always provide fallback functionality
         if (isMounted) {
           setForceInitialized(true);
         }
       }
     };
 
-    // Only initialize once
+    // EFFICIENCY: Initialize immediately, only once
     if (!localInitialized && !forceInitialized) {
       initializeAuthentication();
     }
@@ -66,9 +74,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, [initializeAuth, authStoreInitialized, localInitialized, forceInitialized]);
 
+  // Prevent hydration mismatches by only showing loading states after mount
   // Show loading spinner during auth initialization
-  // Only show loading if neither the auth store nor local state is initialized
-  if (!authStoreInitialized && !forceInitialized && localInitialized) {
+  if (mounted && !authStoreInitialized && !forceInitialized && localInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">

@@ -6,7 +6,8 @@
 'use client';
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { SecurityLogger } from '@/lib/security/monitoring';
+// EMERGENCY FIX: Removed SecurityLogger import - it uses Node.js APIs that break hydration
+// import { SecurityLogger } from '@/lib/security/monitoring';
 
 interface AuthErrorBoundaryProps {
   children: ReactNode;
@@ -56,7 +57,7 @@ export class AuthErrorBoundary extends Component<AuthErrorBoundaryProps, AuthErr
 
   private async logAuthenticationError(error: Error, errorInfo: ErrorInfo) {
     try {
-      await SecurityLogger.error(
+      console.error('[AUTH ERROR BOUNDARY]',
         'unknown', // clientIP
         null, // userId
         error,
@@ -84,7 +85,7 @@ export class AuthErrorBoundary extends Component<AuthErrorBoundaryProps, AuthErr
       }));
 
       // Log retry attempt
-      SecurityLogger.suspiciousActivity(
+      console.warn('[AUTH SUSPICIOUS ACTIVITY]',
         'unknown',
         null,
         {
@@ -99,7 +100,7 @@ export class AuthErrorBoundary extends Component<AuthErrorBoundaryProps, AuthErr
 
   private handleReload = () => {
     // Log page reload attempt
-    SecurityLogger.suspiciousActivity(
+    console.warn('[AUTH SUSPICIOUS ACTIVITY]',
       'unknown',
       null,
       {
@@ -217,7 +218,7 @@ export class AuthErrorBoundary extends Component<AuthErrorBoundaryProps, AuthErr
 export function useAuthErrorHandler() {
   const handleError = React.useCallback(async (error: Error, context?: Record<string, any>) => {
     try {
-      await SecurityLogger.error(
+      console.error('[AUTH ERROR BOUNDARY]',
         'unknown',
         null,
         error,

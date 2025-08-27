@@ -59,7 +59,7 @@ export const DashboardCard = React.memo<DashboardCardProps>(({
     >
       {/* Animated gradient overlay */}
       <div className={cn(
-        'absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-500',
+        'absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none',
         isActive 
           ? 'from-red-50/30 to-pink-50/30 dark:from-red-900/10 dark:to-pink-900/10'
           : 'from-blue-50/30 to-purple-50/30 dark:from-blue-900/10 dark:to-purple-900/10'
@@ -123,7 +123,7 @@ export const DashboardCard = React.memo<DashboardCardProps>(({
           
           {/* Enhanced glow effect with design system colors */}
           <div className={cn(
-            'absolute inset-0 rounded-xl opacity-0 group-hover:opacity-20 blur-xl transition-opacity duration-300',
+            'absolute inset-0 rounded-xl opacity-0 group-hover:opacity-20 blur-xl transition-opacity duration-300 pointer-events-none',
             isActive ? 'bg-danger-400' : 'bg-primary-400'
           )} />
         </div>

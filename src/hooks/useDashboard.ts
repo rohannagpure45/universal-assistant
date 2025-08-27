@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMeetingStore } from '@/stores/meetingStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
-import { useCostSummary } from '@/stores/costStore';
+// Cost tracking removed
 import { DashboardService } from '@/services/firebase/DashboardService';
 import type { Meeting } from '@/types';
 import type { DashboardStats } from '@/services/firebase/DashboardService';
@@ -46,7 +46,7 @@ export const useDashboard = () => {
     meetingError 
   } = useMeetingStore();
   const { addNotification } = useAppStore();
-  const costSummary = useCostSummary();
+  // Cost tracking removed
   
   // Local state
   const [isLoading, setIsLoading] = useState(true);
@@ -252,7 +252,7 @@ export const useDashboard = () => {
     isInMeeting,
     currentMeeting,
     isLoadingRecentMeetings,
-    costSummary,
+    // Cost tracking removed
     
     // Actions
     handleMeetingClick,

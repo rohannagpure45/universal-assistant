@@ -6,8 +6,42 @@ import { useRouter } from 'next/navigation';
 import { MainLayout } from '@/components/layouts/MainLayout';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
-import { useTheme } from '@/components/providers/ThemeProvider';
+import { useTheme } from '@/components/providers/ThemeProviderSimple';
 import { ChangePasswordModal } from '@/components/settings/ChangePasswordModal';
+
+// Safe theme hook with fallbacks for hydration issues
+const useSafeTheme = () => {
+  const [mounted, setMounted] = useState(false);
+  const [themeError, setThemeError] = useState(false);
+  
+  // Always call the hook unconditionally - React Hook rules compliance
+  const themeContext = useTheme();
+  
+  // Handle theme context errors in useEffect instead of try-catch
+  useEffect(() => {
+    if (!themeContext) {
+      setThemeError(true);
+    }
+  }, [themeContext]);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  // Default theme state for SSR/hydration safety
+  const defaultThemeState = {
+    theme: 'system' as const,
+    setTheme: () => {},
+    actualTheme: 'light' as const,
+    isThemeLoaded: false,
+  };
+
+  if (!mounted || themeError || !themeContext) {
+    return defaultThemeState;
+  }
+
+  return themeContext;
+};
 import { 
   User, 
   Bell, 
@@ -162,7 +196,7 @@ export default function SettingsPage() {
     updateNotificationSettings,
     addNotification 
   } = useAppStore();
-  const { theme, setTheme, actualTheme } = useTheme();
+  const { theme, setTheme, actualTheme, isThemeLoaded } = useSafeTheme();
   const router = useRouter();
 
   const [profileForm, setProfileForm] = useState({
@@ -766,3 +800,4 @@ export default function SettingsPage() {
     </MainLayout>
   );
 }
+

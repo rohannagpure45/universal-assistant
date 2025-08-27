@@ -14,7 +14,7 @@
  * - Recovery action suggestions
  */
 
-import { create } from 'zustand';
+import { createWithEqualityFn } from 'zustand/traditional';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { handleFirebaseError, reportFirebaseError, shouldTriggerReauth } from '@/utils/firebaseErrorHandler';
 import { processCatchError, isFirebaseError } from '@/utils/errorMessages';
@@ -62,7 +62,7 @@ export interface ErrorState {
 const ERROR_EXPIRATION_TIME = 5 * 60 * 1000; // 5 minutes
 const CRITICAL_ERROR_EXPIRATION = 15 * 60 * 1000; // 15 minutes
 
-export const useErrorStore = create<ErrorState>()(
+export const useErrorStore = createWithEqualityFn<ErrorState>()(
   subscribeWithSelector((set, get) => ({
     // Initial state
     errors: new Map(),

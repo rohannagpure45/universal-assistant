@@ -25,7 +25,7 @@ import {
   PerformanceRecommendation
 } from '@/types/performance';
 import { AIModel } from '@/types';
-import { APICall } from '@/types/cost';
+import { APICall, APICallWithCost } from '@/types/performance';
 
 /**
  * Interface for enhanced monitoring capabilities
@@ -565,9 +565,9 @@ class FallbackTrackingService {
  * Cost Correlation Service
  */
 class CostCorrelationService {
-  private costData: APICall[] = [];
+  private costData: APICallWithCost[] = [];
 
-  public recordCostData(apiCall: APICall): void {
+  public recordCostData(apiCall: APICallWithCost): void {
     this.costData.push(apiCall);
     
     // Maintain history size
@@ -592,7 +592,7 @@ class CostCorrelationService {
     }
     
     const startTime = now - duration;
-    const periodCosts = this.costData.filter(c => c.timestamp.getTime() >= startTime);
+    const periodCosts = this.costData.filter(c => c.timestamp >= startTime);
     const periodMetrics = metrics.filter(m => m.timestamp >= startTime);
     
     const totalCost = periodCosts.reduce((sum, c) => sum + c.cost, 0);
@@ -773,7 +773,7 @@ export class EnhancedPerformanceMonitor implements IEnhancedMonitoring {
   /**
    * Record cost data for correlation analysis
    */
-  public recordCostData(apiCall: APICall): void {
+  public recordCostData(apiCall: APICallWithCost): void {
     this.costService.recordCostData(apiCall);
   }
 

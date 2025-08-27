@@ -7,7 +7,8 @@ import type { AudioManager } from '@/services/universal-assistant/AudioManager';
 import type { DeepgramSTT } from '@/services/universal-assistant/DeepgramSTT';
 import type { FragmentProcessor } from '@/services/universal-assistant/FragmentProcessor';
 import type { ConversationProcessor } from '@/services/universal-assistant/ConversationProcessor';
-import { useMeetingStore, useAppStore } from '@/stores';
+import { useMeetingStore } from '@/stores/meetingStore';
+import { useAppStore } from '@/stores/appStore';
 
 interface TranscriptionServices {
   audioManager: AudioManager;

@@ -5,7 +5,7 @@
  */
 
 import { DeepgramSTT } from '@/services/universal-assistant/DeepgramSTT';
-import { EnhancedAudioProcessor, EnhancedAudioConfig } from '../audio-processing/EnhancedAudioProcessor';
+import type { EnhancedAudioConfig } from '../audio-processing/types';
 import { ExtractedSegment, SpeakerChangeEvent as AudioSpeakerChangeEvent } from '../audio-processing/AudioSegmentExtractor';
 
 interface VoiceSegment {
@@ -44,41 +44,55 @@ export class VoiceCaptureService {
   private lastAudioTime: number = 0;
   
   // Enhanced audio processing
-  private enhancedProcessor: EnhancedAudioProcessor;
+  private enhancedProcessor: any; // Will be dynamically imported
   private isEnhancedMode: boolean = true;
   private capturedSegments: Map<string, VoiceSegment[]> = new Map();
   
   constructor(
     private meetingId: string,
     private deepgramService: DeepgramSTT,
-    enhancedConfig?: Partial<EnhancedAudioConfig>
+    private enhancedConfig?: Partial<EnhancedAudioConfig>
   ) {
-    // Initialize enhanced audio processor
-    this.enhancedProcessor = new EnhancedAudioProcessor({
-      integration: {
-        enableVoiceCapture: true,
-        enableRealtimeProcessing: true,
-        enableSpeakerTracking: true,
-        autoUploadSegments: true,
-        uploadQualityThreshold: 0.6,
-      },
-      voiceIdentification: {
-        minSampleDuration: this.minSegmentDuration,
-        maxSampleDuration: this.maxSegmentDuration,
-        targetSamplesPerSpeaker: 5,
-        qualityThreshold: 0.6,
-      },
-      ...enhancedConfig,
-    });
-    
-    this.setupEnhancedProcessing();
-    this.setupDeepgramListeners();
+    this.initializeAsync();
+  }
+  
+  private async initializeAsync() {
+    try {
+      // Dynamic import to break circular dependency
+      const { EnhancedAudioProcessor } = await import('../audio-processing/EnhancedAudioProcessor');
+      
+      // Initialize enhanced audio processor
+      this.enhancedProcessor = new EnhancedAudioProcessor({
+        integration: {
+          enableVoiceCapture: true,
+          enableRealtimeProcessing: true,
+          enableSpeakerTracking: true,
+          autoUploadSegments: true,
+          uploadQualityThreshold: 0.6,
+        },
+        voiceIdentification: {
+          minSampleDuration: this.minSegmentDuration,
+          maxSampleDuration: this.maxSegmentDuration,
+          targetSamplesPerSpeaker: 5,
+          qualityThreshold: 0.6,
+        },
+        ...this.enhancedConfig,
+      });
+      
+      this.setupEnhancedProcessing();
+      this.setupDeepgramListeners();
+    } catch (error) {
+      console.error('Failed to initialize EnhancedAudioProcessor:', error);
+      this.isEnhancedMode = false;
+    }
   }
 
   /**
    * Setup enhanced audio processing callbacks
    */
   private setupEnhancedProcessing(): void {
+    if (!this.enhancedProcessor) return;
+    
     // Register for extracted segments
     this.enhancedProcessor.onSegmentExtracted((segment: ExtractedSegment) => {
       this.handleEnhancedSegment(segment);
@@ -374,7 +388,7 @@ export class VoiceCaptureService {
         console.log(`Enhanced voice capture stopped. Final segments: ${finalSegments.length}`);
         
         // Convert to legacy format for compatibility
-        return finalSegments.map(segment => ({
+        return finalSegments.map((segment: ExtractedSegment) => ({
           deepgramVoiceId: segment.speakerId,
           audioBuffer: segment.audioBuffer,
           startTime: segment.startTime,
@@ -429,7 +443,7 @@ export class VoiceCaptureService {
   getBestSegments(speakerId: string, count: number = 3): VoiceSegment[] {
     if (this.isEnhancedMode) {
       const enhancedSegments = this.enhancedProcessor.getBestSegmentsForSpeaker(speakerId, count);
-      return enhancedSegments.map(segment => ({
+      return enhancedSegments.map((segment: ExtractedSegment) => ({
         deepgramVoiceId: segment.speakerId,
         audioBuffer: segment.audioBuffer,
         startTime: segment.startTime,

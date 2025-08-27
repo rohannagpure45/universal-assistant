@@ -125,8 +125,7 @@ async function handleAIResponse(request: NextRequest) {
       contextArray,
       {
         userId: decodedToken.uid,
-        meetingId: body.meetingId,
-        operation: 'ai_response_generation'
+        meetingId: body.meetingId
       }
     );
 
@@ -170,27 +169,7 @@ async function handleAIResponse(request: NextRequest) {
       }
     );
     
-    // Attempt to track failed API call for cost monitoring
-    try {
-      const aiService = new AIService();
-      // Track failed call with minimal cost (estimated input tokens only)
-      const estimatedInputTokens = Math.ceil((text || '').length / 4);
-      
-      await aiService.trackResponseCost({
-        model: (workingModel || model) as AIModel,
-        tokenUsage: { inputTokens: estimatedInputTokens, outputTokens: 0, totalTokens: estimatedInputTokens },
-        latency: 0, // 0 for failed calls
-        metadata: {
-          userId: decodedToken?.uid,
-          meetingId: body?.meetingId,
-          operation: 'ai_response_generation_failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
-          originalModel: model !== workingModel ? model : undefined,
-        },
-      });
-    } catch (costTrackingError) {
-      console.warn('Failed to track cost for failed API call:', costTrackingError);
-    }
+    // Cost tracking removed for failed calls
     
     // Handle specific error types
     if (error instanceof Error) {

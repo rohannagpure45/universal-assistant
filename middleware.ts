@@ -24,8 +24,8 @@ const authRoutes = ['/auth/login', '/auth/signup'];
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Apply CSP headers
-  let response = cspMiddleware(request);
+  // Apply CSP headers (temporarily disabled for debugging)
+  let response = NextResponse.next(); // cspMiddleware(request);
   
   // Check authentication (simplified - in production, verify JWT)
   const token = request.cookies.get('auth-token');

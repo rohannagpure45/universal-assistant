@@ -5,7 +5,8 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { generateCSP, generateNonce } from '@/utils/security/xss-prevention';
+// Temporarily simplified - will restore CSP features later
+// import { generateCSP, generateNonce } from '@/utils/security/xss-prevention';
 
 /**
  * CSP configuration for the application
@@ -55,30 +56,26 @@ const CSP_CONFIG = {
 
 /**
  * Apply CSP headers to response
+ * SIMPLIFIED - Basic security headers only until CSP is rebuilt
  */
 export function applyCSPHeaders(request: NextRequest, response: NextResponse): NextResponse {
-  // Generate nonce for this request
-  const nonce = generateNonce();
+  // Basic CSP without DOMPurify dependencies - using Next.js defaults
+  const basicCSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https://*.googleusercontent.com",
+    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://api.deepgram.com https://api.elevenlabs.io https://api.openai.com https://api.anthropic.com",
+    "frame-src 'self' https://accounts.google.com",
+    "object-src 'none'"
+  ].join('; ');
   
-  // Store nonce in response headers for use in scripts
-  response.headers.set('X-Nonce', nonce);
-  
-  // Add nonce to script-src
-  const configWithNonce = {
-    ...CSP_CONFIG,
-    scriptSrc: [`'nonce-${nonce}'`, ...CSP_CONFIG.scriptSrc]
-  };
-  
-  // Generate CSP header
-  const cspHeader = generateCSP(configWithNonce);
-  
-  // Set CSP headers
+  // Set basic CSP
   if (process.env.NODE_ENV === 'production') {
-    // Use enforcing CSP in production
-    response.headers.set('Content-Security-Policy', cspHeader);
+    response.headers.set('Content-Security-Policy', basicCSP);
   } else {
-    // Use report-only in development to identify issues
-    response.headers.set('Content-Security-Policy-Report-Only', cspHeader);
+    response.headers.set('Content-Security-Policy-Report-Only', basicCSP);
   }
   
   // Add additional security headers
@@ -121,22 +118,18 @@ export function cspMiddleware(request: NextRequest): NextResponse {
 
 /**
  * Get nonce from headers (for use in components)
+ * SIMPLIFIED - Returns null until nonce system is rebuilt
  */
 export function getNonce(headers: Headers): string | null {
-  return headers.get('X-Nonce');
+  return null; // Simplified - no nonce system currently
 }
 
 /**
  * React hook to get CSP nonce
+ * SIMPLIFIED - Returns null until nonce system is rebuilt
  */
 export function useCSPNonce(): string | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-  
-  // Get nonce from meta tag (set by layout)
-  const metaTag = document.querySelector('meta[name="csp-nonce"]');
-  return metaTag?.getAttribute('content') || null;
+  return null; // Simplified - no nonce system currently
 }
 
 export default cspMiddleware;

@@ -1,7 +1,8 @@
 'use client';
 
 import { UniversalAssistantCoordinator, createUniversalAssistantCoordinator, type UniversalAssistantConfig } from './UniversalAssistantCoordinator';
-import { useMeetingStore, useAppStore } from '@/stores';
+// Use dynamic import to break circular dependency
+// import { useMeetingStore, useAppStore } from '@/stores';
 import type { StoreApi } from 'zustand';
 
 /**
@@ -70,10 +71,14 @@ export class GlobalServiceManager {
 
     console.log('GlobalServiceManager: Initializing Universal Assistant coordinator');
     
+    // Use dynamic imports to break circular dependencies
+    const { useMeetingStore } = await import('@/stores/meetingStore');
+    const { useAppStore } = await import('@/stores/appStore');
+    
     const coordinator = createUniversalAssistantCoordinator(
       defaultConfig,
-      useMeetingStore,
-      useAppStore
+      useMeetingStore.getState() as any,
+      useAppStore.getState() as any
     );
 
     return coordinator;

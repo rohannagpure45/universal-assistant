@@ -140,7 +140,7 @@ export const MeetingTypeSelector: React.FC<MeetingTypeSelectorProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [user?.uid]); // Keep dependency to reload when auth state changes
+  }, [user?.uid, defaultMeetingTypes]); // Keep dependency to reload when auth state changes
 
   // Load meeting types on mount (works for both authenticated and non-authenticated)
   useEffect(() => {
@@ -262,7 +262,6 @@ export const MeetingTypeSelector: React.FC<MeetingTypeSelectorProps> = ({
           aria-expanded={isOpen}
           aria-haspopup="listbox"
           aria-label={`Select meeting type${selectedMeetingType ? `, currently selected: ${selectedMeetingType.name}` : ''}`}
-          aria-invalid={required && !selectedMeetingType}
           aria-describedby={required && !selectedMeetingType ? 'meeting-type-error' : undefined}
         >
           <div className="flex-1">

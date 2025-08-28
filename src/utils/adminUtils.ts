@@ -39,13 +39,8 @@ export function isAdminUser(user: ClientAdminUser | null | undefined): boolean {
     return true;
   }
   
-  // Check admin emails as final fallback for client-side UI
-  const adminEmails = ['ribt2218@gmail.com', 'rohan@linkstudio.ai'];
-  if (user.email && adminEmails.includes(user.email.toLowerCase())) {
-    return true;
-  }
-  
-  return false;
+  // SECURE: No email-based fallback (security fix for email spoofing)
+  return false; // Only custom claims validation used
 }
 
 /**

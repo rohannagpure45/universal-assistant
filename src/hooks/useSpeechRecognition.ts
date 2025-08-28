@@ -10,6 +10,22 @@ export function useSpeechRecognition(apiKey: string) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Function declaration - hoisted and available throughout scope
+  function stopListening() {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    deepgramRef.current?.stopTranscription();
+    setIsListening(false);
+  }
+
   useEffect(() => {
     if (apiKey) {
       deepgramRef.current = new DeepgramSTT(apiKey);
@@ -18,7 +34,7 @@ export function useSpeechRecognition(apiKey: string) {
     return () => {
       stopListening();
     };
-  }, [apiKey]);
+  }, [apiKey]); // Removed stopListening from deps - function declarations don't need to be in deps
 
   const handleTranscription = useCallback((result: TranscriptionResult) => {
     if (result.isFinal) {
@@ -71,20 +87,7 @@ export function useSpeechRecognition(apiKey: string) {
     }
   }, [handleTranscription]);
 
-  const stopListening = useCallback(() => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-
-    deepgramRef.current?.stopTranscription();
-    setIsListening(false);
-  }, []);
+  // stopListening function moved above useEffect as function declaration
 
   return {
     isListening,

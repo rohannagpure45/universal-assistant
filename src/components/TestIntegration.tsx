@@ -152,7 +152,7 @@ export const TestIntegration: React.FC = () => {
       
       // Check if error was added to global errors
       const globalErrors = appStore.globalErrors;
-      const hasTestError = globalErrors.some(err => err.message === 'Test error for integration test');
+      const hasTestError = globalErrors.some(err => err.error.message === 'Test error for integration test');
       
       if (!hasTestError) {
         throw new Error('Error was not added to global error store');
@@ -224,7 +224,7 @@ export const TestIntegration: React.FC = () => {
     if (auth.isInitialized) {
       runAllTests();
     }
-  }, [auth.isInitialized]);
+  }, [auth.isInitialized, runAllTests]);
 
   const getTestIcon = (result: 'pending' | 'success' | 'error') => {
     switch (result) {

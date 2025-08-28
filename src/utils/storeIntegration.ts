@@ -235,13 +235,9 @@ export const useStoreErrorHandler = () => {
     console.error(`Error in ${operation}:`, error);
     
     // Add to global error store
-    appStore.addGlobalError({
-      code: error.name || 'UNKNOWN_ERROR',
-      message: error.message,
-      operation,
-      timestamp: new Date(),
-      cause: error,
-    });
+    const errorObj = new Error(error.message);
+    errorObj.name = error.name || 'UNKNOWN_ERROR';
+    appStore.addGlobalError(errorObj, operation);
 
     // Show user notification if requested
     if (showNotification) {

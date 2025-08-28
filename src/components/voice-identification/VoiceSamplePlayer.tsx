@@ -487,6 +487,10 @@ export const VoiceSamplePlayer: React.FC<VoiceSamplePlayerProps> = ({
                 onClick={handleWaveformClick}
                 aria-label="Audio waveform, click to seek"
                 role="slider"
+                aria-valuenow={currentTime}
+                aria-valuemin={0}
+                aria-valuemax={duration}
+                aria-valuetext={`${Math.floor(currentTime / 60)}:${Math.floor(currentTime % 60).toString().padStart(2, '0')} of ${Math.floor(duration / 60)}:${Math.floor(duration % 60).toString().padStart(2, '0')}`}
                 tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {

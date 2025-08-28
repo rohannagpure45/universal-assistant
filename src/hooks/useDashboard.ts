@@ -171,7 +171,7 @@ export const useDashboard = () => {
       // Short delay to show loading state transition
       setTimeout(() => setStatsReady(true), 200);
     }
-  }, [user?.uid]); // Only depend on stable user ID
+  }, [user?.uid, loadRecentMeetings, addNotification]); // Include all dependencies
 
   // Initial data loading
   useEffect(() => {
@@ -227,7 +227,7 @@ export const useDashboard = () => {
     if (user?.uid) {
       await loadDashboardData();
     }
-  }, [loadDashboardData]);
+  }, [loadDashboardData, user?.uid]);
 
   // Clear error function
   const clearError = useCallback(() => {

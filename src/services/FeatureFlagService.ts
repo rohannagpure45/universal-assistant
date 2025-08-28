@@ -5,7 +5,7 @@
  * legacy storage paths to user-isolated paths.
  */
 
-import { doc, getDoc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { getAuth } from 'firebase/auth';
 
@@ -72,7 +72,7 @@ class FeatureFlagService {
   
   private currentFlags: FeatureFlags = { ...this.defaultFlags };
   private listeners = new Set<(flags: FeatureFlags) => void>();
-  private unsubscribe: Unsubscribe | null = null;
+  private unsubscribe: (() => void) | null = null;
   
   private constructor() {
     this.loadFlags();
@@ -86,28 +86,29 @@ class FeatureFlagService {
   }
   
   /**
-   * Load feature flags from Firestore
+   * Load feature flags from Firestore using REST-only approach
    */
   private async loadFlags(): Promise<void> {
     try {
-      // Subscribe to system-wide feature flags
-      this.unsubscribe = onSnapshot(
-        doc(db, 'systemConfig', 'featureFlags'),
-        (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.data() as Partial<FeatureFlags>;
-            this.currentFlags = { ...this.defaultFlags, ...data };
-            this.notifyListeners();
-            
-            if (this.currentFlags.debugMode) {
-              console.log('Feature flags updated:', this.currentFlags);
-            }
-          }
-        },
-        (error) => {
-          console.error('Error loading feature flags:', error);
+      // Load system-wide feature flags using REST API (no WebSocket)
+      const flagsDoc = await getDoc(doc(db, 'systemConfig', 'featureFlags'));
+      
+      if (flagsDoc.exists()) {
+        const data = flagsDoc.data() as Partial<FeatureFlags>;
+        this.currentFlags = { ...this.defaultFlags, ...data };
+        this.notifyListeners();
+        
+        if (this.currentFlags.debugMode) {
+          console.log('Feature flags loaded:', this.currentFlags);
         }
-      );
+      } else {
+        // Document doesn't exist, use defaults
+        console.log('Feature flags document not found, using defaults');
+      }
+      
+      // Set up periodic refresh instead of real-time listening
+      // This eliminates WebSocket connections that cause CORS issues
+      this.setupPeriodicRefresh();
       
       // Also load user-specific overrides if authenticated
       const auth = getAuth();
@@ -115,8 +116,44 @@ class FeatureFlagService {
         await this.loadUserOverrides(auth.currentUser.uid);
       }
     } catch (error) {
-      console.error('Error setting up feature flags:', error);
+      console.error('Error loading feature flags:', error);
+      // Fall back to defaults on error
+      this.currentFlags = { ...this.defaultFlags };
     }
+  }
+
+  /**
+   * Set up periodic refresh for feature flags (instead of real-time listening)
+   */
+  private setupPeriodicRefresh(): void {
+    // Refresh feature flags every 5 minutes
+    const refreshInterval = 5 * 60 * 1000; // 5 minutes
+    
+    const intervalId = setInterval(async () => {
+      try {
+        const flagsDoc = await getDoc(doc(db, 'systemConfig', 'featureFlags'));
+        
+        if (flagsDoc.exists()) {
+          const data = flagsDoc.data() as Partial<FeatureFlags>;
+          const newFlags = { ...this.defaultFlags, ...data };
+          
+          // Only notify if flags actually changed
+          if (JSON.stringify(newFlags) !== JSON.stringify(this.currentFlags)) {
+            this.currentFlags = newFlags;
+            this.notifyListeners();
+            
+            if (this.currentFlags.debugMode) {
+              console.log('Feature flags refreshed:', this.currentFlags);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error refreshing feature flags:', error);
+      }
+    }, refreshInterval);
+    
+    // Store the interval ID for cleanup
+    this.unsubscribe = () => clearInterval(intervalId);
   }
   
   /**

@@ -78,11 +78,7 @@ export interface MeetingStoreInterface {
   listeners: Set<string>;
   
   // Actions
-  startMeeting: (meetingData: {
-    type: string;
-    title?: string;
-    description?: string;
-  }) => Promise<string | null>;
+  startMeeting: (meetingData: Omit<Meeting, 'meetingId' | 'transcript' | 'startTime'>) => Promise<string | null>;
   
   endMeeting: (meetingId?: string) => Promise<boolean>;
   

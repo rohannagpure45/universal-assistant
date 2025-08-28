@@ -19,10 +19,8 @@ import { MotionCard } from '@/components/ui/Motion';
 import { cn } from '@/lib/utils';
 
 // Global Service Manager integration
-import { 
-  useGlobalServiceManager,
-  useUniversalAssistantCoordinator
-} from '@/services/universal-assistant/GlobalServiceManager';
+import { useGlobalServiceManager } from '@/services/universal-assistant/GlobalServiceManager';
+import { useUniversalAssistantCoordinator } from '@/hooks/useUniversalAssistantCoordinator';
 
 interface MeetingControlsProps {
   className?: string;

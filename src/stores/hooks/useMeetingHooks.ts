@@ -119,7 +119,7 @@ export const useMeetingState = () => {
 
     const participantCount = meetingData.participants.length;
     const totalSpeakingTime = meetingData.participants.reduce(
-      (total, p) => total + p.speakingTime, 0
+      (total, p) => total + (p.speakingTime || 0), 0
     );
 
     return {
@@ -134,7 +134,7 @@ export const useMeetingState = () => {
     if (!meetingData.activeSpeaker) return null;
     
     return meetingData.participants.find(
-      p => p.userId === meetingData.activeSpeaker
+      p => (p.userId || '') === meetingData.activeSpeaker
     );
   }, [meetingData.activeSpeaker, meetingData.participants]);
 
@@ -315,18 +315,18 @@ export const useParticipants = () => {
   const participantAnalytics = useMemo(() => {
     const totalParticipants = participants.length;
     const connectedCount = connectedParticipants.length;
-    const totalSpeakingTime = participants.reduce((sum, p) => sum + p.speakingTime, 0);
+    const totalSpeakingTime = participants.reduce((sum, p) => sum + (p.speakingTime || 0), 0);
     
     const participantStats = participants.map(participant => {
       const speakingPercentage = totalSpeakingTime > 0 
-        ? (participant.speakingTime / totalSpeakingTime) * 100 
+        ? ((participant.speakingTime || 0) / totalSpeakingTime) * 100 
         : 0;
 
       return {
         ...participant,
         speakingPercentage,
-        isConnected: connectedParticipants.includes(participant.userId),
-        isActive: activeSpeaker === participant.userId,
+        isConnected: connectedParticipants.includes(participant.userId || ''),
+        isActive: activeSpeaker === (participant.userId || ''),
       };
     });
 
@@ -358,23 +358,38 @@ export const useParticipants = () => {
 
 /**
  * Hook for managing real-time synchronization with automatic cleanup
+ * CRITICAL FIX: Prevent infinite Firebase listener setup
  */
 export const useRealtimeSync = (meetingId?: string) => {
-  const setupRealtimeListeners = useMeetingStore((state) => state.setupRealtimeListeners);
-  const cleanupRealtimeListeners = useMeetingStore((state) => state.cleanupRealtimeListeners);
   const currentMeetingId = useMeetingStore((state) => state.currentMeeting?.meetingId);
   
   const effectiveMeetingId = meetingId || currentMeetingId;
+  const previousMeetingIdRef = useRef<string | undefined>();
+  const isSetupRef = useRef<boolean>(false);
 
   useEffect(() => {
-    if (!effectiveMeetingId) return;
+    // CRITICAL GUARD: Prevent setup if already done for this meeting ID
+    if (!effectiveMeetingId || 
+        effectiveMeetingId === previousMeetingIdRef.current || 
+        isSetupRef.current) {
+      return;
+    }
 
-    setupRealtimeListeners(effectiveMeetingId);
+    // CRITICAL FIX: Only setup listeners when meetingId actually changes
+    console.log('[useRealtimeSync] Setting up listeners for meeting:', effectiveMeetingId);
+    previousMeetingIdRef.current = effectiveMeetingId;
+    isSetupRef.current = true;
+    
+    const store = useMeetingStore.getState();
+    store.setupRealtimeListeners(effectiveMeetingId);
 
     return () => {
-      cleanupRealtimeListeners();
+      console.log('[useRealtimeSync] Cleaning up listeners for meeting:', effectiveMeetingId);
+      isSetupRef.current = false;
+      const cleanupStore = useMeetingStore.getState();
+      cleanupStore.cleanupRealtimeListeners();
     };
-  }, [effectiveMeetingId, setupRealtimeListeners, cleanupRealtimeListeners]);
+  }, [effectiveMeetingId]); // ONLY depend on meetingId, not store functions
 
   return {
     isConnected: Boolean(effectiveMeetingId),
@@ -416,20 +431,25 @@ export const useRecording = () => {
   useEffect(() => {
     if (isRecording && !isPaused) {
       intervalRef.current = setInterval(() => {
-        updateRecordingDuration(recordingDuration + 1);
+        // CRITICAL FIX: Get current duration from store to avoid stale closure
+        const store = useMeetingStore.getState();
+        const currentDuration = store.recordingDuration;
+        store.updateRecordingDuration(currentDuration + 1);
       }, 1000);
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = undefined;
       }
     }
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = undefined;
       }
     };
-  }, [isRecording, isPaused, recordingDuration, updateRecordingDuration]);
+  }, [isRecording, isPaused]); // ONLY depend on recording state, not functions
 
   const recordingTime = useMemo(() => {
     const hours = Math.floor(recordingDuration / 3600);
@@ -483,22 +503,26 @@ export const useMeetingErrorsHook = () => {
   useEffect(() => {
     if (meetingError) {
       const timeout = setTimeout(() => {
-        clearMeetingError();
+        // CRITICAL FIX: Get function from store to avoid dependency issues
+        const store = useMeetingStore.getState();
+        store.clearMeetingError();
       }, 10000); // Clear after 10 seconds
 
       return () => clearTimeout(timeout);
     }
-  }, [meetingError, clearMeetingError]);
+  }, [meetingError]); // ONLY depend on error state, not function
 
   useEffect(() => {
     if (transcriptError) {
       const timeout = setTimeout(() => {
-        clearTranscriptError();
+        // CRITICAL FIX: Get function from store to avoid dependency issues
+        const store = useMeetingStore.getState();
+        store.clearTranscriptError();
       }, 10000);
 
       return () => clearTimeout(timeout);
     }
-  }, [transcriptError, clearTranscriptError]);
+  }, [transcriptError]); // ONLY depend on error state, not function
 
   return {
     meetingError,

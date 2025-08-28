@@ -116,7 +116,7 @@ export const RealTimeVoiceIdentificationDemo: React.FC = () => {
     } catch (error) {
       console.error('[VoiceIDDemo] Failed to initialize services:', error);
     }
-  }, []);
+  }, [demoMeeting]);
 
   // Start recording and analysis
   const startRecording = useCallback(async () => {
@@ -171,7 +171,7 @@ export const RealTimeVoiceIdentificationDemo: React.FC = () => {
     unknownSpeakerDetection.clearDetections();
 
     console.log('[VoiceIDDemo] Recording stopped');
-  }, []);
+  }, [liveSpeakerData, overlayState, unknownSpeakerDetection, voiceActivity]);
 
   // Simulate transcript processing for demo purposes
   const simulateTranscriptProcessing = useCallback(() => {
@@ -274,7 +274,7 @@ export const RealTimeVoiceIdentificationDemo: React.FC = () => {
         interruptionCount: 0,
       },
     });
-  }, [liveSpeakerData, voiceActivity, overlayState, unknownSpeakerDetection]);
+  }, [liveSpeakerData, voiceActivity, overlayState, unknownSpeakerDetection, demoMeeting.meetingId]);
 
   // Simulate periodic transcript updates during recording
   useEffect(() => {
@@ -339,7 +339,7 @@ export const RealTimeVoiceIdentificationDemo: React.FC = () => {
         });
       }
     }
-  }, [unknownSpeakerDetection, liveSpeakerData, overlayState]);
+  }, [unknownSpeakerDetection, liveSpeakerData, overlayState, demoMeeting.meetingId]);
 
   // Cleanup on unmount
   useEffect(() => {

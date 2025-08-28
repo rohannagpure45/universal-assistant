@@ -75,6 +75,17 @@ export interface User {
     lastSeen: Date;
     confidence: number;
     sessionCount: number;
+    // Additional properties from Participant compatibility
+    userId?: string;
+    displayName?: string;
+    role?: 'host' | 'participant' | 'guest';
+    speakingTime?: number;
+    voiceProfileId?: string;
+    joinTime?: Date;
+    // Computed properties
+    speakingPercentage?: number;
+    isConnected?: boolean;
+    isActive?: boolean;
   }
   
   // Meeting types

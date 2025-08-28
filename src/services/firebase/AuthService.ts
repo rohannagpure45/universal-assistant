@@ -64,6 +64,13 @@ export class AuthService {
   private static instance: AuthService;
   private googleProvider: GoogleAuthProvider;
   private config: AuthServiceConfig;
+  
+  // Auth state debouncing properties
+  private authStateTimeout: NodeJS.Timeout | null = null;
+  private latestFirebaseUser: FirebaseUser | null = null;
+  
+  // SURGICAL FIX: Issue #2 - Concurrency protection for authentication retries
+  private activeRetries = new Map<string, Promise<string>>();
 
   private constructor(config: AuthServiceConfig = {}) {
     this.config = {
@@ -625,12 +632,33 @@ export class AuthService {
    */
   public onAuthStateChanged(callback: (user: User | null) => void): () => void {
     return onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const user = await this.convertFirebaseUserToUser(firebaseUser);
-        callback(user);
-      } else {
-        callback(null);
+      // Store the latest user state
+      this.latestFirebaseUser = firebaseUser;
+      
+      // Clear existing timeout
+      if (this.authStateTimeout) {
+        clearTimeout(this.authStateTimeout);
       }
+      
+      // Debounce with minimal delay (50ms)
+      this.authStateTimeout = setTimeout(async () => {
+        try {
+          // Only process if this is still the latest user
+          if (this.latestFirebaseUser === firebaseUser) {
+            if (firebaseUser) {
+              const user = await this.convertFirebaseUserToUser(firebaseUser);
+              callback(user);
+            } else {
+              callback(null);
+            }
+          }
+        } catch (error) {
+          console.error('Auth state processing failed:', error);
+          // Don't callback with null on error - let retry logic handle it
+        }
+        
+        this.authStateTimeout = null;
+      }, 50); // Minimal 50ms debounce
     });
   }
 
@@ -644,9 +672,8 @@ export class AuthService {
       preferences?: Partial<UserPreferences>;
     }
   ): Promise<void> {
-    // Check if user is admin by email
-    const adminEmails = ['ribt2218@gmail.com', 'rohan@linkstudio.ai'];
-    const isAdmin = adminEmails.includes(firebaseUser.email?.toLowerCase() || '');
+    // SECURE: Check admin status from Firebase custom claims (eliminates email spoofing)
+    const isAdmin = await this.isAdminByCustomClaims(firebaseUser);
 
     const defaultPreferences: UserPreferences = {
       defaultModel: 'gpt-4o',
@@ -749,6 +776,19 @@ export class AuthService {
   }
 
   /**
+   * SECURE: Check admin status using Firebase custom claims only (eliminates email spoofing)
+   */
+  private async isAdminByCustomClaims(firebaseUser: FirebaseUser): Promise<boolean> {
+    try {
+      const idTokenResult = await firebaseUser.getIdTokenResult(false);
+      return idTokenResult.claims.admin === true;
+    } catch (error) {
+      console.error('Admin validation failed:', error);
+      return false; // Fail secure
+    }
+  }
+
+  /**
    * Ensure admin claims are set for admin users (LEGACY - for backward compatibility)
    * TODO: Remove after migration to new admin middleware is complete
    */
@@ -756,10 +796,10 @@ export class AuthService {
     const startTime = Date.now();
     
     try {
-      // Use environment configuration for admin detection
-      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || 
-                         ['ribt2218@gmail.com', 'rohan@linkstudio.ai']; // Fallback
-      const isAdminByEmail = adminEmails.includes(firebaseUser.email?.toLowerCase() || '');
+      // SECURE: Admin status determined by custom claims only (no email-based validation)
+      const idTokenResult = await firebaseUser.getIdTokenResult(false);
+      const currentClaims = idTokenResult.claims;
+      const isAdminByEmail = false; // Eliminated email-based validation for security
       
       // Log admin check attempt
       console.log('[AUTH ADMIN CHECK]', 'unknown', firebaseUser.uid, 'admin_claims_check',
@@ -768,7 +808,7 @@ export class AuthService {
         {
           email: firebaseUser.email,
           isAdminByEmail,
-          adminEmailsCount: adminEmails.length,
+          adminEmailsCount: 0, // Security fix: removed hardcoded email validation
           timestamp: new Date().toISOString()
         }
       );
@@ -843,21 +883,179 @@ export class AuthService {
   }
 
   /**
+   * Get ID token with retry logic for network failures
+   * SURGICAL FIX: Issue #2 - Enhanced with concurrency protection
+   * @param user - Firebase user to get token for
+   * @param maxRetries - Maximum number of retry attempts
+   * @returns Promise resolving to ID token string
+   */
+  private async getIdTokenWithRetry(user: FirebaseUser, maxRetries: number = 2): Promise<string> {
+    // SURGICAL FIX: Issue #2 - Prevent concurrent retries for same user
+    const userId = user.uid;
+    
+    // Check if there's already an active retry for this user
+    if (this.activeRetries.has(userId)) {
+      console.log(`[AuthService] Reusing existing token retry for user ${userId}`);
+      return this.activeRetries.get(userId)!;
+    }
+    
+    // Create the retry promise
+    const retryPromise = this.performTokenRetry(user, maxRetries);
+    
+    // Track active retry
+    this.activeRetries.set(userId, retryPromise);
+    
+    try {
+      const token = await retryPromise;
+      this.activeRetries.delete(userId); // Clean up on success
+      return token;
+    } catch (error) {
+      this.activeRetries.delete(userId); // Clean up on error
+      throw error;
+    }
+  }
+  
+  /**
+   * Perform actual token retry logic (extracted for concurrency protection)
+   * @param user - Firebase user to get token for
+   * @param maxRetries - Maximum number of retry attempts
+   * @returns Promise resolving to ID token string
+   */
+  private async performTokenRetry(user: FirebaseUser, maxRetries: number): Promise<string> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await user.getIdToken();
+      } catch (error) {
+        // Only retry on network/transient errors, not auth errors
+        if (attempt === maxRetries || !this.isRetryableError(error)) {
+          throw error;
+        }
+        
+        // Exponential backoff: 500ms, 1000ms, 2000ms
+        const delay = 500 * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        console.warn(`Token retrieval attempt ${attempt + 1} failed, retrying in ${delay}ms:`, (error as any)?.message || 'Unknown error');
+      }
+    }
+    
+    throw new Error('Token retrieval failed after all retries');
+  }
+  
+  /**
+   * Get ID token result with retry logic for network failures
+   * SURGICAL FIX: Issue #2 - Network resilience for token result calls
+   * @param user - Firebase user to get token result for
+   * @param forceRefresh - Whether to force token refresh
+   * @param maxRetries - Maximum number of retry attempts
+   * @returns Promise resolving to ID token result
+   */
+  private async getIdTokenResultWithRetry(
+    user: FirebaseUser, 
+    forceRefresh: boolean = false, 
+    maxRetries: number = 2
+  ): Promise<any> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await user.getIdTokenResult(forceRefresh);
+      } catch (error) {
+        // Only retry on network/transient errors, not auth errors
+        if (attempt === maxRetries || !this.isRetryableError(error)) {
+          throw error;
+        }
+        
+        // Exponential backoff: 500ms, 1000ms, 2000ms
+        const delay = 500 * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        console.warn(`Token result retrieval attempt ${attempt + 1} failed, retrying in ${delay}ms:`, (error as any)?.message || 'Unknown error');
+      }
+    }
+    
+    throw new Error('Token result retrieval failed after all retries');
+  }
+
+  /**
+   * Check if error is retryable (network/transient issues)
+   * @param error - Error to check
+   * @returns true if error should be retried
+   */
+  private isRetryableError(error: any): boolean {
+    if (!error) return false;
+    
+    const message = error.message?.toLowerCase() || '';
+    const code = error.code || '';
+    
+    // Network errors that warrant retry
+    return (
+      message.includes('network') ||
+      message.includes('timeout') ||
+      message.includes('fetch') ||
+      message.includes('connection') ||
+      code.includes('network-request-failed') ||
+      code.includes('unavailable') ||
+      code.includes('timeout')
+    );
+  }
+
+  /**
+   * Create basic user for network failure fallback
+   * @param firebaseUser - Firebase user to convert
+   * @returns Basic user without admin claims
+   */
+  private createBasicUser(firebaseUser: FirebaseUser): User {
+    const defaultPreferences: UserPreferences = {
+      defaultModel: 'gpt-4o',
+      ttsVoice: 'alloy',
+      ttsSpeed: 1.0,
+      autoTranscribe: true,
+      saveTranscripts: true,
+      theme: 'light',
+      language: 'en',
+      notifications: {
+        emailNotifications: true,
+        pushNotifications: false,
+        desktopNotifications: true
+      },
+      privacy: {
+        dataRetention: 30,
+        allowAnalytics: false,
+        shareImprovement: false
+      },
+      accessibility: {
+        highContrast: false,
+        largeText: false,
+        keyboardNavigation: false
+      }
+    };
+
+    return {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email || '',
+      displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+      photoURL: firebaseUser.photoURL,
+      isAdmin: false, // Default to false for network failures
+      preferences: defaultPreferences,
+      createdAt: new Date(),
+      lastActive: new Date()
+    };
+  }
+
+  /**
    * Convert Firebase user to application user with enhanced admin detection
    */
   private async convertFirebaseUserToUser(firebaseUser: FirebaseUser): Promise<User> {
     const startTime = Date.now();
     
     try {
-      // Get Firebase ID token WITHOUT force refresh to avoid race conditions
-      const idTokenResult = await firebaseUser.getIdTokenResult(false);
+      // SURGICAL FIX: Issue #2 - Use retry logic for both token calls
+      const token = await this.getIdTokenWithRetry(firebaseUser);
+      // Add retry wrapper for getIdTokenResult as well
+      const idTokenResult = await this.getIdTokenResultWithRetry(firebaseUser);
       const customClaims = idTokenResult.claims;
 
-      // Dual validation approach for backward compatibility
-      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || 
-                         ['ribt2218@gmail.com', 'rohan@linkstudio.ai']; // Fallback
-      
-      const isAdminByEmail = adminEmails.includes(firebaseUser.email?.toLowerCase() || '');
+      // SECURE: Use custom claims only (eliminated email-based validation)
+      const isAdminByEmail = false; // Security fix: no email-based admin validation
       const isAdminByClaims = customClaims.admin === true;
       
       // During migration: accept EITHER environment OR claims validation
@@ -873,7 +1071,7 @@ export class AuthService {
           isAdminByClaims,
           finalAdminStatus: isAdmin,
           validationSource: isAdminByClaims ? 'claims' : (isAdminByEmail ? 'environment' : 'none'),
-          adminEmailsCount: adminEmails.length,
+          adminEmailsCount: 0, // Security fix: removed hardcoded email validation
           hasCustomClaims: Object.keys(customClaims).length > 0,
           duration: Date.now() - startTime,
           timestamp: new Date().toISOString()
@@ -956,8 +1154,10 @@ export class AuthService {
         isAdmin: userData.isAdmin || isAdmin, // Use detected admin status if not in Firestore
       };
     } catch (error) {
-      console.error('Error converting Firebase user:', error);
-      throw error;
+      console.error('Error converting Firebase user, falling back to basic user:', error);
+      
+      // Graceful degradation - create basic user for network failures
+      return this.createBasicUser(firebaseUser);
     }
   }
 
@@ -1017,7 +1217,8 @@ export class AuthService {
       if (!currentUser) {
         return null;
       }
-      return await currentUser.getIdToken();
+      // SURGICAL FIX: Issue #2 - Use retry logic for network resilience
+      return await this.getIdTokenWithRetry(currentUser);
     } catch (error) {
       console.error('Failed to get current ID token:', error);
       return null;

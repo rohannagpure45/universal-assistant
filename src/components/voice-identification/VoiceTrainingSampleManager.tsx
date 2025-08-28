@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, PrimaryButton, SecondaryButton, DangerButton } from '@/components/ui/Button';
 import { Card } from '@/components/ui/card';
@@ -168,7 +168,55 @@ export const VoiceTrainingSampleManager: React.FC<VoiceTrainingSampleManagerProp
   // Initialize data
   useEffect(() => {
     if (deepgramVoiceId && !initialProfile) {
+      let isCancelled = false;
+      
+      const loadSpeakerProfile = async () => {
+        if (!deepgramVoiceId) return;
+
+        try {
+          setIsLoading(true);
+          setError(null);
+
+          // Load from VoiceLibraryService
+          const voiceEntry = await VoiceLibraryService.getOrCreateVoiceEntry(deepgramVoiceId);
+          
+          if (isCancelled) return;
+          
+          // Convert to speaker profile format
+          const profileData: SpeakerProfile = {
+            deepgramVoiceId,
+            userId: voiceEntry.userId || undefined,
+            userName: voiceEntry.userName || 'Unknown Speaker',
+            samples: voiceEntry.audioSamples.map(convertToVoiceSample),
+            averageQuality: 0,
+            totalDuration: 0,
+            lastUpdated: voiceEntry.lastHeard,
+            trainingCompleteness: 0,
+            recommendedActions: []
+          };
+
+          profileData.averageQuality = calculateAverageQuality(profileData.samples);
+          profileData.totalDuration = profileData.samples.reduce((sum, s) => sum + s.duration, 0);
+          profileData.trainingCompleteness = calculateTrainingCompleteness(profileData.samples);
+          profileData.recommendedActions = generateRecommendations(profileData);
+
+          if (!isCancelled) {
+            setProfile(profileData);
+            setSamples(profileData.samples);
+          }
+        } catch (err) {
+          if (!isCancelled) {
+            setError(err instanceof Error ? err.message : 'Failed to load speaker profile');
+          }
+        } finally {
+          if (!isCancelled) {
+            setIsLoading(false);
+          }
+        }
+      };
+
       loadSpeakerProfile();
+      return () => { isCancelled = true; };
     } else if (initialProfile) {
       setSamples(initialProfile.samples);
     }
@@ -191,42 +239,6 @@ export const VoiceTrainingSampleManager: React.FC<VoiceTrainingSampleManagerProp
     }
   }, [samples, profile, onSamplesUpdate, onProfileUpdate]);
 
-  const loadSpeakerProfile = async () => {
-    if (!deepgramVoiceId) return;
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      // Load from VoiceLibraryService
-      const voiceEntry = await VoiceLibraryService.getOrCreateVoiceEntry(deepgramVoiceId);
-      
-      // Convert to speaker profile format
-      const profileData: SpeakerProfile = {
-        deepgramVoiceId,
-        userId: voiceEntry.userId || undefined,
-        userName: voiceEntry.userName || 'Unknown Speaker',
-        samples: voiceEntry.audioSamples.map(convertToVoiceSample),
-        averageQuality: 0,
-        totalDuration: 0,
-        lastUpdated: voiceEntry.lastHeard,
-        trainingCompleteness: 0,
-        recommendedActions: []
-      };
-
-      profileData.averageQuality = calculateAverageQuality(profileData.samples);
-      profileData.totalDuration = profileData.samples.reduce((sum, s) => sum + s.duration, 0);
-      profileData.trainingCompleteness = calculateTrainingCompleteness(profileData.samples);
-      profileData.recommendedActions = generateRecommendations(profileData);
-
-      setProfile(profileData);
-      setSamples(profileData.samples);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load speaker profile');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const convertToVoiceSample = (audioSample: any): VoiceSample => {
     const quality = audioSample.quality || 0.5;

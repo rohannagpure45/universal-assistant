@@ -1,12 +1,19 @@
-import { createWithEqualityFn } from 'zustand/traditional';
+import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { subscribeWithSelector } from 'zustand/middleware';
-import { devtools } from 'zustand/middleware';
+import { subscribeWithSelector, devtools } from 'zustand/middleware';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { AudioConfig, AIModel } from '@/types';
+import { nanoid } from 'nanoid';
 
 // Audio device types
 export interface AudioDevice {
+  id: string;
+  name: string;
+  type: 'microphone' | 'speaker';
+}
+
+// Legacy interface for compatibility
+export interface LegacyAudioDevice {
   deviceId: string;
   label: string;
   kind: 'audioinput' | 'audiooutput';
@@ -125,6 +132,7 @@ export interface NotificationSettings {
 export interface AppError {
   code: string;
   message: string;
+  name: string;
   operation: string;
   timestamp: Date;
   cause?: Error;
@@ -136,6 +144,12 @@ export interface AppState {
   availableDevices: AudioDevice[];
   isLoadingDevices: boolean;
   deviceError: AppError | null;
+  selectedMicrophone: { id: string; name: string; type: 'microphone' } | null;
+  selectedSpeaker: { id: string; name: string; type: 'speaker' } | null;
+  microphoneGain: number;
+  speakerVolume: number;
+  noiseReduction: boolean;
+  echoCancellation: boolean;
   
   // Settings
   audioSettings: AudioSettings;
@@ -173,7 +187,12 @@ export interface AppState {
   notifications: Notification[];
   
   // Error handling
-  globalErrors: AppError[];
+  globalErrors: Array<{
+    id: string;
+    error: Error;
+    context?: string;
+    timestamp: Date;
+  }>;
   errorReporting: boolean;
   
   // Feature flags
@@ -199,9 +218,12 @@ export interface AppActions {
   // Device management
   loadAudioDevices: () => Promise<boolean>;
   refreshAudioDevices: () => Promise<boolean>;
-  setAudioInputDevice: (deviceId: string | null) => Promise<boolean>;
-  setAudioOutputDevice: (deviceId: string | null) => Promise<boolean>;
-  testAudioDevice: (deviceId: string, type: 'input' | 'output') => Promise<boolean>;
+  setAudioInputDevice: (id: string | null) => Promise<boolean>;
+  setAudioOutputDevice: (id: string | null) => Promise<boolean>;
+  testAudioDevice: (id: string, type: 'input' | 'output') => Promise<boolean>;
+  updateDevices: (devices: AudioDevice[]) => void;
+  setSelectedMicrophone: (device: { id: string; name: string; type: 'microphone' } | null) => void;
+  setSelectedSpeaker: (device: { id: string; name: string; type: 'speaker' } | null) => void;
   
   // Settings management
   updateAudioSettings: (settings: Partial<AudioSettings>) => void;
@@ -225,14 +247,19 @@ export interface AppActions {
   closeModal: () => void;
   
   // Notification management
-  addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => string;
+  addNotification: (notification: {
+    type: 'info' | 'success' | 'warning' | 'error';
+    title?: string;
+    message: string;
+    persistent?: boolean;
+  }) => string;
   removeNotification: (id: string) => void;
   clearNotifications: () => void;
   markNotificationAsRead: (id: string) => void;
   
   // Error handling
-  addGlobalError: (error: AppError) => void;
-  removeGlobalError: (code: string) => void;
+  addGlobalError: (error: Error, context?: string) => string;
+  removeGlobalError: (id: string) => void;
   clearGlobalErrors: () => void;
   setErrorReporting: (enabled: boolean) => void;
   
@@ -357,7 +384,7 @@ const defaultNotificationSettings: NotificationSettings = {
   securityAlerts: true,
 };
 
-export const useAppStore = createWithEqualityFn<AppStore>()(
+export const useAppStore = create<AppStore>()(
   devtools(
     persist(
       subscribeWithSelector(
@@ -366,6 +393,12 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
           availableDevices: [],
           isLoadingDevices: false,
           deviceError: null,
+          selectedMicrophone: null,
+          selectedSpeaker: null,
+          microphoneGain: 1.0,
+          speakerVolume: 1.0,
+          noiseReduction: true,
+          echoCancellation: true,
           
           audioSettings: defaultAudioSettings,
           uiSettings: defaultUISettings,
@@ -435,10 +468,9 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
               const audioDevices: AudioDevice[] = devices
                 .filter(device => device.kind === 'audioinput' || device.kind === 'audiooutput')
                 .map(device => ({
-                  deviceId: device.deviceId,
-                  label: device.label || `${device.kind} (${device.deviceId.slice(0, 8)})`,
-                  kind: device.kind as 'audioinput' | 'audiooutput',
-                  groupId: device.groupId,
+                  id: device.deviceId,
+                  name: device.label || `${device.kind === 'audioinput' ? 'Microphone' : 'Speaker'} (${device.deviceId.slice(0, 8)})`,
+                  type: device.kind === 'audioinput' ? 'microphone' : 'speaker' as 'microphone' | 'speaker',
                 }));
 
               set((state) => {
@@ -451,6 +483,7 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
               const deviceError: AppError = {
                 code: 'DEVICE_LOAD_FAILED',
                 message: 'Failed to load audio devices',
+                name: 'DeviceError',
                 operation: 'loadAudioDevices',
                 timestamp: new Date(),
                 cause: error as Error,
@@ -469,58 +502,50 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
             return get().loadAudioDevices();
           },
 
-          setAudioInputDevice: async (deviceId) => {
+          setAudioInputDevice: async (id) => {
             try {
-              if (deviceId && typeof window !== 'undefined' && navigator.mediaDevices) {
+              if (id && typeof window !== 'undefined' && navigator.mediaDevices) {
                 // Test the device before setting it
                 await navigator.mediaDevices.getUserMedia({
-                  audio: { deviceId: { exact: deviceId } }
+                  audio: { deviceId: { exact: id } }
                 });
               }
 
               set((state) => {
-                state.audioSettings.inputDeviceId = deviceId;
+                state.audioSettings.inputDeviceId = id;
               });
 
               return true;
             } catch (error) {
-              get().addGlobalError({
-                code: 'INPUT_DEVICE_SET_FAILED',
-                message: 'Failed to set audio input device',
-                operation: 'setAudioInputDevice',
-                timestamp: new Date(),
-                cause: error as Error,
-              });
+              const errorObj = new Error('Failed to set audio input device');
+              errorObj.name = 'INPUT_DEVICE_SET_FAILED';
+              get().addGlobalError(errorObj, 'setAudioInputDevice');
 
               return false;
             }
           },
 
-          setAudioOutputDevice: async (deviceId) => {
+          setAudioOutputDevice: async (id) => {
             try {
               set((state) => {
-                state.audioSettings.outputDeviceId = deviceId;
+                state.audioSettings.outputDeviceId = id;
               });
 
               return true;
             } catch (error) {
-              get().addGlobalError({
-                code: 'OUTPUT_DEVICE_SET_FAILED',
-                message: 'Failed to set audio output device',
-                operation: 'setAudioOutputDevice',
-                timestamp: new Date(),
-                cause: error as Error,
-              });
+              const errorObj = new Error('Failed to set audio output device');
+              errorObj.name = 'OUTPUT_DEVICE_SET_FAILED';
+              get().addGlobalError(errorObj, 'setAudioOutputDevice');
 
               return false;
             }
           },
 
-          testAudioDevice: async (deviceId, type) => {
+          testAudioDevice: async (id, type) => {
             try {
               if (type === 'input' && typeof window !== 'undefined' && navigator.mediaDevices) {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                  audio: { deviceId: { exact: deviceId } }
+                  audio: { deviceId: { exact: id } }
                 });
                 
                 // Test for a short duration
@@ -533,6 +558,25 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
             } catch (error) {
               return false;
             }
+          },
+
+          // Device selection actions
+          updateDevices: (devices) => {
+            set((state) => {
+              state.availableDevices = devices;
+            });
+          },
+          
+          setSelectedMicrophone: (device) => {
+            set((state) => {
+              state.selectedMicrophone = device;
+            });
+          },
+          
+          setSelectedSpeaker: (device) => {
+            set((state) => {
+              state.selectedSpeaker = device;
+            });
           },
 
           // Settings management actions
@@ -649,20 +693,23 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
           addNotification: (notification) => {
             const id = `notification-${Date.now()}-${Math.random()}`;
             
+            const fullNotification: Notification = {
+              id,
+              type: notification.type,
+              title: notification.title || notification.type.charAt(0).toUpperCase() + notification.type.slice(1),
+              message: notification.message,
+              timestamp: new Date(),
+              persistent: notification.persistent ?? false,
+            };
+            
             set((state) => {
-              state.notifications.push({
-                ...notification,
-                id,
-                timestamp: new Date(),
-              });
+              state.notifications.push(fullNotification);
             });
 
             // Auto-remove non-persistent notifications after 5 seconds
-            if (!notification.persistent) {
-              setTimeout(() => {
-                get().removeNotification(id);
-              }, 5000);
-            }
+            setTimeout(() => {
+              get().removeNotification(id);
+            }, 5000);
 
             return id;
           },
@@ -690,9 +737,15 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
           },
 
           // Error handling
-          addGlobalError: (error) => {
+          addGlobalError: (error, context) => {
+            const id = nanoid();
             set((state) => {
-              state.globalErrors.push(error);
+              state.globalErrors.push({
+                id,
+                error,
+                context,
+                timestamp: new Date()
+              });
               // Keep only the last 10 errors
               if (state.globalErrors.length > 10) {
                 state.globalErrors.shift();
@@ -706,11 +759,13 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
               message: error.message,
               persistent: false,
             });
+
+            return id;
           },
 
-          removeGlobalError: (code) => {
+          removeGlobalError: (id) => {
             set((state) => {
-              state.globalErrors = state.globalErrors.filter(error => error.code !== code);
+              state.globalErrors = state.globalErrors.filter(error => error.id !== id);
             });
           },
 
@@ -791,13 +846,9 @@ export const useAppStore = createWithEqualityFn<AppStore>()(
 
               return true;
             } catch (error) {
-              get().addGlobalError({
-                code: 'SETTINGS_IMPORT_FAILED',
-                message: 'Failed to import settings',
-                operation: 'importSettings',
-                timestamp: new Date(),
-                cause: error as Error,
-              });
+              const errorObj = new Error('Failed to import settings');
+              errorObj.name = 'SETTINGS_IMPORT_FAILED';
+              get().addGlobalError(errorObj, 'importSettings');
 
               return false;
             }
@@ -886,6 +937,9 @@ export const useApp = () => {
     
     // Actions
     loadAudioDevices: store.loadAudioDevices,
+    updateDevices: store.updateDevices,
+    setSelectedMicrophone: store.setSelectedMicrophone,
+    setSelectedSpeaker: store.setSelectedSpeaker,
     updateAudioSettings: store.updateAudioSettings,
     updateUISettings: store.updateUISettings,
     toggleSidebar: store.toggleSidebar,

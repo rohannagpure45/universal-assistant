@@ -45,12 +45,25 @@ export function useAudioPlayback(
     error: null,
   });
 
+  // Store event handlers to enable proper cleanup
+  const eventHandlersRef = useRef<{[key: string]: EventListener}>({});
+
   // Cleanup function
   const cleanup = useCallback(() => {
     if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current.src = '';
+      const audio = audioRef.current;
+      
+      // Remove specific event listeners using stored references
+      Object.entries(eventHandlersRef.current).forEach(([eventType, handler]) => {
+        audio.removeEventListener(eventType, handler);
+      });
+      
+      // Clear the handlers reference
+      eventHandlersRef.current = {};
+      
+      audio.pause();
+      audio.currentTime = 0;
+      audio.src = '';
       audioRef.current = null;
     }
     currentUrlRef.current = null;
@@ -127,6 +140,18 @@ export function useAudioPlayback(
 
     const handleVolumeChange = () => {
       setState(prev => ({ ...prev, volume: audio.volume }));
+    };
+
+    // Store handlers for cleanup and add event listeners
+    eventHandlersRef.current = {
+      loadstart: handleLoadStart,
+      loadedmetadata: handleLoadedMetadata,
+      timeupdate: handleTimeUpdate,
+      play: handlePlay,
+      pause: handlePause,
+      ended: handleEnded,
+      error: handleError,
+      volumechange: handleVolumeChange,
     };
 
     // Add event listeners

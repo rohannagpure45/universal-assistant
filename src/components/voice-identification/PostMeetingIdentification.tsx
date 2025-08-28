@@ -41,54 +41,65 @@ export const PostMeetingIdentification: React.FC<PostMeetingIdentificationProps>
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
-    loadUnidentifiedSpeakers();
-  }, [meetingId]);
-
-  const loadUnidentifiedSpeakers = async () => {
-    try {
-      setLoading(true);
-      const requests = await NeedsIdentificationService.getPendingRequests(meetingId);
-      
-      // Group by speaker and get sample data
-      const speakerMap = new Map<string, UnidentifiedSpeaker>();
-      
-      for (const request of requests) {
-        if (!speakerMap.has(request.deepgramVoiceId)) {
-          // Get transcript samples for this speaker
-          const transcripts = await DatabaseService.getTranscriptEntriesBySpeaker(
-            meetingId,
-            request.deepgramVoiceId,
-            { limit: 5 }
-          );
-          
-          speakerMap.set(request.deepgramVoiceId, {
-            deepgramVoiceId: request.deepgramVoiceId,
-            sampleUrls: [request.audioUrl],
-            transcriptSamples: request.sampleTranscripts.map(t => t.text),
-            duration: 10, // Default duration since it's not in the type
-            occurrences: 1,
-            firstSeen: request.meetingDate,
-            lastSeen: request.meetingDate
-          });
-        } else {
-          const speaker = speakerMap.get(request.deepgramVoiceId)!;
-          speaker.sampleUrls.push(request.audioUrl);
-          speaker.duration += 10; // Add default duration
-          speaker.occurrences++;
-          speaker.lastSeen = request.meetingDate;
+    let isCancelled = false;
+    
+    const loadUnidentifiedSpeakers = async () => {
+      try {
+        setLoading(true);
+        const requests = await NeedsIdentificationService.getPendingRequests(meetingId);
+        
+        if (isCancelled) return;
+        
+        // Group by speaker and get sample data
+        const speakerMap = new Map<string, UnidentifiedSpeaker>();
+        
+        for (const request of requests) {
+          if (!speakerMap.has(request.deepgramVoiceId)) {
+            // Get transcript samples for this speaker
+            const transcripts = await DatabaseService.getTranscriptEntriesBySpeaker(
+              meetingId,
+              request.deepgramVoiceId,
+              { limit: 5 }
+            );
+            
+            speakerMap.set(request.deepgramVoiceId, {
+              deepgramVoiceId: request.deepgramVoiceId,
+              sampleUrls: [request.audioUrl],
+              transcriptSamples: request.sampleTranscripts.map(t => t.text),
+              duration: 10, // Default duration since it's not in the type
+              occurrences: 1,
+              firstSeen: request.meetingDate,
+              lastSeen: request.meetingDate
+            });
+          } else {
+            const speaker = speakerMap.get(request.deepgramVoiceId)!;
+            speaker.sampleUrls.push(request.audioUrl);
+            speaker.duration += 10; // Add default duration
+            speaker.occurrences++;
+            speaker.lastSeen = request.meetingDate;
+          }
+        }
+        
+        if (!isCancelled) {
+          setUnidentifiedSpeakers(Array.from(speakerMap.values()));
+          if (speakerMap.size > 0) {
+            setCurrentSpeaker(Array.from(speakerMap.values())[0]);
+          }
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Failed to load unidentified speakers:', error);
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
         }
       }
-      
-      setUnidentifiedSpeakers(Array.from(speakerMap.values()));
-      if (speakerMap.size > 0) {
-        setCurrentSpeaker(Array.from(speakerMap.values())[0]);
-      }
-    } catch (error) {
-      console.error('Failed to load unidentified speakers:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    
+    loadUnidentifiedSpeakers();
+    return () => { isCancelled = true; };
+  }, [meetingId]);
 
   const playAudioSample = (url: string) => {
     if (audioRef.current) {

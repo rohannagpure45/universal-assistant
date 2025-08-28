@@ -141,12 +141,12 @@ export interface VoiceSampleOrganization {
  * Base voice sample for most use cases
  * Combines core properties with identity information
  */
-export type VoiceSample = VoiceSampleCore & 
-  VoiceSampleIdentity & 
-  VoiceSampleStorage &
-  VoiceSampleUI &
-  VoiceSampleAnalysis &
-  VoiceSampleOrganization;
+export interface VoiceSample extends VoiceSampleCore, 
+  VoiceSampleIdentity, 
+  VoiceSampleStorage,
+  VoiceSampleUI,
+  VoiceSampleAnalysis,
+  VoiceSampleOrganization {}
 
 /**
  * Minimal voice sample for playback components

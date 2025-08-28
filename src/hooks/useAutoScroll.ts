@@ -49,7 +49,8 @@ export function useAutoScroll(
         });
       }, delay);
     }
-  }, dependency);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delay, isUserScrolling, smooth, ...dependency]);
   
   return { containerRef, isUserScrolling };
 }

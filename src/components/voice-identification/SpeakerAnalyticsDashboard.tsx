@@ -109,116 +109,6 @@ export const SpeakerAnalyticsDashboard: React.FC = () => {
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load analytics data
-  const loadAnalyticsData = async () => {
-    try {
-      setError(null);
-      
-      // Calculate date range based on time period
-      const endDate = new Date();
-      const startDate = new Date();
-      
-      switch (timePeriod) {
-        case '7d':
-          startDate.setDate(startDate.getDate() - 7);
-          break;
-        case '30d':
-          startDate.setDate(startDate.getDate() - 30);
-          break;
-        case '90d':
-          startDate.setDate(startDate.getDate() - 90);
-          break;
-        case '1y':
-          startDate.setFullYear(startDate.getFullYear() - 1);
-          break;
-        case 'custom':
-          if (dateRange?.from && dateRange?.to) {
-            startDate.setTime(dateRange.from.getTime());
-            endDate.setTime(dateRange.to.getTime());
-          }
-          break;
-      }
-
-      // Load voice profiles and identification data
-      const profiles = await VoiceLibraryService.getUserVoiceProfiles('all'); // TODO: Implement getAllProfiles
-      // const identificationHistory = await DatabaseService.queryNeedsIdentification({
-      //   startDate,
-      //   endDate
-      // });
-      const identificationHistory: any[] = [];
-
-      // Calculate analytics
-      const mockAnalytics: VoiceIdentificationAnalytics = {
-        accuracyTrend: generateAccuracyTrend(startDate, endDate),
-        topSpeakers: profiles
-          .filter(p => p.confirmed)
-          .slice(0, 10)
-          .map(p => ({
-            speakerId: p.deepgramVoiceId,
-            speakerName: p.userName || `Speaker ${p.deepgramVoiceId.substring(0, 8)}`,
-            identificationCount: p.meetingsCount,
-            averageConfidence: p.confidence
-          })),
-        methodEffectiveness: [
-          {
-            method: 'manual',
-            successRate: 0.95,
-            averageConfidence: 0.92,
-            usageCount: 45
-          },
-          {
-            method: 'self',
-            successRate: 0.88,
-            averageConfidence: 0.85,
-            usageCount: 23
-          },
-          {
-            method: 'mentioned',
-            successRate: 0.82,
-            averageConfidence: 0.78,
-            usageCount: 18
-          },
-          {
-            method: 'pattern',
-            successRate: 0.76,
-            averageConfidence: 0.71,
-            usageCount: 12
-          }
-        ],
-        qualityDistribution: [
-          { qualityLevel: 'Excellent', count: 32, percentage: 45 },
-          { qualityLevel: 'Good', count: 24, percentage: 34 },
-          { qualityLevel: 'Fair', count: 12, percentage: 17 },
-          { qualityLevel: 'Poor', count: 3, percentage: 4 }
-        ]
-      };
-
-      // Calculate statistics
-      const stats: VoiceProfileStatistics = {
-        totalProfiles: profiles.length,
-        confirmedProfiles: profiles.filter(p => p.confirmed).length,
-        unconfirmedProfiles: profiles.filter(p => !p.confirmed).length,
-        recentlyActive: profiles.filter(p => {
-          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-          return p.lastHeard > dayAgo;
-        }).length,
-        totalSamples: profiles.reduce((sum, p) => sum + (p.audioSamples?.length || 0), 0),
-        averageConfidence: profiles.reduce((sum, p) => sum + p.confidence, 0) / profiles.length || 0,
-        totalSpeakingTime: profiles.reduce((sum, p) => sum + p.totalSpeakingTime, 0),
-        pendingIdentifications: identificationHistory.length
-      };
-
-      setAnalytics(mockAnalytics);
-      setStatistics(stats);
-      
-    } catch (err) {
-      console.error('Error loading analytics data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load analytics data');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
 
   // Generate mock accuracy trend data
   const generateAccuracyTrend = (startDate: Date, endDate: Date): { date: Date; accuracy: number }[] => {
@@ -242,14 +132,209 @@ export const SpeakerAnalyticsDashboard: React.FC = () => {
 
   // Initial load
   useEffect(() => {
-    setLoading(true);
+    const loadAnalyticsData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Calculate date range based on time period
+        const endDate = new Date();
+        const startDate = new Date();
+        
+        switch (timePeriod) {
+          case '7d':
+            startDate.setDate(startDate.getDate() - 7);
+            break;
+          case '30d':
+            startDate.setDate(startDate.getDate() - 30);
+            break;
+          case '90d':
+            startDate.setDate(startDate.getDate() - 90);
+            break;
+          case '1y':
+            startDate.setFullYear(startDate.getFullYear() - 1);
+            break;
+          case 'custom':
+            if (dateRange?.from && dateRange?.to) {
+              startDate.setTime(dateRange.from.getTime());
+              endDate.setTime(dateRange.to.getTime());
+            }
+            break;
+        }
+
+        // Load voice profiles and identification data
+        const profiles = await VoiceLibraryService.getUserVoiceProfiles('all'); // TODO: Implement getAllProfiles
+        // const identificationHistory = await DatabaseService.queryNeedsIdentification({
+        //   startDate,
+        //   endDate
+        // });
+        const identificationHistory: any[] = [];
+
+        // Calculate analytics
+        const mockAnalytics: VoiceIdentificationAnalytics = {
+          accuracyTrend: generateAccuracyTrend(startDate, endDate),
+          topSpeakers: profiles
+            .filter(p => p.confirmed)
+            .slice(0, 10)
+            .map(p => ({
+              speakerId: p.deepgramVoiceId,
+              speakerName: p.userName || `Speaker ${p.deepgramVoiceId.substring(0, 8)}`,
+              identificationCount: p.meetingsCount,
+              averageConfidence: p.confidence
+            })),
+          methodEffectiveness: [
+            {
+              method: 'manual',
+              successRate: 0.95,
+              averageConfidence: 0.92,
+              usageCount: 45
+            },
+            {
+              method: 'self',
+              successRate: 0.88,
+              averageConfidence: 0.85,
+              usageCount: 23
+            },
+            {
+              method: 'mentioned',
+              successRate: 0.82,
+              averageConfidence: 0.78,
+              usageCount: 18
+            },
+            {
+              method: 'pattern',
+              successRate: 0.76,
+              averageConfidence: 0.71,
+              usageCount: 12
+            }
+          ],
+          qualityDistribution: [
+            { qualityLevel: 'Excellent', count: 32, percentage: 45 },
+            { qualityLevel: 'Good', count: 24, percentage: 34 },
+            { qualityLevel: 'Fair', count: 12, percentage: 17 },
+            { qualityLevel: 'Poor', count: 3, percentage: 4 }
+          ]
+        };
+
+        // Calculate statistics
+        const stats: VoiceProfileStatistics = {
+          totalProfiles: profiles.length,
+          confirmedProfiles: profiles.filter(p => p.confirmed).length,
+          unconfirmedProfiles: profiles.filter(p => !p.confirmed).length,
+          recentlyActive: profiles.filter(p => {
+            const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            return p.lastHeard > dayAgo;
+          }).length,
+          totalSamples: profiles.reduce((sum, p) => sum + (p.audioSamples?.length || 0), 0),
+          averageConfidence: profiles.reduce((sum, p) => sum + p.confidence, 0) / profiles.length || 0,
+          totalSpeakingTime: profiles.reduce((sum, p) => sum + p.totalSpeakingTime, 0),
+          pendingIdentifications: identificationHistory.length
+        };
+
+        setAnalytics(mockAnalytics);
+        setStatistics(stats);
+        
+      } catch (err) {
+        console.error('Error loading analytics data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load analytics data');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
+
     loadAnalyticsData();
   }, [timePeriod, dateRange]);
 
   // Manual refresh
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadAnalyticsData();
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Calculate date range based on time period
+      const endDate = new Date();
+      const startDate = new Date();
+      
+      switch (timePeriod) {
+        case '7d':
+          startDate.setDate(endDate.getDate() - 7);
+          break;
+        case '30d':
+          startDate.setMonth(endDate.getMonth() - 1);
+          break;
+        case '90d':
+          startDate.setMonth(endDate.getMonth() - 3);
+          break;
+        case '1y':
+          startDate.setFullYear(endDate.getFullYear() - 1);
+          break;
+        case 'custom':
+          if (dateRange?.from && dateRange?.to) {
+            startDate.setTime(dateRange.from.getTime());
+            endDate.setTime(dateRange.to.getTime());
+          }
+          break;
+      }
+
+      // Load voice profiles for analytics
+      const profiles = await VoiceLibraryService.getUserVoiceProfiles('all');
+      
+      // Create mock analytics matching VoiceIdentificationAnalytics interface
+      const mockAnalytics: VoiceIdentificationAnalytics = {
+        accuracyTrend: [
+          { date: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000), accuracy: 0.82 },
+          { date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), accuracy: 0.84 },
+          { date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), accuracy: 0.86 },
+          { date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), accuracy: 0.85 },
+          { date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), accuracy: 0.87 },
+          { date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), accuracy: 0.89 },
+          { date: new Date(), accuracy: 0.91 }
+        ],
+        topSpeakers: profiles?.slice(0, 5).map(p => ({
+          speakerId: p.deepgramVoiceId,
+          speakerName: p.userName || `Speaker ${p.deepgramVoiceId.substring(0, 8)}`,
+          identificationCount: p.meetingsCount,
+          averageConfidence: p.confidence
+        })) || [],
+        methodEffectiveness: [
+          { method: 'manual', successRate: 0.95, averageConfidence: 0.92, usageCount: 45 },
+          { method: 'self', successRate: 0.88, averageConfidence: 0.85, usageCount: 23 },
+          { method: 'mentioned', successRate: 0.82, averageConfidence: 0.78, usageCount: 18 },
+          { method: 'pattern', successRate: 0.76, averageConfidence: 0.71, usageCount: 12 }
+        ],
+        qualityDistribution: [
+          { qualityLevel: 'Excellent', count: 32, percentage: 45 },
+          { qualityLevel: 'Good', count: 24, percentage: 34 },
+          { qualityLevel: 'Fair', count: 12, percentage: 17 },
+          { qualityLevel: 'Poor', count: 3, percentage: 4 }
+        ]
+      };
+
+      const stats: VoiceProfileStatistics = {
+        totalProfiles: profiles?.length || 0,
+        confirmedProfiles: profiles?.filter(p => p.confirmed).length || 0,
+        unconfirmedProfiles: profiles?.filter(p => !p.confirmed).length || 0,
+        recentlyActive: profiles?.filter(p => {
+          const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          return p.lastHeard > dayAgo;
+        }).length || 0,
+        totalSamples: profiles?.reduce((sum, p) => sum + (p.audioSamples?.length || 0), 0) || 0,
+        averageConfidence: profiles?.reduce((sum, p) => sum + p.confidence, 0) / (profiles?.length || 1) || 0,
+        totalSpeakingTime: profiles?.reduce((sum, p) => sum + p.totalSpeakingTime, 0) || 0,
+        pendingIdentifications: 0
+      };
+
+      setAnalytics(mockAnalytics);
+      setStatistics(stats);
+    } catch (err) {
+      console.error('Error refreshing analytics data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to refresh analytics data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
   // Export analytics report

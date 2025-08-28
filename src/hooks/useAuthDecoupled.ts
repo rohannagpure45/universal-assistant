@@ -29,7 +29,7 @@ export const useAuthDecoupled = () => {
         auth.initialize();
       }
     }
-  }, [auth.initialize, auth.isInitialized]);
+  }, [auth]);
 
   // Auto-clear errors after a timeout
   useEffect(() => {
@@ -40,7 +40,7 @@ export const useAuthDecoupled = () => {
 
       return () => clearTimeout(timer);
     }
-  }, [auth.error, auth.clearError]);
+  }, [auth]);
 
   // Emit auth events when user state changes
   useEffect(() => {

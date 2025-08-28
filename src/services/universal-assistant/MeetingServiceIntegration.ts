@@ -55,7 +55,7 @@ export class MeetingServiceIntegration {
   /**
    * Start meeting with service initialization (if needed)
    */
-  async startMeetingWithServiceSetup(meetingData: {
+  async startMeetingWithServiceSetup(options: {
     type: string;
     title?: string;
     description?: string;
@@ -63,6 +63,58 @@ export class MeetingServiceIntegration {
     console.log('MeetingServiceIntegration: Starting meeting with service setup...');
     
     try {
+      // Create proper meeting data object
+      const userId = serviceProvider.getAuthStore().user?.uid;
+      if (!userId) {
+        throw new Error('User must be authenticated to start a meeting');
+      }
+
+      const meetingData = {
+        id: '', // Will be generated
+        meetingTypeId: 'default-type',
+        hostId: userId,
+        participantIds: [userId],
+        createdBy: userId,
+        title: options.title || 'New Meeting',
+        description: options.description,
+        type: options.type as any, // Type assertion for MeetingType enum
+        participants: [],
+        notes: [],
+        keywords: [],
+        appliedRules: [],
+        endTime: undefined,
+        startedAt: undefined,
+        endedAt: undefined,
+        scheduledFor: undefined,
+        status: 'scheduled' as const,
+        duration: undefined,
+        recording: undefined,
+        settings: {
+          isPublic: false,
+          allowRecording: true,
+          autoTranscribe: true,
+          language: 'en',
+          maxParticipants: 10
+        },
+        metadata: {
+          totalWords: 0,
+          totalSpeakers: 0,
+          averageWPM: 0,
+          topics: []
+        },
+        speakerCount: 0,
+        lastVoiceActivity: undefined,
+        voiceIdentification: {
+          unidentifiedSpeakers: [],
+          identifiedSpeakers: {},
+          totalSpeakingTime: {}
+        },
+        summary: undefined,
+        actionItems: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
       // Start the meeting through the store first
       const meetingStore = serviceProvider.getMeetingStore();
       const meetingId = await meetingStore.startMeeting(meetingData);

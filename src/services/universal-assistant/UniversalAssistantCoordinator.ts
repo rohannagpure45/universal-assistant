@@ -56,6 +56,15 @@ export class UniversalAssistantCoordinator {
   private authToken: string | null = null;
   private voiceIdentificationCoordinator: VoiceIdentificationCoordinator | null = null;
   private currentMeeting: Meeting | null = null;
+  
+  // Memory leak prevention: Buffer management
+  private readonly MAX_BUFFER_CHUNKS = 50; // Prevent unlimited growth
+  private readonly MAX_BUFFER_AGE_MS = 30000; // 30 seconds max retention
+  private audioChunkMetadata: Map<string, { count: number; lastUpdate: number }> = new Map();
+  
+  // Memory leak prevention: WebSocket handler tracking
+  private webSocketHandlers: Map<WebSocket, Set<string>> = new Map();
+  
   private state: CoordinatorState = {
     isRecording: false,
     isPlaying: false,
@@ -281,6 +290,10 @@ export class UniversalAssistantCoordinator {
         ['token', key]
       );
 
+      // Set up WebSocket handlers with tracking for cleanup
+      const handlers = new Set(['onopen', 'onmessage', 'onerror', 'onclose']);
+      this.webSocketHandlers.set(ws, handlers);
+      
       ws.onopen = () => {
         console.log('Deepgram connection established');
         performanceMonitor.recordMetric('deepgram_connection', 'success');
@@ -365,11 +378,37 @@ export class UniversalAssistantCoordinator {
             audioChunkBuffer.set(currentSpeaker, []);
           }
           
-          // Store audio chunk for current speaker
+          // Store audio chunk for current speaker with memory leak prevention
           if (!audioChunkBuffer.has(currentSpeaker)) {
             audioChunkBuffer.set(currentSpeaker, []);
+            this.audioChunkMetadata.set(currentSpeaker, { count: 0, lastUpdate: Date.now() });
           }
-          audioChunkBuffer.get(currentSpeaker)!.push(audioChunk);
+          
+          const chunks = audioChunkBuffer.get(currentSpeaker)!;
+          const metadata = this.audioChunkMetadata.get(currentSpeaker)!;
+          
+          // SURGICAL FIX: Issue #3 - Enhanced buffer bounds management  
+          if (chunks.length >= this.MAX_BUFFER_CHUNKS) {
+            // Remove oldest chunk and update metadata count
+            chunks.shift(); 
+            metadata.count = Math.max(0, metadata.count - 1);
+          } else {
+            metadata.count++;
+          }
+          
+          chunks.push(audioChunk);
+          metadata.lastUpdate = Date.now();
+          
+          // More aggressive cleanup to prevent memory accumulation
+          // Run cleanup every 10 chunks instead of every chunk for performance
+          if (metadata.count % 10 === 0) {
+            this.cleanupExpiredBuffers(audioChunkBuffer);
+          }
+          
+          // Additional safety: Force cleanup if total buffer count exceeds threshold
+          if (audioChunkBuffer.size > 20) { // Max 20 speakers tracked simultaneously
+            this.forceCleanupOldestBuffers(audioChunkBuffer, 15); // Keep only 15 newest speakers
+          }
           
           // Process audio chunk through voice capture if available
           if (this.voiceIdentificationCoordinator) {
@@ -377,13 +416,19 @@ export class UniversalAssistantCoordinator {
             if (voiceCapture && voiceCapture.handleTranscriptUpdate) {
               const deepgramVoiceId = this.extractDeepgramVoiceId([{ speaker: this.extractSpeakerNumber(currentSpeaker) }]);
               if (deepgramVoiceId) {
-                const audioBuffer = await audioChunk.arrayBuffer();
-                voiceCapture.handleTranscriptUpdate({
-                  speaker: deepgramVoiceId,
-                  audioChunk: audioBuffer,
-                  transcript: '',
-                  confidence: 0.8
-                });
+                let audioBuffer: ArrayBuffer | null = null;
+                try {
+                  audioBuffer = await audioChunk.arrayBuffer();
+                  voiceCapture.handleTranscriptUpdate({
+                    speaker: deepgramVoiceId,
+                    audioChunk: audioBuffer,
+                    transcript: '',
+                    confidence: 0.8
+                  });
+                } finally {
+                  // Explicit cleanup to prevent ArrayBuffer accumulation
+                  audioBuffer = null;
+                }
               }
             }
           }
@@ -400,6 +445,47 @@ export class UniversalAssistantCoordinator {
   private extractSpeakerNumber(speakerString: string): number {
     const match = speakerString.match(/Speaker (\d+)/);
     return match ? parseInt(match[1], 10) - 1 : 0; // Convert to 0-based index
+  }
+
+  // Helper to cleanup expired audio chunk buffers (prevent memory leaks)
+  private cleanupExpiredBuffers(audioChunkBuffer: Map<string, Blob[]>): void {
+    const now = Date.now();
+    const expiredSpeakers: string[] = [];
+    
+    for (const [speakerId, metadata] of this.audioChunkMetadata.entries()) {
+      if (now - metadata.lastUpdate > this.MAX_BUFFER_AGE_MS) {
+        expiredSpeakers.push(speakerId);
+      }
+    }
+    
+    // Remove expired speakers' buffers
+    for (const speakerId of expiredSpeakers) {
+      audioChunkBuffer.delete(speakerId);
+      this.audioChunkMetadata.delete(speakerId);
+    }
+  }
+  
+  /**
+   * SURGICAL FIX: Issue #3 - Force cleanup of oldest buffers to prevent memory growth
+   * @param audioChunkBuffer - Current audio chunk buffer
+   * @param keepCount - Number of speakers to keep (newest)
+   */
+  private forceCleanupOldestBuffers(audioChunkBuffer: Map<string, Blob[]>, keepCount: number): void {
+    // Sort speakers by lastUpdate time (newest first)
+    const sortedSpeakers = Array.from(this.audioChunkMetadata.entries())
+      .sort(([, a], [, b]) => b.lastUpdate - a.lastUpdate);
+    
+    // Remove oldest speakers beyond keepCount
+    const speakersToRemove = sortedSpeakers.slice(keepCount);
+    
+    for (const [speakerId] of speakersToRemove) {
+      audioChunkBuffer.delete(speakerId);
+      this.audioChunkMetadata.delete(speakerId);
+    }
+    
+    if (speakersToRemove.length > 0) {
+      console.log(`[UniversalAssistantCoordinator] Force cleaned ${speakersToRemove.length} oldest speaker buffers`);
+    }
   }
 
   // Recording Management
@@ -449,8 +535,17 @@ export class UniversalAssistantCoordinator {
       // Stop audio recording through AudioManager
       this.getAudioManagerSafe().stopRecording();
 
-      // Close Deepgram connection
+      // Close Deepgram connection with handler cleanup
       if (this.deepgramConnection) {
+        // Clean up event handlers to prevent memory leaks
+        if (this.webSocketHandlers.has(this.deepgramConnection)) {
+          this.deepgramConnection.onopen = null;
+          this.deepgramConnection.onmessage = null;
+          this.deepgramConnection.onerror = null;
+          this.deepgramConnection.onclose = null;
+          this.webSocketHandlers.delete(this.deepgramConnection);
+        }
+        
         this.deepgramConnection.close();
         this.deepgramConnection = null;
       }
@@ -980,18 +1075,44 @@ export class UniversalAssistantCoordinator {
       this.getAudioManagerSafe().stopAllAudio();
       this.ttsClient.cancelAllRequests();
       
-      // Properly close WebSocket connection
+      // SURGICAL FIX: Issue #3 - Enhanced WebSocket handler cleanup
       if (this.deepgramConnection) {
-        if (this.deepgramConnection.readyState === WebSocket.OPEN) {
-          this.deepgramConnection.close();
+        try {
+          // Clean up event handlers to prevent memory leaks
+          if (this.webSocketHandlers.has(this.deepgramConnection)) {
+            this.deepgramConnection.onopen = null;
+            this.deepgramConnection.onmessage = null;
+            this.deepgramConnection.onerror = null;
+            this.deepgramConnection.onclose = null;
+            this.webSocketHandlers.delete(this.deepgramConnection);
+          }
+          
+          // Enhanced connection state checking before close
+          const readyState = this.deepgramConnection.readyState;
+          if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) {
+            this.deepgramConnection.close(1000, 'Normal closure');
+          }
+        } catch (error) {
+          console.warn('[UniversalAssistantCoordinator] Error during WebSocket cleanup:', error);
+        } finally {
+          // Always null the connection, even if cleanup fails
+          this.deepgramConnection = null;
         }
-        this.deepgramConnection = null;
       }
       
-      // Clean up media streams
+      // SURGICAL FIX: Issue #3 - Enhanced MediaStream cleanup
       if (this.audioStream) {
-        this.audioStream.getTracks().forEach(track => track.stop());
-        this.audioStream = null;
+        try {
+          this.audioStream.getTracks().forEach(track => {
+            if (track.readyState !== 'ended') {
+              track.stop();
+            }
+          });
+        } catch (error) {
+          console.warn('[UniversalAssistantCoordinator] Error stopping audio tracks:', error);
+        } finally {
+          this.audioStream = null;
+        }
       }
       
       // Clean up media recorder

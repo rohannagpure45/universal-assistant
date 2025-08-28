@@ -69,10 +69,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Security check: Only allow setting claims for admin emails
-    const adminEmails = ['ribt2218@gmail.com', 'rohan@linkstudio.ai'];
-    const isRequestingUserAdmin = adminEmails.includes(decodedToken.email.toLowerCase());
-    const isTargetUserAdmin = adminEmails.includes(decodedToken.email.toLowerCase());
+    // SECURE: Check admin status via custom claims (eliminates email spoofing)
+    const isRequestingUserAdmin = decodedToken.admin === true;
+    const isTargetUserAdmin = decodedToken.admin === true;
 
     // Allow setting claims only if:
     // 1. The requesting user is an admin email

@@ -226,7 +226,7 @@ export const VoiceRecordingInterface: React.FC<VoiceRecordingInterfaceProps> = (
       
       // Use Firebase-aware error handling if this involves Firebase operations
       const userMessage = isFirebaseError(processedError)
-        ? handleFirebaseError(err, 'Audio initialization')
+        ? handleFirebaseError(processedError, 'Audio initialization')
         : friendlyError(processedError, 'Audio initialization');
       
       setError(userMessage);
@@ -292,7 +292,7 @@ export const VoiceRecordingInterface: React.FC<VoiceRecordingInterfaceProps> = (
       
       // Use Firebase-aware error handling for recording operations
       const userMessage = isFirebaseError(processedError)
-        ? handleFirebaseError(err, 'Voice recording start')
+        ? handleFirebaseError(processedError, 'Voice recording start')
         : friendlyError(processedError, 'Recording start');
       
       setError(userMessage);
@@ -353,7 +353,7 @@ export const VoiceRecordingInterface: React.FC<VoiceRecordingInterfaceProps> = (
       
       // Recording processing may involve Firebase storage operations
       const userMessage = isFirebaseError(processedError)
-        ? handleFirebaseError(err, 'Voice recording processing')
+        ? handleFirebaseError(processedError, 'Voice recording processing')
         : friendlyError(processedError, 'Recording processing');
       
       setError(userMessage);
@@ -401,7 +401,7 @@ export const VoiceRecordingInterface: React.FC<VoiceRecordingInterfaceProps> = (
       
       // Audio playback errors are typically local, but could involve Firebase
       const userMessage = isFirebaseError(processedError)
-        ? handleFirebaseError(err, 'Audio playback')
+        ? handleFirebaseError(processedError, 'Audio playback')
         : friendlyError(processedError, 'Audio playback');
       
       setError(userMessage);

@@ -22,7 +22,7 @@ import type { MeetingTypeConfig } from '@/types/database';
 import type { AIModel } from '@/types';
 
 export class MeetingTypeService {
-  private static readonly COLLECTION_NAME = 'meeting_types';
+  private static readonly COLLECTION_NAME = 'meetingTypes';
 
   /**
    * Create a new meeting type
@@ -74,8 +74,8 @@ export class MeetingTypeService {
     try {
       const q = query(
         collection(db, this.COLLECTION_NAME),
-        where('ownerId', '==', userId),
-        orderBy('createdAt', 'desc')
+        where('ownerId', '==', userId)
+        // Removed orderBy to avoid index requirement
       );
 
       const snapshot = await getDocs(q);

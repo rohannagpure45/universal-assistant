@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useAppStore } from '@/stores/appStore';
 import { authService } from '@/services/firebase/AuthService';
@@ -15,11 +15,15 @@ interface AuthProviderProps {
  * and manages auth-related side effects
  */
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const { initializeAuth, isInitialized: authStoreInitialized, isLoading } = useAuthStore();
-  const { addNotification } = useAppStore();
+  // CRITICAL FIX: Use selector to prevent unnecessary re-renders
+  const initializeAuth = useAuthStore((state) => state.initializeAuth);
+  const authStoreInitialized = useAuthStore((state) => state.isInitialized);
+  const isLoading = useAuthStore((state) => state.isLoading);
+  const addNotification = useAppStore((state) => state.addNotification);
   const [localInitialized, setLocalInitialized] = useState(false);
   const [forceInitialized, setForceInitialized] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const initRef = useRef(false); // Prevent multiple initialization calls
 
   // Prevent hydration mismatches by only showing conditional content after mount
   useEffect(() => {
@@ -62,7 +66,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     // EFFICIENCY: Initialize immediately, only once
-    if (!localInitialized && !forceInitialized) {
+    if (!initRef.current && !localInitialized && !forceInitialized) {
+      initRef.current = true;
       initializeAuthentication();
     }
 
@@ -72,21 +77,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         clearTimeout(timeoutId);
       }
     };
-  }, [initializeAuth, authStoreInitialized, localInitialized, forceInitialized]);
+  }, []); // CRITICAL FIX: Remove all dependencies that cause re-renders
 
-  // Prevent hydration mismatches by only showing loading states after mount
-  // Show loading spinner during auth initialization
-  if (mounted && !authStoreInitialized && !forceInitialized && localInitialized) {
+  // CRITICAL FIX: Simplify loading condition to prevent infinite loops
+  // Only show loading when actually initializing, not in complex state combinations
+  if (!mounted) {
+    return null; // Prevent hydration mismatch
+  }
+
+  if (isLoading && !authStoreInitialized && !forceInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-gray-600 dark:text-gray-400">Initializing...</p>
-          {forceInitialized && (
-            <p className="text-yellow-600 dark:text-yellow-400 text-sm mt-2">
-              Timeout reached - proceeding with limited functionality
-            </p>
-          )}
         </div>
       </div>
     );

@@ -324,7 +324,7 @@ export const MotionCounter: React.FC<MotionCounterProps> = ({
     return () => {
       clearInterval(timer);
     };
-  }, [value, duration]);
+  }, [value, duration, displayValue]);
 
   return (
     <ErrorBoundary

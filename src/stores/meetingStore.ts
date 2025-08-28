@@ -1,8 +1,7 @@
-import { createWithEqualityFn } from 'zustand/traditional';
+import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
-import { subscribeWithSelector } from 'zustand/middleware';
-import { devtools } from 'zustand/middleware';
+import { subscribeWithSelector, devtools } from 'zustand/middleware';
 
 // Enable MapSet plugin for Immer to handle Map and Set objects
 enableMapSet();
@@ -38,14 +37,21 @@ export interface MeetingState {
   isLoadingMeeting: boolean;
   meetingError: MeetingError | null;
   
+  // Required by MeetingStoreInterface
+  meetingType: string;
+  filteredTranscript: TranscriptEntry[];
+  recordingStartTime: Date | null;
+  realtimeEnabled: boolean;
+  listeners: Set<string>;
+  
   // Transcript state
   transcript: TranscriptEntry[];
   isLoadingTranscript: boolean;
   transcriptError: MeetingError | null;
   fragmentBuffer: TranscriptEntry[];
   
-  // Participants state
-  participants: Participant[];
+  // Participants state - using SpeakerProfile as participants (matching interface)
+  participants: SpeakerProfile[];
   connectedParticipants: string[];
   speakerProfiles: SpeakerProfile[];
   activeSpeaker: string | null;
@@ -54,8 +60,8 @@ export interface MeetingState {
   recentMeetings: Meeting[];
   isLoadingRecentMeetings: boolean;
   
-  // Real-time listeners
-  listeners: Map<string, Unsubscribe>;
+  // Real-time listeners (internal map for unsubscribers)
+  listenerMap: Map<string, Unsubscribe>;
   
   // UI state
   isRecording: boolean;
@@ -88,9 +94,9 @@ export interface MeetingActions {
   clearFragmentBuffer: () => void;
   
   // Participant management
-  addParticipant: (participant: Omit<Participant, 'joinTime' | 'speakingTime'>) => void;
+  addParticipant: (participant: Omit<SpeakerProfile, 'joinTime' | 'speakingTime'>) => void;
   removeParticipant: (userId: string) => void;
-  updateParticipant: (userId: string, updates: Partial<Participant>) => void;
+  updateParticipant: (userId: string, updates: Partial<SpeakerProfile>) => void;
   setActiveSpeaker: (speakerId: string | null) => void;
   updateSpeakerProfile: (profile: SpeakerProfile) => void;
   
@@ -105,7 +111,11 @@ export interface MeetingActions {
   resumeRecording: () => void;
   updateRecordingDuration: (duration: number) => void;
   
-  // Real-time synchronization
+  // Real-time synchronization (required by interface)
+  enableRealtimeSync: (meetingId: string) => Promise<void>;
+  disableRealtimeSync: () => void;
+  
+  // Real-time synchronization (internal methods)
   setupRealtimeListeners: (meetingId: string) => void;
   cleanupRealtimeListeners: () => void;
   
@@ -125,7 +135,7 @@ export interface MeetingActions {
 
 type MeetingStore = MeetingState & MeetingActions;
 
-export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
+export const useMeetingStore = create<MeetingStore>()(
   devtools(
     subscribeWithSelector(
       immer((set, get) => ({
@@ -134,6 +144,13 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
         isInMeeting: false,
         isLoadingMeeting: false,
         meetingError: null,
+        
+        // Required by interface
+        meetingType: '',
+        filteredTranscript: [],
+        recordingStartTime: null,
+        realtimeEnabled: false,
+        listeners: new Set(),
         
         transcript: [],
         isLoadingTranscript: false,
@@ -148,7 +165,8 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
         recentMeetings: [],
         isLoadingRecentMeetings: false,
         
-        listeners: new Map(),
+        // Internal listener map
+        listenerMap: new Map(),
         
         isRecording: false,
         isPaused: false,
@@ -184,8 +202,31 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
               state.currentMeeting = meeting;
               state.isInMeeting = true;
               state.isLoadingMeeting = false;
+              state.meetingType = meeting.type || '';
               state.transcript = [];
-              state.participants = meeting.participants;
+              state.filteredTranscript = [];
+              // Convert Participant[] to SpeakerProfile[] format
+              state.participants = meeting.participants.map(p => ({
+                speakerId: p.id,
+                voiceId: p.voiceProfileId || p.id,
+                userName: p.displayName,
+                voiceEmbedding: [], // Will be populated by voice identification
+                lastSeen: p.joinTime,
+                confidence: 0.8, // Default confidence
+                sessionCount: 1,
+                // Additional properties from Participant
+                userId: p.userId,
+                displayName: p.displayName,
+                role: p.role,
+                speakingTime: p.speakingTime || 0,
+                voiceProfileId: p.voiceProfileId,
+                joinTime: p.joinTime,
+                // Computed properties
+                speakingPercentage: 0,
+                isConnected: true,
+                isActive: false,
+              }));
+              state.recordingStartTime = meeting.startTime;
             });
 
             // Setup real-time listeners
@@ -263,7 +304,27 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
               state.isInMeeting = true;
               state.isLoadingMeeting = false;
               state.transcript = transcriptResult.data;
-              state.participants = meeting.participants;
+              // Convert Participant[] to SpeakerProfile[] format
+              state.participants = meeting.participants.map(p => ({
+                speakerId: p.id,
+                voiceId: p.voiceProfileId || p.id,
+                userName: p.displayName,
+                voiceEmbedding: [], // Will be populated by voice identification
+                lastSeen: p.joinTime,
+                confidence: 0.8, // Default confidence
+                sessionCount: 1,
+                // Additional properties from Participant
+                userId: p.userId,
+                displayName: p.displayName,
+                role: p.role,
+                speakingTime: p.speakingTime || 0,
+                voiceProfileId: p.voiceProfileId,
+                joinTime: p.joinTime,
+                // Computed properties
+                speakingPercentage: 0,
+                isConnected: true,
+                isActive: false,
+              }));
             });
 
             // Setup real-time listeners
@@ -442,7 +503,9 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
                 return;
               }
 
-              state.transcript.push({ ...entry, id: entryId });
+              const newEntry = { ...entry, id: entryId };
+              state.transcript.push(newEntry);
+              state.filteredTranscript.push(newEntry);
             });
 
             return entryId;
@@ -705,7 +768,19 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
               set((state) => {
                 if (meeting) {
                   state.currentMeeting = meeting;
-                  state.participants = meeting.participants;
+                  // Convert Participant[] to SpeakerProfile[] format
+                  state.participants = meeting.participants.map(p => ({
+                    speakerId: p.id,
+                    voiceId: p.voiceProfileId || p.id,
+                    userName: p.displayName,
+                    voiceEmbedding: [], // Will be populated by voice identification
+                    lastSeen: p.joinTime,
+                    confidence: 0.8, // Default confidence
+                    sessionCount: 1,
+                    speakingPercentage: 0,
+                    isConnected: true,
+                    isActive: false,
+                  }));
                 }
               });
             });
@@ -747,6 +822,7 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
                             break;
                           }
                           state.transcript.push(change.doc);
+                          state.filteredTranscript.push(change.doc);
                         }
                         break;
                       case 'modified':
@@ -756,9 +832,19 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
                         if (modifyIndex !== -1) {
                           state.transcript[modifyIndex] = change.doc;
                         }
+                        
+                        const modifyFilteredIndex = state.filteredTranscript.findIndex(
+                          entry => entry.id === change.doc.id
+                        );
+                        if (modifyFilteredIndex !== -1) {
+                          state.filteredTranscript[modifyFilteredIndex] = change.doc;
+                        }
                         break;
                       case 'removed':
                         state.transcript = state.transcript.filter(
+                          entry => entry.id !== change.doc.id
+                        );
+                        state.filteredTranscript = state.filteredTranscript.filter(
                           entry => entry.id !== change.doc.id
                         );
                         break;
@@ -767,14 +853,17 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
 
                   // Sort transcript by timestamp
                   state.transcript.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                  state.filteredTranscript.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
                 });
               }
             );
 
-            // Store listeners for cleanup using Immer-safe state update
+            // Store listeners for cleanup
             set((state) => {
-              state.listeners.set('meeting', meetingListener);
-              state.listeners.set('transcript', transcriptListener);
+              state.listeners.add('meeting');
+              state.listeners.add('transcript');
+              state.listenerMap.set('meeting', meetingListener);
+              state.listenerMap.set('transcript', transcriptListener);
             });
 
           } catch (error) {
@@ -791,9 +880,9 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
         },
 
         cleanupRealtimeListeners: () => {
-          const listeners = get().listeners;
+          const listenerMap = get().listenerMap;
           
-          listeners.forEach((unsubscribe, key) => {
+          listenerMap.forEach((unsubscribe, key) => {
             try {
               unsubscribe();
             } catch (error) {
@@ -804,6 +893,7 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
           // Use set to clear the listeners Map properly with Immer
           set((state) => {
             state.listeners.clear();
+            state.listenerMap.clear();
           });
         },
 
@@ -864,6 +954,11 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
             state.isInMeeting = false;
             state.isLoadingMeeting = false;
             state.meetingError = null;
+            state.meetingType = '';
+            state.filteredTranscript = [];
+            state.recordingStartTime = null;
+            state.realtimeEnabled = false;
+            state.listeners.clear();
             state.transcript = [];
             state.isLoadingTranscript = false;
             state.transcriptError = null;
@@ -889,6 +984,27 @@ export const useMeetingStore = createWithEqualityFn<MeetingStore>()(
             state.transcriptError = error;
           });
         },
+
+        // Interface-required methods
+        enableRealtimeSync: async (meetingId: string) => {
+          set((state) => {
+            state.realtimeEnabled = true;
+            state.listeners.add(meetingId);
+          });
+          
+          // Delegate to existing implementation
+          get().setupRealtimeListeners(meetingId);
+        },
+
+        disableRealtimeSync: () => {
+          set((state) => {
+            state.realtimeEnabled = false;
+            state.listeners.clear();
+          });
+          
+          // Delegate to existing implementation
+          get().cleanupRealtimeListeners();
+        },
       }))
     ),
     { name: 'meeting-store' }
@@ -903,12 +1019,17 @@ export const useMeeting = () => {
     currentMeeting: store.currentMeeting,
     isInMeeting: store.isInMeeting,
     isLoadingMeeting: store.isLoadingMeeting,
-    meetingError: store.meetingError,
+    meetingError: store.meetingError?.message || null,
+    meetingType: store.meetingType,
+    recordingStartTime: store.recordingStartTime,
+    realtimeEnabled: store.realtimeEnabled,
+    listeners: store.listeners,
     
     // Transcript state
     transcript: store.transcript,
+    filteredTranscript: store.filteredTranscript,
     isLoadingTranscript: store.isLoadingTranscript,
-    transcriptError: store.transcriptError,
+    transcriptError: store.transcriptError?.message || null,
     fragmentBuffer: store.fragmentBuffer,
     
     // Participants
@@ -923,15 +1044,17 @@ export const useMeeting = () => {
     // Actions
     startMeeting: store.startMeeting,
     endMeeting: store.endMeeting,
-    joinMeeting: store.joinMeeting,
-    leaveMeeting: store.leaveMeeting,
-    addTranscriptEntry: store.addTranscriptEntry,
+    addTranscriptEntry: (entry: TranscriptEntry) => store.addTranscriptEntry(entry),
+    updateTranscriptEntry: (id: string, updates: Partial<TranscriptEntry>) => store.updateTranscriptEntry(id, updates),
+    addParticipant: store.addParticipant,
+    updateParticipant: store.updateParticipant,
     startRecording: store.startRecording,
     stopRecording: store.stopRecording,
-    pauseRecording: store.pauseRecording,
-    resumeRecording: store.resumeRecording,
-    clearMeetingError: store.clearMeetingError,
-    clearTranscriptError: store.clearTranscriptError,
+    setMeetingError: (error: string | null) => store.setMeetingError(error ? { code: 'USER_ERROR', message: error, operation: 'user' } : null),
+    setTranscriptError: (error: string | null) => store.setTranscriptError(error ? { code: 'USER_ERROR', message: error, operation: 'user' } : null),
+    enableRealtimeSync: store.enableRealtimeSync,
+    disableRealtimeSync: store.disableRealtimeSync,
+    resetMeetingState: store.resetMeetingState,
   };
 };
 

@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from '@/components/providers/ThemeProviderSimple';
 import { AuthProvider } from '@/components/providers/AuthProvider';
 import { StoreProviders } from '@/components/providers/StoreProviders';
+import { RootErrorBoundary } from '@/components/providers/RootErrorBoundary';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -47,7 +48,9 @@ export default function RootLayout({
         <ThemeProvider defaultTheme="system">
           <StoreProviders>
             <AuthProvider>
-              {children}
+              <RootErrorBoundary>
+                {children}
+              </RootErrorBoundary>
             </AuthProvider>
           </StoreProviders>
         </ThemeProvider>

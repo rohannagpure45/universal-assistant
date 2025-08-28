@@ -5,8 +5,8 @@
  * with the Universal Assistant application components.
  */
 
-import { DatabaseService, DatabaseError } from './DatabaseService';
-import { RealtimeService, RealtimeError } from './RealtimeService';
+import { DatabaseService, DatabaseError } from '../../services/firebase/DatabaseService';
+import { RealtimeService, RealtimeError } from '../../services/firebase/RealtimeService';
 import { auth } from '@/lib/firebase/client';
 import type { 
   User, 

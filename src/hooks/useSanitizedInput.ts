@@ -3,7 +3,7 @@
  * Provides automatic sanitization for form inputs to prevent XSS
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { 
   sanitizeUserInput, 
   sanitizeUrl, 
@@ -167,37 +167,41 @@ export function useSanitizedForm<T extends Record<string, string>>(
   const [sanitizedValues, setSanitizedValues] = useState(initialValues);
   const [errors, setErrors] = useState<Record<keyof T, string | null>>({} as any);
 
-  // Create sanitizers for each field
-  const sanitizers = {} as Record<keyof T, (value: string) => string>;
-  
-  for (const key in config) {
-    const fieldConfig = config[key];
-    sanitizers[key] = (value: string) => {
-      
-      if (fieldConfig.customSanitizer) {
-        return fieldConfig.customSanitizer(value);
-      }
+  // Create sanitizers for each field (memoized to prevent re-renders)
+  const sanitizers = useMemo(() => {
+    const result = {} as Record<keyof T, (value: string) => string>;
+    
+    for (const key in config) {
+      const fieldConfig = config[key];
+      result[key] = (value: string) => {
+        
+        if (fieldConfig.customSanitizer) {
+          return fieldConfig.customSanitizer(value);
+        }
 
-      switch (fieldConfig.type) {
-        case 'url':
-          return sanitizeUrl(value);
-        case 'email':
-          return sanitizeEmail(value);
-        case 'displayName':
-          return createSafeDisplayName(value);
-        case 'transcript':
-          return sanitizeTranscript(value);
-        case 'notes':
-          return sanitizeMeetingNotes(value);
-        default:
-          return sanitizeUserInput(value, {
-            maxLength: fieldConfig.maxLength,
-            allowNewlines: fieldConfig.allowNewlines,
-            allowBasicFormatting: fieldConfig.allowBasicFormatting
-          });
-      }
-    };
-  }
+        switch (fieldConfig.type) {
+          case 'url':
+            return sanitizeUrl(value);
+          case 'email':
+            return sanitizeEmail(value);
+          case 'displayName':
+            return createSafeDisplayName(value);
+          case 'transcript':
+            return sanitizeTranscript(value);
+          case 'notes':
+            return sanitizeMeetingNotes(value);
+          default:
+            return sanitizeUserInput(value, {
+              maxLength: fieldConfig.maxLength,
+              allowNewlines: fieldConfig.allowNewlines,
+              allowBasicFormatting: fieldConfig.allowBasicFormatting
+            });
+        }
+      };
+    }
+    
+    return result;
+  }, [config]);
 
   // Handle field change
   const handleFieldChange = useCallback((

@@ -18,11 +18,8 @@ export interface AdminValidationResult {
   securityContext?: SecurityContext;
 }
 
-// Secure admin email configuration (server-side only)
-const ADMIN_EMAILS = new Set([
-  'ribt2218@gmail.com',
-  'rohan@linkstudio.ai'
-]);
+// SECURE: Eliminated hardcoded email validation (security fix for email spoofing)
+// Admin validation now uses Firebase custom claims only
 
 /**
  * SECURITY-CRITICAL: Validate admin access using Firebase Custom Claims
@@ -79,11 +76,11 @@ export async function validateAdminAccess(
     const hasAdminClaim = customClaims.admin === true;
     const adminLevel = customClaims.adminLevel as 'super' | 'standard' | undefined;
     
-    // Step 3: Fallback email-based check (secondary authorization)
-    const isAdminEmail = ADMIN_EMAILS.has(decodedToken.email.toLowerCase());
+    // SECURE: Eliminated email-based fallback (security fix)
+    const isAdminEmail = false; // No email-based admin validation for security
     
-    // Step 4: Defense-in-depth validation
-    const isValidAdmin = hasAdminClaim || isAdminEmail;
+    // Step 4: Custom claims only validation (secure)
+    const isValidAdmin = hasAdminClaim;
     
     if (!isValidAdmin) {
       // Log unauthorized admin access attempt

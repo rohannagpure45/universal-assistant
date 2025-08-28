@@ -42,8 +42,8 @@ export const useAudioDevicesHook = (autoRefresh: boolean = true) => {
 
   // Categorize devices by type
   const devicesByType = useMemo(() => {
-    const inputDevices = availableDevices.filter(device => device.kind === 'audioinput');
-    const outputDevices = availableDevices.filter(device => device.kind === 'audiooutput');
+    const inputDevices = availableDevices.filter(device => device.type === 'microphone');
+    const outputDevices = availableDevices.filter(device => device.type === 'speaker');
 
     return {
       input: inputDevices,
@@ -55,10 +55,10 @@ export const useAudioDevicesHook = (autoRefresh: boolean = true) => {
   // Get currently selected devices
   const selectedDevices = useMemo(() => {
     const selectedInput = devicesByType.input.find(
-      device => device.deviceId === audioSettings.inputDeviceId
+      device => device.id === audioSettings.inputDeviceId
     );
     const selectedOutput = devicesByType.output.find(
-      device => device.deviceId === audioSettings.outputDeviceId
+      device => device.id === audioSettings.outputDeviceId
     );
 
     return {
@@ -83,8 +83,8 @@ export const useAudioDevicesHook = (autoRefresh: boolean = true) => {
   }, [autoRefresh, refreshAudioDevices]);
 
   // Test device with user feedback
-  const testDeviceWithFeedback = useCallback(async (deviceId: string, type: 'input' | 'output') => {
-    const success = await testAudioDevice(deviceId, type);
+  const testDeviceWithFeedback = useCallback(async (id: string, type: 'input' | 'output') => {
+    const success = await testAudioDevice(id, type);
     return success;
   }, [testAudioDevice]);
 
@@ -614,6 +614,7 @@ export const useErrorHandler = () => {
   ): AppError => ({
     code,
     message,
+    name: code,
     operation,
     timestamp: new Date(),
     cause,

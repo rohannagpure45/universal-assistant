@@ -33,7 +33,7 @@ import {
   where, 
   orderBy, 
   limit as firestoreLimit,
-  onSnapshot,
+  getDocs,
   Unsubscribe
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
@@ -247,10 +247,11 @@ export const useVoiceLibrary = (options: UseVoiceLibraryOptions = {}): UseVoiceL
       firestoreLimit(limit)
     );
 
-    const unsubscribeVoices = onSnapshot(
-      voiceLibraryQuery,
-      (snapshot) => {
-        const profiles: VoiceLibraryEntry[] = snapshot.docs.map(doc => ({
+    // Use REST-based approach instead of WebSocket to avoid CORS issues
+    const loadVoiceProfiles = async () => {
+      try {
+        const querySnapshot = await getDocs(voiceLibraryQuery);
+        const profiles: VoiceLibraryEntry[] = querySnapshot.docs.map(doc => ({
           deepgramVoiceId: doc.id,
           ...VoiceLibraryService['convertFromFirestore'](doc.data())
         }));
@@ -264,13 +265,19 @@ export const useVoiceLibrary = (options: UseVoiceLibraryOptions = {}): UseVoiceL
         
         setVoiceProfiles(enhanced);
         setLoading(false);
-      },
-      (err) => {
-        console.error('Real-time voice profiles error:', err);
-        setError('Real-time updates failed');
+      } catch (err: any) {
+        console.error('Voice profiles loading error:', err);
+        setError('Failed to load voice profiles');
         setLoading(false);
       }
-    );
+    };
+
+    // Initial load
+    loadVoiceProfiles();
+
+    // Set up periodic refresh instead of real-time listener
+    const refreshInterval = setInterval(loadVoiceProfiles, 10000); // 10 seconds
+    const unsubscribeVoices = () => clearInterval(refreshInterval);
 
     unsubscribes.push(unsubscribeVoices);
 
@@ -281,20 +288,27 @@ export const useVoiceLibrary = (options: UseVoiceLibraryOptions = {}): UseVoiceL
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribePending = onSnapshot(
-      pendingQuery,
-      (snapshot) => {
-        const pending: NeedsIdentification[] = snapshot.docs.map(doc => ({
+    // Use REST-based approach for pending identifications too
+    const loadPendingIdentifications = async () => {
+      try {
+        const querySnapshot = await getDocs(pendingQuery);
+        const pending: NeedsIdentification[] = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         } as NeedsIdentification));
         
         setPendingIdentifications(pending);
-      },
-      (err) => {
-        console.error('Real-time pending identifications error:', err);
+      } catch (err) {
+        console.error('Pending identifications loading error:', err);
       }
-    );
+    };
+
+    // Initial load
+    loadPendingIdentifications();
+
+    // Set up periodic refresh
+    const pendingRefreshInterval = setInterval(loadPendingIdentifications, 15000); // 15 seconds
+    const unsubscribePending = () => clearInterval(pendingRefreshInterval);
 
     unsubscribes.push(unsubscribePending);
 

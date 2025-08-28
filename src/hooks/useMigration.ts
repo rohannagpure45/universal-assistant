@@ -119,7 +119,7 @@ export function useMigration<TFrom, TTo>(
         onError?.(error, item, index);
       }
     });
-  }, [batchSize, onProgress, onError]);
+  }, [batchSize, onProgress, onError, status]);
 
   /**
    * Run the migration
@@ -197,7 +197,7 @@ export function useMigration<TFrom, TTo>(
         }
       }
     }
-  }, [data, migrator, createBackup, onComplete]);
+  }, [data, migrator, createBackup, onComplete, backupId]);
 
   /**
    * Cancel the migration

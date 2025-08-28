@@ -1,4 +1,4 @@
-import { createWithEqualityFn } from 'zustand/traditional';
+import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { User, UserPreferences } from '@/types';
@@ -7,6 +7,9 @@ import type { SignUpData, SignInData, LocalAuthError } from '@/services/firebase
 
 // Store the auth unsubscribe function outside the store
 let authUnsubscribe: (() => void) | null = null;
+
+// CRITICAL FIX: Initialization flag to prevent multiple auth listeners
+let authInitialized = false;
 
 export interface AuthState {
   // State
@@ -54,7 +57,7 @@ export interface AuthActions {
 
 type AuthStore = AuthState & AuthActions;
 
-export const useAuthStore = createWithEqualityFn<AuthStore>()(
+export const useAuthStore = create<AuthStore>()(
   subscribeWithSelector(
     immer((set, get) => ({
       // Initial state
@@ -373,6 +376,13 @@ export const useAuthStore = createWithEqualityFn<AuthStore>()(
       initialize: () => {
         // FOUNDATION PRINCIPLE: Direct, synchronous initialization
         // EFFICIENCY: Use static import instead of dynamic import to eliminate async issues
+        
+        // CRITICAL FIX: Prevent multiple initialization
+        if (authInitialized) {
+          console.log('[AuthStore] Auth already initialized, skipping...');
+          return;
+        }
+        
         try {
           console.log('[AuthStore] Setting up Firebase auth state listener...');
           
@@ -388,6 +398,7 @@ export const useAuthStore = createWithEqualityFn<AuthStore>()(
           
           // Store unsubscribe function for cleanup
           authUnsubscribe = unsubscribe;
+          authInitialized = true; // Mark as initialized
           
           console.log('[AuthStore] Auth listener initialized successfully');
         } catch (error) {
@@ -413,8 +424,9 @@ export const useAuthStore = createWithEqualityFn<AuthStore>()(
           // Initialize auth service - this will trigger the auth state listener
           get().initialize();
           
-          // Set a timeout to ensure loading state is cleared
-          setTimeout(() => {
+          // CRITICAL FIX: Remove synchronous check that causes race condition
+          // The timeout will be cleared by the auth state listener setting isInitialized = true
+          const timeoutId = setTimeout(() => {
             set((state) => {
               // If still loading after 2 seconds, clear the loading state
               if (state.isLoading) {
@@ -423,6 +435,9 @@ export const useAuthStore = createWithEqualityFn<AuthStore>()(
               }
             });
           }, 2000);
+          
+          // Store timeout ID for potential cleanup
+          // The auth state listener will clear loading state when auth completes
           
         } catch (error) {
           console.error('Auth initialization failed:', error);

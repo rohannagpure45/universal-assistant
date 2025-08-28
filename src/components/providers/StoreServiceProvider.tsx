@@ -22,10 +22,10 @@ interface StoreServiceProviderProps {
 export const StoreServiceProvider: React.FC<StoreServiceProviderProps> = ({ children }) => {
   const initializationRef = useRef(false);
   
-  // Get store instances (these don't cause re-renders since we're just using them for initialization)
-  const authStoreInstance = useAuthStore;
-  const meetingStoreInstance = useMeetingStore;
-  const appStoreInstance = useAppStore;
+  // CRITICAL FIX: Get store functions once, not on every render
+  const authStoreRef = useRef(useAuthStore);
+  const meetingStoreRef = useRef(useMeetingStore);
+  const appStoreRef = useRef(useAppStore);
 
   useEffect(() => {
     // Only initialize once
@@ -39,9 +39,9 @@ export const StoreServiceProvider: React.FC<StoreServiceProviderProps> = ({ chil
         
         // Create store registry with actual store instances
         const storeRegistry: StoreRegistryInterface = {
-          auth: authStoreInstance as any,
-          meeting: meetingStoreInstance as any,
-          app: appStoreInstance as any,
+          auth: authStoreRef.current as any,
+          meeting: meetingStoreRef.current as any,
+          app: appStoreRef.current as any,
         };
 
         // Initialize the service provider
@@ -56,7 +56,7 @@ export const StoreServiceProvider: React.FC<StoreServiceProviderProps> = ({ chil
     };
 
     initializeServiceProvider();
-  }, []); // Empty dependency array - initialize only once
+  }, []); // CRITICAL FIX: Remove store dependencies - they never change, only their internal state does
 
   // Always render children, even during initialization
   // Services will handle the case where stores aren't ready yet

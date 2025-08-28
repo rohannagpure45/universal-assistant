@@ -140,17 +140,8 @@ export const TrainingProgressDashboard: React.FC<TrainingProgressDashboardProps>
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
-  // Load data on mount and set up refresh interval
-  useEffect(() => {
-    loadDashboardData();
-    
-    if (refreshInterval > 0) {
-      const interval = setInterval(loadDashboardData, refreshInterval);
-      return () => clearInterval(interval);
-    }
-  }, [refreshInterval]);
-
-  const loadDashboardData = async () => {
+  // Load dashboard data function
+  const loadDashboardData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -175,7 +166,17 @@ export const TrainingProgressDashboard: React.FC<TrainingProgressDashboardProps>
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  // Load data on mount and set up refresh interval
+  useEffect(() => {
+    loadDashboardData();
+    
+    if (refreshInterval > 0) {
+      const interval = setInterval(loadDashboardData, refreshInterval);
+      return () => clearInterval(interval);
+    }
+  }, [refreshInterval]);
 
   const loadAllVoiceProfiles = async (): Promise<VoiceLibraryEntry[]> => {
     // In a real implementation, this would load all profiles

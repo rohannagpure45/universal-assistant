@@ -14,31 +14,13 @@ export const useAuth = () => {
   const appStore = useAppStore();
   const meetingStore = useMeetingStore();
   const isInitializedRef = useRef(false);
+  
+  // SURGICAL FIX: Issue #2 - Replace global flag with proper React ref
+  const isSigningOutRef = useRef(false);
 
-  // FOUNDATION SOLUTION: Direct, efficient initialization
-  // SOLID PRINCIPLE: Single Responsibility - this hook manages auth initialization
-  useEffect(() => {
-    if (!isInitializedRef.current) {
-      isInitializedRef.current = true;
-      
-      console.log('[useAuth] Starting efficient auth initialization...');
-      
-      // DIRECT APPROACH: Initialize auth immediately without complex provider chains
-      if (!auth.isInitialized) {
-        console.log('[useAuth] Calling auth.initialize()...');
-        auth.initialize();
-        
-        // EFFICIENCY: Set timeout fallback for resilience
-        setTimeout(() => {
-          if (!auth.isInitialized) {
-            console.warn('[useAuth] Auth initialization timeout - setting fallback state');
-            // Force initialization if it hasn't completed
-            auth.setInitialized(true);
-          }
-        }, 2000);
-      }
-    }
-  }, [auth.initialize, auth.isInitialized, auth.setInitialized]);
+  // FOUNDATION SOLUTION: AuthProvider handles initialization now
+  // This hook should NOT initialize auth to prevent multiple initialization loops
+  // The AuthProvider component is the single source of truth for auth initialization
 
   // Auto-clear errors after a timeout
   useEffect(() => {
@@ -49,11 +31,11 @@ export const useAuth = () => {
 
       return () => clearTimeout(timer);
     }
-  }, [auth.error, auth.clearError]);
+  }, [auth.error, auth]);
 
   // Sync user preferences between AuthStore and AppStore
   useEffect(() => {
-    if (auth.user?.preferences) {
+    if (auth.user?.preferences && !isInitializedRef.current) {
       const { preferences } = auth.user;
       
       // Sync AI settings
@@ -82,25 +64,39 @@ export const useAuth = () => {
           fontSize: preferences.ui.fontSize > 16 ? 'large' : preferences.ui.fontSize < 14 ? 'small' : 'medium',
         });
       }
+      
+      // Mark as initialized to prevent re-sync on every auth.user change
+      isInitializedRef.current = true;
     }
-  }, [auth.user?.preferences, appStore.updateAISettings, appStore.updateTTSSettings, appStore.updateUISettings]);
+  }, [auth.user?.uid]); // CRITICAL FIX: Only sync once per user, not on every user object change
 
-  // Clean up meeting state when user signs out
+  // Clean up meeting state when user signs out and reset sync flag
   useEffect(() => {
-    if (!auth.isAuthenticated && meetingStore.isInMeeting) {
-      meetingStore.resetMeetingState();
+    if (!auth.isAuthenticated) {
+      if (meetingStore.isInMeeting) {
+        meetingStore.resetMeetingState();
+      }
+      // Reset initialization flag when user signs out
+      isInitializedRef.current = false;
     }
-  }, [auth.isAuthenticated, meetingStore.isInMeeting, meetingStore.resetMeetingState]);
+  }, [auth.isAuthenticated, meetingStore.isInMeeting, meetingStore]);
 
   // Load recent meetings when user signs in
   useEffect(() => {
     if (auth.isAuthenticated && auth.user) {
       meetingStore.loadRecentMeetings(auth.user.uid, 10);
     }
-  }, [auth.isAuthenticated, auth.user?.uid, meetingStore.loadRecentMeetings]);
+  }, [auth.isAuthenticated, auth.user, meetingStore]);
 
   // Enhanced sign out with cross-store cleanup
   const enhancedSignOut = async () => {
+    // SURGICAL FIX: Issue #2 - Use React ref instead of global flag
+    if (isSigningOutRef.current) {
+      return false;
+    }
+    
+    isSigningOutRef.current = true;
+    
     try {
       // Clean up meeting state first
       if (meetingStore.isInMeeting) {
@@ -109,6 +105,9 @@ export const useAuth = () => {
       
       // Clean up any real-time listeners
       meetingStore.cleanupRealtimeListeners();
+      
+      // Small delay to ensure cleanup completes
+      await new Promise(resolve => setTimeout(resolve, 50));
       
       // Sign out from auth
       const success = await auth.signOut();
@@ -125,6 +124,9 @@ export const useAuth = () => {
     } catch (error) {
       console.error('Enhanced sign out failed:', error);
       return false;
+    } finally {
+      // SURGICAL FIX: Issue #2 - Clear React ref instead of global flag
+      isSigningOutRef.current = false;
     }
   };
 

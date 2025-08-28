@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   UniversalAssistantCoordinator, 
   createUniversalAssistantCoordinator,
@@ -59,8 +59,8 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
   const meetingStore = useMeetingStore();
   const appStore = useAppStore();
   
-  // Configuration with app store preferences
-  const config: UniversalAssistantConfig = {
+  // Configuration with app store preferences (memoized)
+  const config: UniversalAssistantConfig = useMemo(() => ({
     ...DEFAULT_CONFIG,
     // Override with app store settings if available
     model: appStore.aiSettings?.defaultModel || DEFAULT_CONFIG.model,
@@ -68,7 +68,7 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
     voiceId: appStore.ttsSettings?.voiceId || DEFAULT_CONFIG.voiceId,
     ttsSpeed: appStore.ttsSettings?.speed || DEFAULT_CONFIG.ttsSpeed,
     ...options, // User options take final priority
-  };
+  }), [appStore.aiSettings, appStore.ttsSettings, options]);
 
   // State management
   const [state, setState] = useState<CoordinatorState>({
@@ -135,7 +135,7 @@ export function useUniversalAssistant(options: UseUniversalAssistantOptions = {}
         coordinatorRef.current.cleanup();
       }
     };
-  }, [meetingStore, appStore]); // Include stores in dependencies
+  }, [meetingStore, appStore, config, options.autoStart]); // Include all dependencies
 
   // Sync app store settings when they change
   useEffect(() => {

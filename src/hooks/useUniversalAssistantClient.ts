@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getServiceContainer, initializeTranscription } from '@/services/universal-assistant/ClientServiceContainer';
-import { useGlobalServiceManager, useUniversalAssistantCoordinator } from '@/services/universal-assistant/GlobalServiceManager';
+import { useGlobalServiceManager } from '@/services/universal-assistant/GlobalServiceManager';
+import { useUniversalAssistantCoordinator } from '@/hooks/useUniversalAssistantCoordinator';
 import type { AudioManager } from '@/services/universal-assistant/AudioManager';
 import type { DeepgramSTT } from '@/services/universal-assistant/DeepgramSTT';
 import type { FragmentProcessor } from '@/services/universal-assistant/FragmentProcessor';
@@ -40,6 +41,9 @@ export function useUniversalAssistantClient() {
   // Concurrency control for recording operations
   const recordingMutexRef = useRef(false);
   
+  // Memory leak prevention: Track subscription cleanup functions
+  const unsubscribeFunctionsRef = useRef<Set<() => void>>(new Set());
+  
   // Use global service manager for coordinator
   const serviceManager = useGlobalServiceManager();
   const { coordinator, isLoading: isCoordinatorLoading, error: coordinatorError } = useUniversalAssistantCoordinator({
@@ -56,16 +60,8 @@ export function useUniversalAssistantClient() {
   const appStore = useAppStore();
   const { currentMeeting, addTranscriptEntry } = meetingStore;
 
-  useEffect(() => {
-    // Only initialize on client side and only once
-    if (typeof window !== 'undefined' && !initializationAttempted.current) {
-      setIsClient(true);
-      initializationAttempted.current = true;
-      initializeServices();
-    }
-  }, []); // Empty deps array - only run once on mount
-
-  const initializeServices = useCallback(async () => {
+  // Function declaration - hoisted and available throughout scope
+  async function initializeServices() {
     // Prevent double initialization
     if (servicesRef.current) {
       console.log('Services already initialized, skipping...');
@@ -158,7 +154,17 @@ export function useUniversalAssistantClient() {
       console.error('Failed to initialize Universal Assistant services:', err);
       setError(err instanceof Error ? err.message : 'Failed to initialize audio system');
     }
-  }, []); // No dependencies - only initialize once
+  }
+
+  useEffect(() => {
+    // Only initialize on client side and only once
+    if (typeof window !== 'undefined' && !initializationAttempted.current) {
+      setIsClient(true);
+      initializationAttempted.current = true;
+      initializeServices();
+    }
+  }, []); // Removed initializeServices from deps - function declarations don't need to be in deps
+  // initializeServices function moved above useEffect as function declaration
 
   const startRecording = useCallback(async () => {
     // Check concurrency mutex first
@@ -254,15 +260,19 @@ export function useUniversalAssistantClient() {
       // Use coordinator's vocal interrupt handling
       coordinator.handleVocalInterrupt();
       
-      // Subscribe to coordinator state changes
+      // Subscribe to coordinator state changes with proper cleanup tracking
       const unsubscribe = coordinator.subscribe((state) => {
         setIsPlaying(state.isPlaying);
         setIsProcessing(state.isProcessing);
       });
       
+      // Track subscription for cleanup
+      unsubscribeFunctionsRef.current.add(unsubscribe);
+      
       // Clean up subscription after a short delay
       setTimeout(() => {
         unsubscribe();
+        unsubscribeFunctionsRef.current.delete(unsubscribe);
       }, 5000);
       
       console.log('Triggered vocal interrupt via coordinator');
@@ -302,6 +312,19 @@ export function useUniversalAssistantClient() {
             console.log(`Cleanup: Stopped track ${track.kind}`);
           });
           streamRef.current = null;
+        }
+        
+        // Clean up any remaining subscriptions to prevent memory leaks
+        if (unsubscribeFunctionsRef.current.size > 0) {
+          console.log(`Cleanup: Removing ${unsubscribeFunctionsRef.current.size} remaining subscriptions`);
+          unsubscribeFunctionsRef.current.forEach(unsubscribe => {
+            try {
+              unsubscribe();
+            } catch (error) {
+              console.error('Error cleaning up subscription:', error);
+            }
+          });
+          unsubscribeFunctionsRef.current.clear();
         }
         
         // Clean up all services through the container

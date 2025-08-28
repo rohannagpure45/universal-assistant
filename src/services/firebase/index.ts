@@ -36,7 +36,7 @@ export {
   UniversalAssistantSession,
   useUser,
   useMeetingTranscripts
-} from './usage-examples';
+} from '../../hooks/examples/firebase-usage-examples';
 
 // Test utilities (for development and testing)
 export {

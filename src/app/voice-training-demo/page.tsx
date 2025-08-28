@@ -5,12 +5,12 @@ import { motion } from 'framer-motion';
 import { Button, PrimaryButton, SecondaryButton } from '@/components/ui/Button';
 import { Card } from '@/components/ui/card';
 
-// Lazy load voice identification components to reduce bundle size
-const VoiceTrainingWizard = React.lazy(() => import('@/components/voice-identification').then(m => ({ default: m.VoiceTrainingWizard })));
-const VoiceRecordingInterface = React.lazy(() => import('@/components/voice-identification').then(m => ({ default: m.VoiceRecordingInterface })));
-const VoiceTrainingSampleManager = React.lazy(() => import('@/components/voice-identification').then(m => ({ default: m.VoiceTrainingSampleManager })));
-const SpeakerProfileTraining = React.lazy(() => import('@/components/voice-identification').then(m => ({ default: m.SpeakerProfileTraining })));
-const TrainingProgressDashboard = React.lazy(() => import('@/components/voice-identification').then(m => ({ default: m.TrainingProgressDashboard })));
+// Lazy load voice identification components with direct imports
+const VoiceTrainingWizard = React.lazy(() => import('@/components/voice-identification/VoiceTrainingWizard'));
+const VoiceRecordingInterface = React.lazy(() => import('@/components/voice-identification/VoiceRecordingInterface'));
+const VoiceTrainingSampleManager = React.lazy(() => import('@/components/voice-identification/VoiceTrainingSampleManager'));
+const SpeakerProfileTraining = React.lazy(() => import('@/components/voice-identification/SpeakerProfileTraining'));
+const TrainingProgressDashboard = React.lazy(() => import('@/components/voice-identification/TrainingProgressDashboard'));
 import { 
   Users, 
   Mic, 

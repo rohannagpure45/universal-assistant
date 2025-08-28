@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { 
   AlertTriangle, 
   User, 
@@ -123,8 +123,8 @@ export const UnknownSpeakerAlert: React.FC<UnknownSpeakerAlertProps> = ({
   enabled = true,
   className,
 }) => {
-  // Merge configuration with defaults
-  const config: AlertConfig = {
+  // Merge configuration with defaults (memoized to prevent re-renders)
+  const config: AlertConfig = useMemo(() => ({
     minimumDuration: 5,
     minimumConfidence: 0.6,
     minimumMessages: 2,
@@ -138,7 +138,7 @@ export const UnknownSpeakerAlert: React.FC<UnknownSpeakerAlertProps> = ({
     position: 'top',
     theme: 'auto',
     ...userConfig,
-  };
+  }), [userConfig]);
 
   // Component state
   const [activeAlerts, setActiveAlerts] = useState<string[]>([]);
@@ -272,8 +272,11 @@ export const UnknownSpeakerAlert: React.FC<UnknownSpeakerAlertProps> = ({
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
-      alertTimersRef.current.forEach(timer => clearTimeout(timer));
-      autoHideTimersRef.current.forEach(timer => clearTimeout(timer));
+      // Copy refs to local variables to avoid stale closure issues
+      const alertTimers = alertTimersRef.current;
+      const autoHideTimers = autoHideTimersRef.current;
+      alertTimers.forEach(timer => clearTimeout(timer));
+      autoHideTimers.forEach(timer => clearTimeout(timer));
     };
   }, []);
 

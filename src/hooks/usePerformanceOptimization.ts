@@ -92,13 +92,15 @@ export function useThrottledEffect(
 ): void {
   const throttledEffect = useMemo(
     () => debounce(effect, delay, { leading: true, trailing: false }),
-    [delay]
+    [effect, delay]
   );
   
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     throttledEffect();
     return () => throttledEffect.cancel();
-  }, deps);
+  }, [throttledEffect, ...deps]);
 }
 
 // Virtual scrolling hook for large lists
@@ -173,7 +175,7 @@ export function usePerformanceMonitoring(componentName: string) {
     }
     
     lastRenderTime.current = Date.now();
-  });
+  }, [componentName]);
   
   return performanceData;
 }
@@ -206,7 +208,7 @@ export function useIntersectionObserver(
     observer.observe(target);
     
     return () => observer.disconnect();
-  }, [hasBeenVisible, options]);
+  }, [targetRef, hasBeenVisible, options]);
   
   return { isIntersecting, hasBeenVisible };
 }
@@ -239,7 +241,7 @@ export function useOptimizedAsyncData<T>(
     cacheKey: string;
   } | null>(null);
   
-  const cacheKey = useMemo(() => JSON.stringify(deps), deps);
+  const cacheKey = useMemo(() => JSON.stringify(deps), [deps]);
   
   const fetchData = useCallback(async () => {
     // Check if we have fresh cached data
@@ -280,9 +282,11 @@ export function useOptimizedAsyncData<T>(
     }
   }, [asyncFn, cacheKey, staleTime, retryCount, retryDelay]);
   
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     fetchData();
-  }, deps);
+  }, [fetchData, ...deps]);
   
   const refetch = useCallback(() => {
     cacheRef.current = null; // Clear cache
@@ -366,7 +370,8 @@ export function useWebWorker<T, R>(
         workerRef.current.terminate();
       }
     };
-  }, dependencies);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workerScript, ...dependencies]);
   
   const execute = useCallback((data: T) => {
     if (workerRef.current) {

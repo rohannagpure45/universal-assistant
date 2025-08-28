@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { shallow } from 'zustand/shallow';
 import { PageErrorBoundary } from '@/components/error-boundaries/PageErrorBoundary';
+import { SimpleErrorBoundary } from '@/components/error-boundaries/SimpleErrorBoundary';
 import { useRouter } from 'next/navigation';
 import { 
   Mic, 
@@ -34,7 +36,8 @@ import { Button } from '@/components/ui/Button';
 
 // Type imports
 import type { MeetingTypeConfig } from '@/types/database';
-import type { Meeting, MeetingType } from '@/types';
+import type { Meeting, MeetingType, TranscriptEntry } from '@/types';
+import { MeetingStoreInterface } from '@/interfaces/StoreInterfaces';
 
 interface MeetingSetupModalProps {
   isOpen: boolean;
@@ -393,9 +396,57 @@ function MeetingPageContent() {
   const [assistantError, setAssistantError] = useState<string | null>(null);
   const initializingRef = useRef<boolean>(false);
   
-  // Store references - avoid direct store usage in effects
-  const meetingStoreRef = useRef(useMeetingStore as any);
-  const appStoreRef = useRef(useAppStore as any);
+  // CRITICAL FIX: Use proper Zustand selectors instead of stale closures
+  const meetingStoreWrapper = useMeetingStore(
+    (state): MeetingStoreInterface => ({
+      // State mapping with interface compliance
+      currentMeeting: state.currentMeeting,
+      isInMeeting: state.isInMeeting,
+      meetingType: state.meetingType,
+      transcript: state.transcript,
+      filteredTranscript: state.filteredTranscript,
+      participants: state.participants,
+      isRecording: state.isRecording,
+      recordingStartTime: state.recordingStartTime,
+      meetingError: state.meetingError?.message || null,
+      transcriptError: state.transcriptError?.message || null,
+      realtimeEnabled: state.realtimeEnabled,
+      listeners: state.listeners,
+      
+      // Action mapping - these functions are stable
+      startMeeting: state.startMeeting,
+      endMeeting: state.endMeeting,
+      addTranscriptEntry: (entry: TranscriptEntry) => state.addTranscriptEntry(entry),
+      updateTranscriptEntry: state.updateTranscriptEntry,
+      addParticipant: state.addParticipant,
+      updateParticipant: state.updateParticipant,
+      startRecording: state.startRecording,
+      stopRecording: state.stopRecording,
+      setMeetingError: (error: string | null) => state.setMeetingError(error ? { code: 'USER_ERROR', message: error, operation: 'user' } : null),
+      setTranscriptError: (error: string | null) => state.setTranscriptError(error ? { code: 'USER_ERROR', message: error, operation: 'user' } : null),
+      enableRealtimeSync: state.enableRealtimeSync,
+      disableRealtimeSync: state.disableRealtimeSync,
+      resetMeetingState: state.resetMeetingState,
+    }),
+    shallow
+  );
+
+  const appStoreWrapper = useAppStore(
+    (state) => ({
+      ...state,
+      // Ensure all required interface properties are present with defaults
+      availableDevices: state.availableDevices || [],
+      selectedMicrophone: state.selectedMicrophone || null,
+      selectedSpeaker: state.selectedSpeaker || null,
+      microphoneGain: state.microphoneGain || 1.0,
+      speakerVolume: state.speakerVolume || 1.0,
+      noiseReduction: state.noiseReduction || false,
+      echoCancellation: state.echoCancellation || false,
+      notifications: state.notifications || [],
+      globalErrors: state.globalErrors || [],
+    }),
+    shallow
+  );
 
   // Initialize Universal Assistant when meeting starts with proper race condition handling
   useEffect(() => {
@@ -416,8 +467,8 @@ function MeetingPageContent() {
 
           universalAssistantRef.current = createUniversalAssistantCoordinator(
             config,
-            meetingStoreRef.current,
-            appStoreRef.current
+            meetingStoreWrapper,
+            appStoreWrapper
           );
 
           // Start recording with Universal Assistant
@@ -448,7 +499,7 @@ function MeetingPageContent() {
       initializingRef.current = false;
       setAssistantError(null);
     }
-  }, [isInMeeting, currentMeeting?.meetingId]); // Use meetingId to prevent unnecessary re-renders
+  }, [isInMeeting, currentMeeting]); // Include currentMeeting for complete dependency tracking
 
   // Cleanup Universal Assistant when component unmounts
   useEffect(() => {
@@ -487,9 +538,7 @@ function MeetingPageContent() {
         // Add success notification
         useAppStore.getState().addNotification({
           type: 'success',
-          title: 'Meeting Started',
-          message: `"${title}" meeting has been started successfully.`,
-          persistent: false
+          message: `Meeting "${title}" has been started successfully.`
         });
       } else {
         throw new Error('Failed to create meeting - no meeting ID returned');
@@ -501,9 +550,7 @@ function MeetingPageContent() {
       // Add error notification
       useAppStore.getState().addNotification({
         type: 'error',
-        title: 'Failed to Start Meeting',
-        message: errorMessage,
-        persistent: false
+        message: `Failed to start meeting: ${errorMessage}`
       });
       
       // Reset any partial state
@@ -552,9 +599,7 @@ function MeetingPageContent() {
         // Add success notification
         useAppStore.getState().addNotification({
           type: 'success',
-          title: 'Meeting Ended',
-          message: 'Meeting has been ended and data has been saved.',
-          persistent: false
+          message: 'Meeting has been ended and data has been saved.'
         });
         
         // Reset assistant error state
@@ -573,9 +618,7 @@ function MeetingPageContent() {
       // Add error notification
       useAppStore.getState().addNotification({
         type: 'error',
-        title: 'Failed to End Meeting',
-        message: errorMessage,
-        persistent: false
+        message: `Failed to end meeting: ${errorMessage}`
       });
       
       // Force cleanup even on error to prevent stuck state
@@ -783,22 +826,65 @@ function MeetingPageContent() {
               </div>
             )}
 
-            {/* Meeting Controls */}
-            <MeetingControls 
-              onEndMeeting={handleEndMeeting}
-              isEnding={isEndingMeeting}
-            />
+            {/* Meeting Controls - Wrapped with error boundary */}
+            <SimpleErrorBoundary
+              fallback={
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <h3 className="text-sm font-medium text-red-800">Meeting Controls Unavailable</h3>
+                  <p className="mt-1 text-sm text-red-700">
+                    Meeting controls encountered an error. Use browser refresh to restore functionality.
+                  </p>
+                </div>
+              }
+              onError={(error) => {
+                console.error('Meeting controls error:', error);
+                setAssistantError('Meeting controls failed - refresh page to restore');
+              }}
+            >
+              <MeetingControls 
+                onEndMeeting={handleEndMeeting}
+                isEnding={isEndingMeeting}
+              />
+            </SimpleErrorBoundary>
 
-            {/* Main Content Grid */}
+            {/* Main Content Grid - Each section wrapped individually */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Transcript - Takes up 2/3 on large screens */}
               <div className="lg:col-span-2">
-                <TranscriptDisplay />
+                <SimpleErrorBoundary
+                  fallback={
+                    <div className="p-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-center">
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Transcript Unavailable</h3>
+                      <p className="text-gray-600">
+                        The transcript display encountered an error. Audio recording may continue in the background.
+                      </p>
+                    </div>
+                  }
+                  onError={(error) => {
+                    console.error('Transcript display error:', error);
+                  }}
+                >
+                  <TranscriptDisplay />
+                </SimpleErrorBoundary>
               </div>
 
               {/* Participants - Takes up 1/3 on large screens */}
               <div className="lg:col-span-1">
-                <ParticipantsDisplay />
+                <SimpleErrorBoundary
+                  fallback={
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <h3 className="text-sm font-medium text-blue-800">Participants View Unavailable</h3>
+                      <p className="mt-1 text-sm text-blue-700">
+                        Unable to display meeting participants. Core meeting functionality continues.
+                      </p>
+                    </div>
+                  }
+                  onError={(error) => {
+                    console.error('Participants display error:', error);
+                  }}
+                >
+                  <ParticipantsDisplay />
+                </SimpleErrorBoundary>
               </div>
             </div>
           </>

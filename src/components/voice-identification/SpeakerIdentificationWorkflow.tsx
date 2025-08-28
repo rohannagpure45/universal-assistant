@@ -17,7 +17,7 @@
 
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { 
   ChevronLeft,
   ChevronRight,
@@ -123,8 +123,8 @@ export const SpeakerIdentificationWorkflow: React.FC<SpeakerIdentificationWorkfl
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Workflow steps definition
-  const workflowSteps: WorkflowStep[] = [
+  // Workflow steps definition (memoized to prevent re-renders)
+  const workflowSteps: WorkflowStep[] = useMemo(() => [
     {
       id: 'review',
       title: 'Review Speaker',
@@ -157,7 +157,7 @@ export const SpeakerIdentificationWorkflow: React.FC<SpeakerIdentificationWorkfl
       canSkip: false,
       isOptional: false
     }
-  ];
+  ], [showVoiceComparison]);
 
   /**
    * Load data for current request

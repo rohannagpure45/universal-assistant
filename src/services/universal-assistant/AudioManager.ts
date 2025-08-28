@@ -100,9 +100,50 @@ export class AudioManager {
       try {
         this.audioContext = new (window.AudioContext || 
           (window as any).webkitAudioContext)();
+        
+        // Handle iOS Audio Context state management
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+          console.log('[AudioManager] AudioContext created in suspended state (likely iOS)');
+        }
       } catch (error) {
         console.error('Failed to initialize AudioContext:', error);
       }
+    }
+
+    private async ensureAudioContextResumed(): Promise<{ success: boolean; requiresUserGesture: boolean }> {
+      if (!this.audioContext) {
+        return { success: false, requiresUserGesture: false };
+      }
+      
+      if (this.audioContext.state === 'suspended') {
+        const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        
+        if (isIOSDevice) {
+          // iOS requires user interaction - return info rather than throwing
+          return { success: false, requiresUserGesture: true };
+        }
+        
+        try {
+          await this.audioContext.resume();
+          // Check if AudioContext resumed successfully
+          return { success: this.audioContext.state !== 'suspended', requiresUserGesture: false };
+        } catch (error) {
+          console.error('Failed to resume AudioContext:', error);
+          return { success: false, requiresUserGesture: false };
+        }
+      }
+      
+      return { success: true, requiresUserGesture: false };
+    }
+
+    private checkBrowserCapabilities() {
+      return {
+        hasMediaRecorder: typeof MediaRecorder !== 'undefined',
+        hasGetUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+        hasAudioContext: !!(window.AudioContext || (window as any).webkitAudioContext),
+        isIOSDevice: /iPad|iPhone|iPod/.test(navigator.userAgent),
+        isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+      };
     }
   
     async startRecording(onDataAvailable?: (chunk: Blob) => void): Promise<void> {
@@ -119,9 +160,27 @@ export class AudioManager {
           this.stopRecording();
         }
         
-        // Check if MediaRecorder is supported
-        if (!window.MediaRecorder) {
-          throw new Error('MediaRecorder is not supported in this browser');
+        // Enhanced browser capability checks
+        const capabilities = this.checkBrowserCapabilities();
+        
+        if (!capabilities.hasGetUserMedia) {
+          throw new Error('Microphone access is not supported in this browser. Please update your browser or try a different one.');
+        }
+        
+        if (!capabilities.hasMediaRecorder) {
+          throw new Error('Audio recording is not supported in this browser. Please use Chrome, Firefox, Safari, or Edge.');
+        }
+
+        // Ensure Audio Context is ready (critical for iOS)
+        const audioContextStatus = await this.ensureAudioContextResumed();
+        if (!audioContextStatus.success) {
+          if (audioContextStatus.requiresUserGesture) {
+            console.warn('[AudioManager] iOS device requires user gesture to start audio');
+            // Note: In a real implementation, this would trigger UI to request user interaction
+            // For now, we'll attempt to continue and let the user interaction happen naturally
+          } else {
+            console.error('[AudioManager] AudioContext could not be resumed');
+          }
         }
 
         // Request microphone access with optimized constraints for speech recognition
@@ -291,20 +350,32 @@ export class AudioManager {
     }
   
     private getSupportedMimeType(): string {
-      const types = [
-        'audio/webm',
+      // Safari-optimized MIME types (prioritized for Safari/iOS compatibility)
+      const safariTypes = [
+        'audio/mp4', // Safari preferred
+        'audio/aac', // iOS fallback
+      ];
+      
+      const standardTypes = [
         'audio/webm;codecs=opus',
+        'audio/webm',
         'audio/mp4',
         'audio/ogg',
       ];
+
+      // Feature detection: Check if Safari based on codec support patterns
+      const isSafari = !MediaRecorder.isTypeSupported('audio/webm;codecs=opus') && 
+                      MediaRecorder.isTypeSupported('audio/mp4');
       
-      for (const type of types) {
+      const typesToTest = isSafari ? [...safariTypes, ...standardTypes] : standardTypes;
+      
+      for (const type of typesToTest) {
         if (MediaRecorder.isTypeSupported(type)) {
           return type;
         }
       }
       
-      return 'audio/webm';
+      return 'audio/webm'; // Last resort fallback
     }
 
     private setupVoiceActivityDetection(audioStream: MediaStream): void {
@@ -960,19 +1031,25 @@ export class AudioManager {
       // Clean up chunk batching
       this.cleanupBatching();
       
-      // Clean up audio context
+      // SURGICAL FIX: Issue #3 - Enhanced AudioContext lifecycle management
       if (this.audioContext) {
         try {
-          const closePromise = this.audioContext.close();
-          this.audioContext = null;
-          // Handle promise rejection if close returns a promise
-          if (closePromise && typeof closePromise.catch === 'function') {
-            closePromise.catch((error) => {
-              console.warn('Error closing AudioContext:', error);
-            });
+          // Check AudioContext state before attempting to close
+          if (this.audioContext.state !== 'closed') {
+            const closePromise = this.audioContext.close();
+            
+            // Handle promise rejection if close returns a promise
+            if (closePromise && typeof closePromise.catch === 'function') {
+              closePromise.catch((error) => {
+                console.warn('[AudioManager] Error closing AudioContext:', error);
+              });
+            }
           }
+          
+          this.audioContext = null;
         } catch (error) {
-          console.warn('Error closing AudioContext:', error);
+          console.warn('[AudioManager] Error during AudioContext cleanup:', error);
+          // Force null assignment even if close fails
           this.audioContext = null;
         }
       }

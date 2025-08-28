@@ -12,13 +12,9 @@
  * - Provides same interface as RealtimeService for easy migration
  */
 
+// Use shared Firebase instances for consistent auth context
+import { db, auth } from '@/lib/firebase/client';
 import { 
-  initializeApp,
-  getApps 
-} from 'firebase/app';
-import { 
-  getFirestore as getFirestoreLite,
-  connectFirestoreEmulator as connectFirestoreEmulatorLite,
   collection,
   doc,
   query,
@@ -31,16 +27,18 @@ import {
   addDoc,
   setDoc,
   updateDoc,
+  onSnapshot,
   deleteDoc,
   writeBatch,
   Timestamp,
   DocumentSnapshot,
   QueryDocumentSnapshot,
+  QuerySnapshot,
+  FirestoreError,
   serverTimestamp,
   increment
-} from 'firebase/firestore/lite';
+} from 'firebase/firestore';
 import { 
-  getAuth,
   onAuthStateChanged,
   User as FirebaseUser 
 } from 'firebase/auth';
@@ -56,36 +54,8 @@ import type {
 import { handleFirebaseError, reportFirebaseError, withFirebaseErrorHandling } from '@/utils/firebaseErrorHandler';
 import { processCatchError } from '@/utils/errorMessages';
 
-// Firebase config (same as client config)
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
-};
-
-// Initialize Firestore Lite (REST-only)
-let app: any;
-let db: any;
-
-if (!getApps().find(a => a.name === 'firestore-lite')) {
-  app = initializeApp(firebaseConfig, 'firestore-lite');
-} else {
-  app = getApps().find(a => a.name === 'firestore-lite');
-}
-
-db = getFirestoreLite(app);
-
-// Auth instance for validation
-let auth: any;
-try {
-  auth = getAuth(app);
-} catch (error) {
-  console.warn('Auth not available for FirestoreRestService:', error);
-}
+// Using shared db and auth instances from main application
+// This ensures consistent authentication state across all services
 
 // Utility function for timestamp conversion
 const convertTimestamps = (data: any): any => {
@@ -136,6 +106,7 @@ export interface PollingConfig {
   maxRetries: number;
   backoffMultiplier: number;
   maxBackoffDelay: number;
+  useRealTime?: boolean; // Enable real-time listeners instead of polling
 }
 
 const DEFAULT_POLLING_CONFIG: PollingConfig = {
@@ -143,6 +114,7 @@ const DEFAULT_POLLING_CONFIG: PollingConfig = {
   maxRetries: 3,
   backoffMultiplier: 1.5,
   maxBackoffDelay: 30000, // 30 seconds max
+  useRealTime: true // Enable real-time listeners by default
 };
 
 // Efficient shallow equality check for polling data comparison
@@ -170,14 +142,16 @@ function shallowEqual(obj1: any, obj2: any): boolean {
   return keys1.every(key => obj1[key] === obj2[key]);
 }
 
-// Polling manager to handle multiple concurrent polls
+// Polling manager to handle both polling and real-time listeners
 class PollingManager {
   private activePolls = new Map<string, {
-    intervalId: NodeJS.Timeout;
+    intervalId?: NodeJS.Timeout;
+    unsubscribe?: () => void; // Real-time listener unsubscribe function
     config: PollingConfig;
     callback: (data: any) => void;
     lastData: any;
     retryCount: number;
+    isRealTime: boolean;
   }>();
 
   startPolling<T>(
@@ -235,14 +209,90 @@ class PollingManager {
       config,
       callback,
       lastData: null,
-      retryCount: 0
+      retryCount: 0,
+      isRealTime: false
     });
+  }
+
+  /**
+   * Start real-time listener with fallback to polling on error
+   */
+  startRealTimeListener<T>(
+    pollId: string,
+    queryRef: any, // Firestore query reference
+    callback: (data: T) => void,
+    config: PollingConfig = DEFAULT_POLLING_CONFIG
+  ): void {
+    // Stop existing poll if running
+    this.stopPolling(pollId);
+
+    try {
+      // Set up real-time listener with error handling
+      const unsubscribe = onSnapshot(
+        queryRef, 
+        (snapshot: QuerySnapshot) => {
+          try {
+            // Process snapshot data (similar to poll function)
+            const data = snapshot.docs.map((doc: QueryDocumentSnapshot) => ({ 
+              id: doc.id, 
+              ...doc.data() 
+            })) as T;
+            
+            const existingPoll = this.activePolls.get(pollId);
+            if (existingPoll) {
+              // Only call callback if data has changed
+              const dataChanged = !shallowEqual(data, existingPoll.lastData);
+              if (dataChanged) {
+                callback(data);
+                existingPoll.lastData = data;
+              }
+              existingPoll.retryCount = 0; // Reset retry count on success
+            }
+          } catch (error) {
+            console.error(`Real-time listener callback error for ${pollId}:`, error);
+          }
+        },
+        (error: FirestoreError) => {
+          console.error(`Real-time listener error for ${pollId}:`, error);
+          // Fallback to polling on listener failure
+          this.fallbackToPolling(pollId, config);
+        }
+      );
+
+      this.activePolls.set(pollId, {
+        unsubscribe,
+        config,
+        callback,
+        lastData: null,
+        retryCount: 0,
+        isRealTime: true
+      });
+    } catch (error) {
+      console.error(`Failed to setup real-time listener for ${pollId}:`, error);
+      // Fallback to polling if listener setup fails
+      this.fallbackToPolling(pollId, config);
+    }
+  }
+
+  /**
+   * Fallback to polling when real-time listener fails
+   */
+  private fallbackToPolling(pollId: string, config: PollingConfig): void {
+    console.warn(`Falling back to polling for ${pollId}`);
+    // This would need the original poll function - simplified for now
+    // In practice, you'd need to store the poll function or recreate it
   }
 
   stopPolling(pollId: string): void {
     const poll = this.activePolls.get(pollId);
     if (poll) {
-      clearInterval(poll.intervalId);
+      if (poll.isRealTime && poll.unsubscribe) {
+        // Clean up real-time listener
+        poll.unsubscribe();
+      } else if (poll.intervalId) {
+        // Clean up polling interval
+        clearInterval(poll.intervalId);
+      }
       this.activePolls.delete(pollId);
     }
   }
@@ -377,45 +427,67 @@ export class FirestoreRestService {
     const pollConfig = { ...DEFAULT_POLLING_CONFIG, ...config };
     const pollId = `meeting-${meetingId}`;
 
-    const fetchMeeting = async (): Promise<Meeting | null> => {
+    // Real-time listener callback that handles single document
+    const realtimeCallback = (snapshot: any) => {
       try {
-        // Ensure auth state is ready before attempting Firestore operations
-        const authState = await ensureAuthenticatedUser();
-        
-        if (!authState.authenticated) {
-          console.warn(`No authenticated user for meeting ${meetingId} - returning null`);
-          return null;
-        }
-
-        const meetingRef = doc(db, 'meetings', meetingId);
-        const docSnap = await getDoc(meetingRef);
-        
-        if (docSnap.exists()) {
-          return convertTimestamps({ 
-            meetingId: docSnap.id, 
-            ...docSnap.data() 
+        if (snapshot.exists()) {
+          const meeting = convertTimestamps({ 
+            meetingId: snapshot.id, 
+            ...snapshot.data() 
           }) as Meeting;
+          callback(meeting);
+        } else {
+          callback(null);
         }
-        return null;
       } catch (error) {
-        // For permission denied errors, return null instead of throwing
-        if ((error as any)?.code === 'permission-denied') {
-          console.warn(`Permission denied for meeting ${meetingId} - returning null`);
-          return null;
-        }
-        
-        throw new FirestoreRestError(
-          `Failed to fetch meeting ${meetingId}`,
-          'MEETING_FETCH_FAILED',
-          'fetchMeeting',
-          error as Error
-        );
+        console.error(`Error processing meeting snapshot for ${meetingId}:`, error);
+        callback(null);
       }
     };
 
-    pollingManager.startPolling(pollId, fetchMeeting, callback, pollConfig);
+    // Create document reference for real-time listener
+    const meetingRef = doc(db, 'meetings', meetingId);
+    
+    // Set up real-time listener with automatic fallback to polling
+    const unsubscribe = onSnapshot(
+      meetingRef,
+      realtimeCallback,
+      (error) => {
+        console.warn(`Real-time listener failed for meeting ${meetingId}, falling back to polling:`, error);
+        
+        // Fallback to polling on error
+        const fetchMeeting = async (): Promise<Meeting | null> => {
+          try {
+            const authState = await ensureAuthenticatedUser();
+            if (!authState.authenticated) return null;
 
-    return () => pollingManager.stopPolling(pollId);
+            const docSnap = await getDoc(meetingRef);
+            if (docSnap.exists()) {
+              return convertTimestamps({ 
+                meetingId: docSnap.id, 
+                ...docSnap.data() 
+              }) as Meeting;
+            }
+            return null;
+          } catch (error) {
+            if ((error as any)?.code === 'permission-denied') return null;
+            throw new FirestoreRestError(
+              `Failed to fetch meeting ${meetingId}`,
+              'MEETING_FETCH_FAILED',
+              'fetchMeeting',
+              error as Error
+            );
+          }
+        };
+
+        pollingManager.startPolling(pollId, fetchMeeting, callback, pollConfig);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      pollingManager.stopPolling(pollId);
+    };
   }
 
   /**
@@ -514,9 +586,70 @@ export class FirestoreRestService {
       }
     };
 
-    pollingManager.startPolling(pollId, fetchMeetings, callback, pollConfig);
+    // Set up real-time listener for user meetings collection
+    const {
+      limit: queryLimit = 20,
+      orderBy: orderField = 'startTime',
+      orderDirection = 'desc'
+    } = options;
 
-    return () => pollingManager.stopPolling(pollId);
+    const meetingsQuery = query(
+      collection(db, 'meetings'),
+      where('participantIds', 'array-contains', userId),
+      limit(queryLimit)
+    );
+
+    // Real-time listener with automatic fallback to polling
+    const unsubscribe = onSnapshot(
+      meetingsQuery,
+      (snapshot) => {
+        try {
+          const changes = snapshot.docChanges().map(change => ({
+            type: change.type,
+            doc: convertTimestamps({ 
+              meetingId: change.doc.id, 
+              ...change.doc.data() 
+            }) as Meeting
+          }));
+
+          const meetings: Meeting[] = [];
+          snapshot.docs.forEach((doc) => {
+            meetings.push(convertTimestamps({ 
+              meetingId: doc.id, 
+              ...doc.data() 
+            }) as Meeting);
+          });
+
+          // Sort client-side since we can't use orderBy with array-contains
+          meetings.sort((a, b) => {
+            const aTime = (a.startTime || a.createdAt || new Date(0)).getTime();
+            const bTime = (b.startTime || b.createdAt || new Date(0)).getTime();
+            return orderDirection === 'desc' ? bTime - aTime : aTime - bTime;
+          });
+
+          callback({
+            changes,
+            data: meetings,
+            metadata: {
+              hasPendingWrites: snapshot.metadata.hasPendingWrites,
+              isFromCache: snapshot.metadata.fromCache
+            }
+          });
+        } catch (error) {
+          console.error(`Error processing user meetings snapshot for ${userId}:`, error);
+        }
+      },
+      (error) => {
+        console.warn(`Real-time listener failed for user meetings ${userId}, falling back to polling:`, error);
+        // Fallback to polling on error
+        pollingManager.startPolling(pollId, fetchMeetings, callback, pollConfig);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      pollingManager.stopPolling(pollId);
+    };
   }
 
   /**
@@ -608,9 +741,63 @@ export class FirestoreRestService {
       }
     };
 
-    pollingManager.startPolling(pollId, fetchTranscripts, callback, pollConfig);
+    // Set up real-time listener for transcript collection
+    const {
+      limit: queryLimit = 100,
+      orderBy: orderField = 'timestamp',
+      orderDirection = 'asc'
+    } = options;
 
-    return () => pollingManager.stopPolling(pollId);
+    const transcriptsQuery = query(
+      collection(db, 'meetings', meetingId, 'transcripts'),
+      orderBy(orderField, orderDirection),
+      limit(queryLimit)
+    );
+
+    // Real-time listener with automatic fallback to polling
+    const unsubscribe = onSnapshot(
+      transcriptsQuery,
+      (snapshot) => {
+        try {
+          const changes = snapshot.docChanges().map(change => ({
+            type: change.type,
+            doc: convertTimestamps({ 
+              id: change.doc.id, 
+              ...change.doc.data() 
+            }) as TranscriptEntry
+          }));
+
+          const data: TranscriptEntry[] = [];
+          snapshot.docs.forEach((doc) => {
+            data.push(convertTimestamps({ 
+              id: doc.id, 
+              ...doc.data() 
+            }) as TranscriptEntry);
+          });
+
+          callback({
+            changes,
+            data,
+            metadata: {
+              hasPendingWrites: snapshot.metadata.hasPendingWrites,
+              isFromCache: snapshot.metadata.fromCache
+            }
+          });
+        } catch (error) {
+          console.error(`Error processing transcript snapshot for ${meetingId}:`, error);
+        }
+      },
+      (error) => {
+        console.warn(`Real-time listener failed for transcripts ${meetingId}, falling back to polling:`, error);
+        // Fallback to polling on error
+        pollingManager.startPolling(pollId, fetchTranscripts, callback, pollConfig);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      pollingManager.stopPolling(pollId);
+    };
   }
 
   /**

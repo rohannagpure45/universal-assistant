@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { VoiceSample } from '@/types/voice-identification';
 import { Button, PrimaryButton, SecondaryButton, DangerButton } from '@/components/ui/Button';
@@ -276,7 +276,52 @@ export const SpeakerProfileTraining: React.FC<SpeakerProfileTrainingProps> = ({
   // Load existing profile
   useEffect(() => {
     if (profileId && mode !== 'create') {
+      let isCancelled = false;
+      
+      const loadProfile = async () => {
+        try {
+          setIsLoading(true);
+          setError(null);
+
+          const voiceEntry = await VoiceLibraryService.getOrCreateVoiceEntry(profileId);
+          
+          if (isCancelled) return;
+          
+          // Convert to full profile format
+          const loadedProfile: SpeakerProfile = {
+            ...profile,
+            deepgramVoiceId: profileId,
+            userId: voiceEntry.userId || undefined,
+            userName: voiceEntry.userName || 'Unknown Speaker',
+            displayName: voiceEntry.userName || 'Unknown Speaker',
+            samples: voiceEntry.audioSamples.map(convertToVoiceSample),
+            metadata: {
+              ...profile.metadata,
+              lastUpdated: voiceEntry.lastHeard
+            },
+            status: voiceEntry.confirmed ? 'active' : 'training'
+          };
+
+          // Update training progress
+          loadedProfile.trainingProgress = calculateTrainingProgress(loadedProfile.samples);
+          loadedProfile.voiceCharacteristics = analyzeVoiceCharacteristics(loadedProfile.samples);
+
+          if (!isCancelled) {
+            setProfile(loadedProfile);
+          }
+        } catch (err) {
+          if (!isCancelled) {
+            setError(err instanceof Error ? err.message : 'Failed to load profile');
+          }
+        } finally {
+          if (!isCancelled) {
+            setIsLoading(false);
+          }
+        }
+      };
+      
       loadProfile();
+      return () => { isCancelled = true; };
     }
   }, [profileId, mode]);
 
@@ -286,6 +331,33 @@ export const SpeakerProfileTraining: React.FC<SpeakerProfileTrainingProps> = ({
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
+      
+      const autoSave = async () => {
+        if ((mode as any) === 'view' || isSaving) return;
+        try {
+          const updatedProfile = {
+            ...profile,
+            metadata: {
+              ...profile.metadata,
+              lastUpdated: new Date()
+            }
+          };
+          // Save to VoiceLibraryService
+          if (updatedProfile.samples.length > 0) {
+            for (const sample of updatedProfile.samples.slice(0, 5)) {
+              await VoiceLibraryService.addAudioSample(updatedProfile.deepgramVoiceId, {
+                url: sample.url,
+                transcript: sample.transcript,
+                quality: sample.quality,
+                duration: sample.duration
+              });
+            }
+          }
+          setProfile(updatedProfile);
+        } catch (err) {
+          console.warn('Auto-save failed:', err);
+        }
+      };
       
       autoSaveTimeoutRef.current = setTimeout(() => {
         autoSave();
@@ -297,43 +369,8 @@ export const SpeakerProfileTraining: React.FC<SpeakerProfileTrainingProps> = ({
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [profile, mode]);
+  }, [profile, mode, isSaving]);
 
-  const loadProfile = async () => {
-    if (!profileId) return;
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const voiceEntry = await VoiceLibraryService.getOrCreateVoiceEntry(profileId);
-      
-      // Convert to full profile format
-      const loadedProfile: SpeakerProfile = {
-        ...profile,
-        deepgramVoiceId: profileId,
-        userId: voiceEntry.userId || undefined,
-        userName: voiceEntry.userName || 'Unknown Speaker',
-        displayName: voiceEntry.userName || 'Unknown Speaker',
-        samples: voiceEntry.audioSamples.map(convertToVoiceSample),
-        metadata: {
-          ...profile.metadata,
-          lastUpdated: voiceEntry.lastHeard
-        },
-        status: voiceEntry.confirmed ? 'active' : 'training'
-      };
-
-      // Update training progress
-      loadedProfile.trainingProgress = calculateTrainingProgress(loadedProfile.samples);
-      loadedProfile.voiceCharacteristics = analyzeVoiceCharacteristics(loadedProfile.samples);
-
-      setProfile(loadedProfile);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const convertToVoiceSample = (audioSample: any): VoiceSample => ({
     id: `sample_${Date.now()}_${Math.random()}`,
@@ -484,35 +521,6 @@ export const SpeakerProfileTraining: React.FC<SpeakerProfileTrainingProps> = ({
     };
   };
 
-  const autoSave = async () => {
-    if (mode === 'view' || isSaving) return;
-
-    try {
-      const updatedProfile = {
-        ...profile,
-        metadata: {
-          ...profile.metadata,
-          lastUpdated: new Date()
-        }
-      };
-
-      // Save to VoiceLibraryService
-      if (updatedProfile.samples.length > 0) {
-        for (const sample of updatedProfile.samples.slice(0, 5)) {
-          await VoiceLibraryService.addAudioSample(updatedProfile.deepgramVoiceId, {
-            url: sample.url,
-            transcript: sample.transcript,
-            quality: sample.quality,
-            duration: sample.duration
-          });
-        }
-      }
-
-      setProfile(updatedProfile);
-    } catch (err) {
-      console.warn('Auto-save failed:', err);
-    }
-  };
 
   const handleSave = async () => {
     try {
@@ -580,7 +588,7 @@ export const SpeakerProfileTraining: React.FC<SpeakerProfileTrainingProps> = ({
       
       return updated;
     });
-  }, []);
+  }, [calculateTrainingProgress]);
 
   const handleRecordingComplete = useCallback((newSamples: any[]) => {
     const voiceSamples: VoiceSample[] = newSamples.map(session => ({

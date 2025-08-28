@@ -1,5 +1,6 @@
 import { adminDb } from '@/lib/firebase/admin';
 import { db, auth } from '@/lib/firebase/client';
+import { queryCache } from '@/utils/queryCache';
 import { 
   collection, 
   doc, 
@@ -161,7 +162,11 @@ const convertDatesToTimestamps = (data: any): any => {
   
   Object.keys(converted).forEach(key => {
     const value = converted[key];
-    if (value instanceof Date) {
+    if (value === undefined) {
+      // Firebase doesn't support undefined values - remove them
+      delete converted[key];
+      console.log(`[convertDatesToTimestamps] Filtered undefined field: ${key}`);
+    } else if (value instanceof Date) {
       converted[key] = Timestamp.fromDate(value);
     } else if (value && typeof value === 'object' && !Array.isArray(value)) {
       converted[key] = convertDatesToTimestamps(value);
@@ -352,6 +357,14 @@ export class DatabaseService {
    */
   static async createMeeting(meetingData: Omit<Meeting, 'meetingId'>): Promise<string> {
     try {
+      console.log('[DatabaseService] Creating meeting with data:', {
+        title: meetingData.title,
+        hostId: meetingData.hostId,
+        participantIds: meetingData.participantIds,
+        hasEndTime: meetingData.endTime !== undefined,
+        status: meetingData.status
+      });
+      
       // Ensure participantIds is set for access control
       const participantIds = meetingData.participantIds || [];
       
@@ -360,16 +373,34 @@ export class DatabaseService {
         participantIds.push(meetingData.hostId);
       }
 
-      const meetingRef = await addDoc(
-        collection(db, 'meetings'), 
-        convertDatesToTimestamps({
-          ...meetingData,
-          participantIds,
-        })
-      );
+      const dataToSend = {
+        ...meetingData,
+        participantIds,
+      };
+
+      console.log('[DatabaseService] Pre-conversion data keys:', Object.keys(dataToSend));
+      console.log('[DatabaseService] About to call convertDatesToTimestamps...');
       
+      const sanitizedData = convertDatesToTimestamps(dataToSend);
+      
+      console.log('[DatabaseService] Post-conversion data keys:', Object.keys(sanitizedData));
+      console.log('[DatabaseService] About to call addDoc...');
+      
+      const meetingRef = await addDoc(collection(db, 'meetings'), sanitizedData);
+      
+      console.log('[DatabaseService] Meeting created successfully:', meetingRef.id);
       return meetingRef.id;
     } catch (error) {
+      console.error('[DatabaseService] Meeting creation failed:', {
+        error: (error as any)?.message,
+        code: (error as any)?.code,
+        name: (error as any)?.name,
+        originalData: {
+          title: meetingData.title,
+          hasEndTime: meetingData.endTime !== undefined,
+          status: meetingData.status
+        }
+      });
       throw new DatabaseError(
         'Failed to create meeting',
         'MEETING_CREATE_FAILED',
@@ -1036,9 +1067,28 @@ export class DatabaseService {
         orderDirection = 'desc'
       } = options;
 
+      // Check cache first (skip if pagination in progress)
+      if (!startAfterDoc) {
+        const cacheKey = queryCache.generateKey('meetings_search', userId, {
+          searchTerm,
+          pageLimit,
+          orderByField,
+          orderDirection
+        });
+        
+        const cachedResult = queryCache.get<PaginatedResult<Meeting>>(cacheKey);
+        if (cachedResult) {
+          return cachedResult;
+        }
+      }
+
       // Check if user is admin
       const userDoc = await getDoc(doc(db, 'users', userId));
       const isAdmin = userDoc.exists() && userDoc.data()?.isAdmin;
+
+      // Smart multiplier: Admin queries need more buffer due to broader search space
+      const fetchMultiplier = isAdmin ? 2.0 : 1.5;
+      const optimizedLimit = Math.ceil(pageLimit * fetchMultiplier);
 
       let meetingQuery;
       if (isAdmin) {
@@ -1046,15 +1096,15 @@ export class DatabaseService {
         meetingQuery = query(
           collection(db, 'meetings'),
           orderBy(orderByField, orderDirection),
-          limit(pageLimit * 3) // Get more to filter client-side
+          limit(optimizedLimit) // Reduced from 3x to smart multiplier
         );
       } else {
-        // Regular users can only search their meetings
+        // Regular users can only search their meetings  
         meetingQuery = query(
           collection(db, 'meetings'),
           where('participantIds', 'array-contains', userId),
           orderBy(orderByField, orderDirection),
-          limit(pageLimit * 3) // Get more to filter client-side
+          limit(optimizedLimit) // Reduced from 3x to smart multiplier
         );
       }
 
@@ -1075,13 +1125,26 @@ export class DatabaseService {
         )
         .slice(0, pageLimit);
 
-      return {
+      const result = {
         data: filteredMeetings,
         lastDoc: filteredMeetings.length > 0 ? 
           snapshot.docs.find(doc => doc.id === filteredMeetings[filteredMeetings.length - 1].meetingId) : 
           undefined,
         hasMore: filteredMeetings.length === pageLimit
       };
+
+      // Cache result for future requests (skip pagination)
+      if (!startAfterDoc) {
+        const cacheKey = queryCache.generateKey('meetings_search', userId, {
+          searchTerm,
+          pageLimit,
+          orderByField,
+          orderDirection
+        });
+        queryCache.set(cacheKey, result);
+      }
+
+      return result;
     } catch (error) {
       throw new DatabaseError(
         `Failed to search meetings for user ${userId}`,

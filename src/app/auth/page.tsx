@@ -62,7 +62,7 @@ const AuthContent: React.FC = () => {
     if (modeParam && modeParam !== mode) {
       setMode(modeParam);
     }
-  }, [modeParam]);
+  }, [modeParam, mode]);
 
   // Auth configuration
   const getAuthConfig = () => {

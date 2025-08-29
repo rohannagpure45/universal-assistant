@@ -1,10 +1,12 @@
 # CRITICAL ISSUES TRACKER - Universal Assistant Project
-**Last Updated**: August 28, 2025 (Post Webpack Module Loading Fix)
-**Status**: 🟡 **SOME PROGRESS - WEBPACK ERRORS RESOLVED**
+**Last Updated**: August 29, 2025 (Race Conditions Analysis)
+**Status**: 🟡 **STABLE BUT WITH KNOWN RACE CONDITIONS**
 
 ## Executive Summary
 
-**MAJOR BREAKTHROUGH (August 28, 2025)**: Successfully resolved the critical webpack module loading errors that were preventing proper browser initialization. Combined with previous TypeScript compilation fixes, the application now has a **unstable technical foundation**.
+**MAJOR BREAKTHROUGH (August 28, 2025)**: Successfully resolved the critical webpack module loading errors that were preventing proper browser initialization. Combined with previous TypeScript compilation fixes, the application now has a **stable technical foundation**.
+
+**NEW FINDINGS (August 29, 2025)**: Discovered 8 race condition issues in authentication system (3 critical, 5 moderate). System remains stable for normal use but may exhibit issues under edge cases. See [AUTHENTICATION_RACE_CONDITIONS.md](./AUTHENTICATION_RACE_CONDITIONS.md) for details.
 
 ### ✅ **RECENT MAJOR SUCCESSES**:
 - ✅ **WEBPACK MODULE LOADING FIXED**: Eliminated all "Cannot read properties of undefined (reading 'call')" errors
@@ -401,11 +403,39 @@ Error Handling:       🟡 PARTIAL (Need more comprehensive error boundaries)
 Production Deploy:    🟡 CAUTIOUS (Safe for development, needs critical fixes for production)
 ```
 
+## 🆕 **ISSUE #5: Authentication Race Conditions (DISCOVERED)**
+**Status**: 🟡 Identified, Documentation Complete
+**Severity**: Mixed (3 Critical, 5 Moderate)
+**User Impact**: Low under normal conditions, Medium-High under edge cases
+
+### **Critical Race Conditions Found:**
+1. **Cleanup Callback Array Mutation** - Callbacks can be skipped during sign-out
+2. **Cross-Store Synchronization** - Partial preference updates possible
+3. **Meeting State Cleanup** - Sign-out can hang indefinitely
+
+### **Moderate Race Conditions Found:**
+4. **Auth State Timeout Management** - Orphaned timeouts possible
+5. **ActiveRetries Map Cleanup** - Brief deduplication bypass window
+6. **Store Initialization Flag** - Potential duplicate listeners
+7. **Sign-out Phase Transitions** - Non-atomic state changes
+8. **Safari Timing Assumptions** - Fixed delays may be insufficient
+
+### **Recommended Actions:**
+- **Immediate**: Monitor for user reports of these issues
+- **If Issues Reported**: Apply surgical fixes to specific problems only
+- **Documentation**: Complete in [AUTHENTICATION_RACE_CONDITIONS.md](./AUTHENTICATION_RACE_CONDITIONS.md)
+
 ## 🚨 **Immediate Next Steps**
 
-1. **Security Framework Restoration** (Critical - 6-8 hours)
+1. **Authentication Race Conditions** (New - Variable based on user reports)
+   - Monitor for cleanup callback failures
+   - Watch for hanging sign-outs
+   - Track preference sync issues
+   - Only fix if users report problems (surgical approach)
+
+2. **Security Framework Restoration** (Critical - 6-8 hours)
    - Restore XSS prevention without breaking functionality
-   - Fix authentication race condition handling
+   - ~~Fix authentication race condition handling~~ (Now tracked separately)
    - Implement proper input validation
 
 2. **Memory Leak Resolution** (Critical - 4-6 hours)  

@@ -10,7 +10,7 @@
 import React, { useState } from 'react';
 import { PageErrorBoundary } from '@/components/ui/ProductionErrorBoundary';
 import ProductionDashboard from '@/components/monitoring/ProductionDashboard';
-import { Card } from '@/components/ui/card';
+import { Card } from '@/components/ui/Card';
 import logger from '@/services/logging/ProductionLogger';
 import { errorTracker, type ErrorCategory, type ErrorSeverity } from '@/services/monitoring/ErrorTracker';
 

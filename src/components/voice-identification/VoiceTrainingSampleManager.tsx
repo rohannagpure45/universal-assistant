@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button, PrimaryButton, SecondaryButton, DangerButton } from '@/components/ui/Button';
-import { Card } from '@/components/ui/card';
+import { Card } from '@/components/ui/Card';
 import { sanitizeVoiceSample } from '@/utils/sanitization';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { 

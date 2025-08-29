@@ -38,7 +38,7 @@ import {
   Info,
   Settings
 } from 'lucide-react';
-import { Card } from '../ui/card';
+import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { AccessibleLinearProgress } from '../ui/AccessibleProgress';

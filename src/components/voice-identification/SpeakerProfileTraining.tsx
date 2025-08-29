@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { VoiceSample } from '@/types/voice-identification';
 import { Button, PrimaryButton, SecondaryButton, DangerButton } from '@/components/ui/Button';
 import { sanitizeVoiceSample } from '@/utils/sanitization';
-import { Card } from '@/components/ui/card';
+import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { 
   User, 

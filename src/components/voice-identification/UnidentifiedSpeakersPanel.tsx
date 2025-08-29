@@ -36,7 +36,7 @@ import {
   Link,
   Star
 } from 'lucide-react';
-import { Card } from '../ui/card';
+import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { VoiceSamplePlayer } from './VoiceSamplePlayer';

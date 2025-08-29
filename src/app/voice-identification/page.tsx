@@ -25,7 +25,7 @@ import {
   Clock,
   AlertTriangle
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { VoiceLibraryDashboard } from '@/components/voice-identification/VoiceLibraryDashboard';
 import { withAdminProtection } from '@/middleware/adminMiddleware';

@@ -22,7 +22,7 @@ import {
   Zap,
   RefreshCw
 } from 'lucide-react';
-import { Card } from '../ui/card';
+import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { PostMeetingIdentificationDashboard } from './PostMeetingIdentificationDashboard';
 import { UnidentifiedSpeakersPanel } from './UnidentifiedSpeakersPanel';

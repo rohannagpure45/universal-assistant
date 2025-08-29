@@ -31,7 +31,7 @@ import { useAppStore } from '@/stores/appStore';
 // Component imports
 import { MeetingTypeSelector } from '@/components/meeting/MeetingTypeSelector';
 import { CreateMeetingTypeModal } from '@/components/meeting/CreateMeetingTypeModal';
-import { Card } from '@/components/ui/card';
+import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
 // Type imports

@@ -39,14 +39,7 @@ export {
 } from '../../hooks/examples/firebase-usage-examples';
 
 // Test utilities (for development and testing)
-export {
-  runAllTests,
-  testUserLifecycle,
-  testMeetingLifecycle,
-  testRealtimeCollaboration,
-  testVoiceProfilesAndRules,
-  testErrorHandling
-} from './DatabaseService.test';
+// Note: Test exports removed - tests should be run independently via Jest
 
 /**
  * Quick Start Guide

@@ -8,7 +8,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, RefreshCw, X, Info } from 'lucide-react';
-import { Card } from './card';
+import { Card } from './Card';
 import { Button } from './Button';
 import { cn } from '@/lib/utils';
 import type { ErrorDisplayProps, UserError } from '@/utils/errorMessages';

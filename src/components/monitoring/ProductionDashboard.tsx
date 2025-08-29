@@ -9,7 +9,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { performanceDashboard, type PerformanceReport, type RealTimeMetrics } from '../../services/monitoring/PerformanceDashboard';
 import { errorTracker, type ErrorStats } from '../../services/monitoring/ErrorTracker';
 import logger from '../../services/logging/ProductionLogger';
-import { Card } from '../ui/card';
+import { Card } from '../ui/Card';
 
 interface DashboardState {
   isLoading: boolean;

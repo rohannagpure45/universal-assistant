@@ -3,7 +3,7 @@
 import React, { useState, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Button, PrimaryButton, SecondaryButton } from '@/components/ui/Button';
-import { Card } from '@/components/ui/card';
+import { Card } from '@/components/ui/Card';
 
 // Lazy load voice identification components with direct imports
 const VoiceTrainingWizard = React.lazy(() => import('@/components/voice-identification/VoiceTrainingWizard'));

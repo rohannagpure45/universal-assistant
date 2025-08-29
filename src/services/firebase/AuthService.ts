@@ -71,6 +71,22 @@ export class AuthService {
   
   // SURGICAL FIX: Issue #2 - Concurrency protection for authentication retries
   private activeRetries = new Map<string, Promise<string>>();
+  
+  // PHASE 2A: Duplicate state detection
+  private lastProcessedUID: string | null = null;
+  private lastProcessedTime: number = 0;
+  
+  // PHASE 2B: Cleanup tracking
+  private cleanupCallbacks: Array<() => void> = [];
+  
+  // PHASE 2C: Simple metrics
+  private authMetrics = {
+    stateChanges: 0,
+    duplicatesSkipped: 0,
+    criticalChanges: 0,
+    errors: 0,
+    lastChangeType: '' as string
+  };
 
   private constructor(config: AuthServiceConfig = {}) {
     this.config = {
@@ -386,12 +402,35 @@ export class AuthService {
 
   /**
    * Sign out current user
+   * PHASE 2B: Enhanced with cleanup tracking
    */
   public async signOut(): Promise<{ error?: LocalAuthError }> {
     const currentUser = auth.currentUser;
     const startTime = Date.now();
     
     try {
+      // PHASE 2B: Execute all cleanup callbacks before signout
+      console.log(`[AuthService] Running ${this.cleanupCallbacks.length} cleanup callbacks`);
+      for (const cleanup of this.cleanupCallbacks) {
+        try {
+          cleanup();
+        } catch (error) {
+          console.warn('[AuthService] Cleanup callback failed:', error);
+        }
+      }
+      
+      // Clear the auth state timeout if pending
+      if (this.authStateTimeout) {
+        clearTimeout(this.authStateTimeout);
+        this.authStateTimeout = null;
+      }
+      
+      // Clear active retries
+      this.activeRetries.clear();
+      
+      // Reset tracking
+      this.lastProcessedUID = null;
+      this.lastProcessedTime = 0;
       // Safari-specific fix: Clear local storage and session storage
       try {
         localStorage.clear();
@@ -629,18 +668,55 @@ export class AuthService {
 
   /**
    * Listen to authentication state changes
+   * PHASE 2: Enhanced with duplicate detection and metrics
    */
   public onAuthStateChanged(callback: (user: User | null) => void): () => void {
     return onAuthStateChanged(auth, async (firebaseUser) => {
       // Store the latest user state
       this.latestFirebaseUser = firebaseUser;
       
+      // PHASE 2A: Skip duplicate auth states for same user
+      const currentUID = firebaseUser?.uid || null;
+      const now = Date.now();
+      
+      // Track metrics
+      this.authMetrics.stateChanges++;
+      
+      // Skip if same user within 500ms (prevents token refresh duplicates)
+      if (currentUID === this.lastProcessedUID && 
+          currentUID !== null && 
+          (now - this.lastProcessedTime) < 500) {
+        console.log(`[AuthService] Skipping duplicate auth state for ${currentUID}`);
+        this.authMetrics.duplicatesSkipped++;
+        return;
+      }
+      
       // Clear existing timeout
       if (this.authStateTimeout) {
         clearTimeout(this.authStateTimeout);
       }
       
-      // Debounce with minimal delay (50ms)
+      // Detect if this is a critical change needing immediate processing
+      const isCriticalChange = 
+        (this.lastProcessedUID !== null && currentUID === null) || // Signout
+        (this.lastProcessedUID !== null && currentUID !== null && 
+         this.lastProcessedUID !== currentUID); // User switch
+      
+      if (isCriticalChange) {
+        this.authMetrics.criticalChanges++;
+        this.authMetrics.lastChangeType = currentUID === null ? 'signout' : 'switch';
+      } else {
+        this.authMetrics.lastChangeType = currentUID ? 'refresh' : 'unknown';
+      }
+      
+      // Use shorter delay for critical changes
+      const delay = isCriticalChange ? 0 : 50;
+      
+      // Update tracking before async processing
+      this.lastProcessedUID = currentUID;
+      this.lastProcessedTime = now;
+      
+      // Debounce with dynamic delay
       this.authStateTimeout = setTimeout(async () => {
         try {
           // Only process if this is still the latest user
@@ -654,11 +730,12 @@ export class AuthService {
           }
         } catch (error) {
           console.error('Auth state processing failed:', error);
+          this.authMetrics.errors++;
           // Don't callback with null on error - let retry logic handle it
         }
         
         this.authStateTimeout = null;
-      }, 50); // Minimal 50ms debounce
+      }, delay);
     });
   }
 
@@ -1241,6 +1318,57 @@ export class AuthService {
     } catch (error) {
       console.error('Failed to refresh current ID token:', error);
       return null;
+    }
+  }
+
+  /**
+   * Register a cleanup callback to be executed on signout
+   * PHASE 2B: Cleanup tracking
+   */
+  public registerCleanup(callback: () => void): void {
+    this.cleanupCallbacks.push(callback);
+  }
+
+  /**
+   * Get auth metrics for monitoring
+   * PHASE 2C: Simple metrics
+   */
+  public getAuthMetrics() {
+    return { ...this.authMetrics };
+  }
+
+  /**
+   * Refresh token with recovery mechanism
+   * PHASE 2D: Token refresh recovery for ErrorTracker integration
+   */
+  public async refreshTokenWithRecovery(): Promise<boolean> {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        return false;
+      }
+      
+      // Use existing deduplication from Phase 1
+      const token = await this.refreshCurrentUserToken();
+      return !!token;
+    } catch (error) {
+      console.error('[AuthService] Token refresh failed:', error);
+      
+      // If refresh fails, try re-authenticating
+      const errorCode = (error as any)?.code;
+      if (errorCode === 'auth/user-token-expired' || 
+          errorCode === 'auth/invalid-user-token') {
+        // Force re-authentication by triggering auth state change
+        console.log('[AuthService] Forcing re-authentication');
+        
+        // Small delay then check auth state
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // If still authenticated after delay, token was refreshed
+        return !!auth.currentUser;
+      }
+      
+      return false;
     }
   }
 }

@@ -117,12 +117,21 @@ class ErrorTracker {
         condition: (error) => error.message.includes('401') || error.message.includes('Unauthorized'),
         execute: async (error, context) => {
           try {
-            // Authentication recovery not implemented yet
-            // TODO: Implement proper authentication refresh when AuthService supports it
-            logger.warn('Authentication refresh not available', 'ErrorRecovery', {
-              metadata: { context, originalError: error.message }
-            });
-            return false;
+            // PHASE 2D: Use new refreshTokenWithRecovery method
+            const { AuthService } = await import('@/services/firebase/AuthService');
+            const authService = AuthService.getInstance();
+            const success = await authService.refreshTokenWithRecovery();
+            
+            if (success) {
+              logger.info('Authentication refreshed successfully', 'ErrorRecovery', {
+                metadata: { context }
+              });
+            } else {
+              logger.warn('Authentication refresh failed', 'ErrorRecovery', {
+                metadata: { context, originalError: error.message }
+              });
+            }
+            return success;
           } catch (refreshError) {
             logger.error('Authentication refresh failed', 'ErrorRecovery', {
               error: refreshError instanceof Error ? refreshError : undefined,

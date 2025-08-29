@@ -139,6 +139,8 @@ function sanitizeUserInputImpl(
   } else {
     // Remove ALL HTML tags AND their content for security (original test expectation)
     sanitized = sanitized.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+    // SURGICAL FIX: Remove style tags with their content to prevent CSS-based XSS
+    sanitized = sanitized.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
     sanitized = sanitized.replace(/<[^>]*>/g, '');
   }
 

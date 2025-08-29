@@ -81,7 +81,9 @@ Based on comprehensive bug-triage-specialist analysis, **27 remaining issues** r
   - ✅ `<img onerror=alert(1)>` → empty string
   - ✅ Valid URLs pass through correctly
 - **What's Still Broken**:
-  1. ❌ Style tag XSS NOT blocked: `<style>body{background:url("javascript:alert(1)")}</style>` → CSS with javascript: URL intact
+  1. ✅ Style tag XSS **FIXED** (August 29, 2025): One-line fix added to line 143 of sanitization.ts
+     - Now removes `<style>` tags WITH their content to prevent CSS-based XSS
+     - `<style>body{background:url("javascript:alert(1)")}</style>` → empty string
   2. ❌ HTML escaping uses `&#x2F;` for `/` instead of `/` (cosmetic issue)
   3. ❌ Display name sanitization returns "Unknown" instead of empty string (design choice?)
   4. ❌ API parameter sanitization too aggressive (removes entire content instead of just tags)

@@ -13,8 +13,8 @@ This file provides project-specific guidance to Claude Code (claude.ai/code) whe
    - ✅ 94.7% of XSS tests pass (18/19 verification, 61/67 comprehensive)
    - ✅ All critical attack vectors blocked (script, iframe, javascript:, data:)
    - 📝 THE FIX: Changed `NODE_ENV === 'test'` to enabled by default (ONE LINE)
-   - **What's Still Broken**:
-     1. ❌ Style tag XSS NOT blocked: `<style>javascript:alert(1)</style>` → javascript: URL intact
+   - **What's Still Broken** (down to 5 minor issues):
+     1. ✅ Style tag XSS **FIXED**: One-line surgical fix at line 143
      2. ❌ HTML escaping uses `&#x2F;` instead of `/` (cosmetic)
      3. ❌ Display name returns "Unknown" not empty (design choice?)
      4. ❌ API param sanitization too aggressive (removes all content)

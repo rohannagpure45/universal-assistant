@@ -1,5 +1,5 @@
 // Test URL sanitization with direct import
-import { sanitizeUrl, isValidUrl } from './src/utils/security/xss-prevention.ts';
+import { sanitizeUrl, isValidUrl } from './src/utils/sanitization.ts';
 
 async function testUrlSanitization() {
   try {

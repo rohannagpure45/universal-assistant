@@ -51,23 +51,63 @@ That's it. One line. The enhanced sanitization code was already written and work
 - No rate limiting on security-critical endpoints
 - No security audit logging
 
-### Security Test Results
+### ACTUAL Security Test Results (August 29, 2025)
+
+#### XSS Verification Test (test-xss-verification.mjs)
 ```
 Total Tests: 19
-Passed: 18 (94.7%)
-Failed: 1 (5.3%)
+Passed: 18 ✅
+Failed: 1 ❌
+Success Rate: 94.7%
 
-Critical tests: ALL PASSED
-Edge cases: 1 FAILED (style tag)
+CRITICAL TESTS: ALL PASSED
+Style tag XSS: FAILED (the ONE real vulnerability)
 ```
 
-## Actual Vulnerabilities That Remain
+#### Comprehensive XSS Test (test-xss-comprehensive.mjs)
+```
+Total Tests: 67
+Passed: 61 ✅
+Failed: 6 ❌
+Success Rate: 91.0%
 
-1. **Style Tag XSS** - Can inject JavaScript via CSS
-2. **No CSP Headers** - Browser has no defense-in-depth
-3. **Missing Security Headers** - No X-Frame-Options, X-Content-Type-Options, etc.
-4. **No Input Rate Limiting** - Possible abuse of sanitization endpoints
-5. **Incomplete Sanitization** - Some edge cases in complex HTML structures
+Failures (mostly cosmetic or design choices):
+1. HTML escaping uses &#x2F; instead of / (both valid)
+2. Display name returns "Unknown" instead of "" (design choice)
+3. Event handler test expects "" but gets "Unknown" (design choice)
+4. API param sanitization too aggressive (removes all content)
+5. Nested script tags return "" instead of partial text
+6. Comment injection returns "" instead of safe comment
+```
+
+#### Critical XSS Vectors Test
+```
+<script>alert(1)</script> → '' ✅ BLOCKED
+javascript:alert(1) → '' ✅ BLOCKED
+<img onerror=alert(1)> → '' ✅ BLOCKED
+<iframe src="evil"> → '' ✅ BLOCKED
+data:text/html,<script> → '' ✅ BLOCKED
+<style>javascript:alert(1)</style> → 'javascript:alert(1)' ❌ NOT BLOCKED
+```
+
+## What's Still Broken (Complete List)
+
+### Security Issues
+1. **Style Tag XSS NOT blocked** - `<style>body{background:url("javascript:alert(1)")}</style>` → CSS with javascript: URL intact
+2. **HTML escaping inconsistency** - Uses `&#x2F;` for `/` instead of `/` (cosmetic issue, both are valid HTML entities)
+3. **Display name sanitization** - Returns "Unknown" instead of empty string (design choice?)
+4. **API parameter sanitization too aggressive** - Removes entire content instead of just dangerous tags
+5. **Nested script tags** - Return empty instead of partial text
+6. **Comment injection** - Returns empty instead of safe comment markers
+7. **No CSP Headers** - Browser has no defense-in-depth
+8. **Missing Security Headers** - No X-Frame-Options, X-Content-Type-Options, etc.
+9. **No Input Rate Limiting** - Possible abuse of sanitization endpoints
+
+### Firebase/App Issues (Not XSS Related)
+- **Firebase Auth broken**: `Error (auth/invalid-api-key)`
+- **Main app returns 404** - Page not found
+- **Auth endpoints crash** - 500 error with Firebase config error
+- **App is non-functional** - BUT XSS protection code works
 
 ## Performance Reality
 
@@ -108,3 +148,14 @@ The security is **adequate for development** but **not ready for production**. T
 - Fixing the style tag vulnerability
 
 The codebase is more stable than the documentation suggested. The "crisis" was mostly a documentation problem, not a code problem.
+
+## App Functionality Status (Not Security Related)
+
+**Firebase Configuration BROKEN**:
+- Error: `Firebase: Error (auth/invalid-api-key)`
+- Main app returns 404
+- Auth endpoints crash with 500 error
+- Health endpoint works: `{"status":"healthy"}`
+- **THE APP DOESN'T RUN** - but not due to XSS issues
+
+This is a separate issue from security - the app needs proper Firebase configuration to function.

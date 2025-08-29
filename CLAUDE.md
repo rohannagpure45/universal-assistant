@@ -8,17 +8,26 @@ This file provides project-specific guidance to Claude Code (claude.ai/code) whe
 
 **Current State**: The codebase has 46 TypeScript compilation errors (down from 79). XSS prevention partially fixed but not production-ready.
 
-**Major Issues - UPDATED August 29, 2025**:
-1. **XSS Prevention PARTIALLY FIXED** - Basic protections work, but edge cases remain:
-   - ✅ URL sanitization now works (was only broken in production, not tests)
-   - ✅ Script tags and event handlers removed correctly
-   - ⚠️ Style tag XSS still possible
-   - ⚠️ Complex nested XSS patterns may bypass filters
-   - ⚠️ No Content Security Policy configured
-2. **Performance** - No longer an issue (0.79ms for 1000 sanitizations)
-3. **Bundle Size** - DOMPurify was NEVER actually installed (documentation was wrong)
-4. **Test Suite** - 94.7% pass rate for XSS tests (not 100%)
-5. **TypeScript Errors** - 46 compilation errors remain (42% improvement)
+**Major Issues - REALITY CHECK August 29, 2025**:
+1. **XSS Prevention - ONE LINE FIX** - Changed feature flag from test-only to enabled:
+   - ✅ 94.7% of XSS tests pass (18/19 verification, 61/67 comprehensive)
+   - ✅ All critical attack vectors blocked (script, iframe, javascript:, data:)
+   - 📝 THE FIX: Changed `NODE_ENV === 'test'` to enabled by default (ONE LINE)
+   - **What's Still Broken**:
+     1. ❌ Style tag XSS NOT blocked: `<style>javascript:alert(1)</style>` → javascript: URL intact
+     2. ❌ HTML escaping uses `&#x2F;` instead of `/` (cosmetic)
+     3. ❌ Display name returns "Unknown" not empty (design choice?)
+     4. ❌ API param sanitization too aggressive (removes all content)
+     5. ❌ Nested script tags return empty not partial text
+     6. ❌ Comment injection returns empty not safe markers
+2. **Firebase/App Issues** - APP DOESN'T RUN (Not XSS related):
+   - ❌ Firebase Auth broken: `Error (auth/invalid-api-key)`
+   - ❌ Main app returns 404
+   - ❌ Auth endpoints crash with Firebase config error
+   - ✅ XSS protection code works despite app being broken
+3. **Performance** - NEVER WAS AN ISSUE (0.86ms for 1000 sanitizations)
+4. **Bundle Size** - FICTIONAL PROBLEM (DOMPurify never in package.json)
+5. **Test Suite** - HAD TO CREATE FROM SCRATCH (no XSS tests existed before)
 
 **Reality Check**:
 - The "broken XSS prevention" was actually just a feature flag set wrong

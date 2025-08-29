@@ -889,9 +889,10 @@ export class AuthService {
    * @param maxRetries - Maximum number of retry attempts
    * @returns Promise resolving to ID token string
    */
-  private async getIdTokenWithRetry(user: FirebaseUser, maxRetries: number = 2): Promise<string> {
+  private async getIdTokenWithRetry(user: FirebaseUser, maxRetries: number = 2, forceRefresh: boolean = false): Promise<string> {
     // SURGICAL FIX: Issue #2 - Prevent concurrent retries for same user
-    const userId = user.uid;
+    // Include forceRefresh in cache key to handle both regular and force refresh
+    const userId = forceRefresh ? `${user.uid}-force` : user.uid;
     
     // Check if there's already an active retry for this user
     if (this.activeRetries.has(userId)) {
@@ -900,7 +901,7 @@ export class AuthService {
     }
     
     // Create the retry promise
-    const retryPromise = this.performTokenRetry(user, maxRetries);
+    const retryPromise = this.performTokenRetry(user, maxRetries, forceRefresh);
     
     // Track active retry
     this.activeRetries.set(userId, retryPromise);
@@ -921,10 +922,10 @@ export class AuthService {
    * @param maxRetries - Maximum number of retry attempts
    * @returns Promise resolving to ID token string
    */
-  private async performTokenRetry(user: FirebaseUser, maxRetries: number): Promise<string> {
+  private async performTokenRetry(user: FirebaseUser, maxRetries: number, forceRefresh: boolean = false): Promise<string> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        return await user.getIdToken();
+        return await user.getIdToken(forceRefresh);
       } catch (error) {
         // Only retry on network/transient errors, not auth errors
         if (attempt === maxRetries || !this.isRetryableError(error)) {
@@ -1221,6 +1222,24 @@ export class AuthService {
       return await this.getIdTokenWithRetry(currentUser);
     } catch (error) {
       console.error('Failed to get current ID token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Force refresh current user's ID token (deduplicated)
+   * SURGICAL FIX: Issue #2 - Deduplicated force refresh for race condition prevention
+   */
+  public async refreshCurrentUserToken(): Promise<string | null> {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        return null;
+      }
+      // Force refresh with deduplication through getIdTokenWithRetry
+      return await this.getIdTokenWithRetry(currentUser, 2, true);
+    } catch (error) {
+      console.error('Failed to refresh current ID token:', error);
       return null;
     }
   }

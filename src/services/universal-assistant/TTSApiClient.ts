@@ -218,6 +218,7 @@ export class TTSApiClient {
 
   /**
    * Get authentication token from Firebase Auth
+   * SURGICAL FIX: Issue #2 - Route through AuthService for deduplicated token management
    */
   private async getAuthToken(): Promise<string | null> {
     try {
@@ -226,26 +227,13 @@ export class TTSApiClient {
         return null;
       }
 
-      // Dynamic import to avoid SSR issues
-      const { auth } = await import('@/lib/firebase/client');
-      const { onAuthStateChanged } = await import('firebase/auth');
+      // Route through AuthService for centralized token management
+      // This ensures all token operations use the same concurrency protection
+      const { AuthService } = await import('@/services/firebase/AuthService');
+      const authService = AuthService.getInstance();
       
-      return new Promise((resolve) => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          unsubscribe();
-          if (user) {
-            try {
-              const token = await user.getIdToken();
-              resolve(token);
-            } catch (error) {
-              console.error('Error getting ID token:', error);
-              resolve(null);
-            }
-          } else {
-            resolve(null);
-          }
-        });
-      });
+      // Use the deduplicated getCurrentIdToken method
+      return await authService.getCurrentIdToken();
     } catch (error) {
       console.error('Error getting auth token:', error);
       return null;

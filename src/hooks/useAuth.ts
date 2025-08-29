@@ -82,11 +82,12 @@ export const useAuth = () => {
   }, [auth.isAuthenticated, meetingStore.isInMeeting, meetingStore]);
 
   // Load recent meetings when user signs in
+  // SURGICAL FIX: Issue #2 - Use uid in dependency array to prevent unnecessary re-renders
   useEffect(() => {
-    if (auth.isAuthenticated && auth.user) {
+    if (auth.isAuthenticated && auth.user?.uid) {
       meetingStore.loadRecentMeetings(auth.user.uid, 10);
     }
-  }, [auth.isAuthenticated, auth.user, meetingStore]);
+  }, [auth.isAuthenticated, auth.user?.uid, meetingStore]);
 
   // Enhanced sign out with cross-store cleanup
   const enhancedSignOut = async () => {

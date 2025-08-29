@@ -188,7 +188,7 @@ yarn-error.log*
 .bmad-core/
 web-bundles/
 .claude/
-docs/
+# docs/  # Commented out to allow documentation to be committed
 tsconfig.tsbuildinfo
 
 # Windsurf IDE configuration

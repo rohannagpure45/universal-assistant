@@ -87,6 +87,12 @@ export class AuthService {
     errors: 0,
     lastChangeType: '' as string
   };
+  
+  // PHASE 3A: Centralized sign-out state
+  private isSigningOut = false;
+  
+  // PHASE 3B: Two-phase sign-out tracking
+  private signOutPhase: 'idle' | 'preparing' | 'committing' = 'idle';
 
   private constructor(config: AuthServiceConfig = {}) {
     this.config = {
@@ -403,13 +409,29 @@ export class AuthService {
   /**
    * Sign out current user
    * PHASE 2B: Enhanced with cleanup tracking
+   * PHASE 3: Two-phase sign-out for consistency
    */
   public async signOut(): Promise<{ error?: LocalAuthError }> {
+    // PHASE 3A: Check if already signing out
+    if (this.isSigningOut) {
+      console.log('[AuthService] Sign-out already in progress');
+      return { error: { 
+        code: 'auth/operation-in-progress', 
+        message: 'Sign-out already in progress',
+        name: 'AuthError'
+      }};
+    }
+    
     const currentUser = auth.currentUser;
     const startTime = Date.now();
+    this.isSigningOut = true;
     
     try {
-      // PHASE 2B: Execute all cleanup callbacks before signout
+      // PHASE 3B: Preparing phase - stop activities but don't clear data yet
+      this.signOutPhase = 'preparing';
+      console.log('[AuthService] Phase 1: Preparing for sign-out');
+      
+      // Execute all cleanup callbacks (they should stop activities)
       console.log(`[AuthService] Running ${this.cleanupCallbacks.length} cleanup callbacks`);
       for (const cleanup of this.cleanupCallbacks) {
         try {
@@ -428,7 +450,11 @@ export class AuthService {
       // Clear active retries
       this.activeRetries.clear();
       
-      // Reset tracking
+      // PHASE 3B: Committing phase - actually sign out and clear data
+      this.signOutPhase = 'committing';
+      console.log('[AuthService] Phase 2: Committing sign-out');
+      
+      // Reset tracking AFTER successful preparation
       this.lastProcessedUID = null;
       this.lastProcessedTime = 0;
       // Safari-specific fix: Clear local storage and session storage
@@ -473,8 +499,16 @@ export class AuthService {
         );
       }
       
+      // PHASE 3B: Successfully completed
+      this.signOutPhase = 'idle';
+      this.isSigningOut = false;
+      
       return {};
     } catch (error) {
+      // PHASE 3B: Rollback on error
+      console.error('[AuthService] Sign-out failed, rolling back:', error);
+      this.signOutPhase = 'idle';
+      this.isSigningOut = false;
       // Log failed signout
       if (currentUser) {
         await this.logAuthEvent(
@@ -1324,9 +1358,34 @@ export class AuthService {
   /**
    * Register a cleanup callback to be executed on signout
    * PHASE 2B: Cleanup tracking
+   * PHASE 3C: Returns unregister function for cleanup
    */
-  public registerCleanup(callback: () => void): void {
+  public registerCleanup(callback: () => void): () => void {
     this.cleanupCallbacks.push(callback);
+    
+    // Return function to unregister this callback
+    return () => {
+      const index = this.cleanupCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.cleanupCallbacks.splice(index, 1);
+      }
+    };
+  }
+  
+  /**
+   * Check if sign-out is in progress
+   * PHASE 3A: Centralized sign-out state
+   */
+  public isSigningOutInProgress(): boolean {
+    return this.isSigningOut;
+  }
+  
+  /**
+   * Get current sign-out phase
+   * PHASE 3B: Two-phase sign-out tracking
+   */
+  public getSignOutPhase(): 'idle' | 'preparing' | 'committing' {
+    return this.signOutPhase;
   }
 
   /**

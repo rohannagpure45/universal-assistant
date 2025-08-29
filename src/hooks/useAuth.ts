@@ -91,7 +91,16 @@ export const useAuth = () => {
 
   // Enhanced sign out with cross-store cleanup
   const enhancedSignOut = async () => {
-    // SURGICAL FIX: Issue #2 - Use React ref instead of global flag
+    // PHASE 3A: Use centralized sign-out state from AuthService
+    // This prevents multiple sign-outs across ALL components
+    const authService = (await import('@/services/firebase/AuthService')).AuthService.getInstance();
+    
+    if (authService.isSigningOutInProgress()) {
+      console.log('[useAuth] Sign-out already in progress globally');
+      return false;
+    }
+    
+    // Keep local ref as backup
     if (isSigningOutRef.current) {
       return false;
     }

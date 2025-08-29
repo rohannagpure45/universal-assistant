@@ -15,10 +15,10 @@
  */
 
 // Feature flag for enhanced sanitization (can be controlled via environment or runtime)
+// ENABLED BY DEFAULT: Enhanced sanitization is now stable and provides proper XSS protection
 const USE_ENHANCED_SANITIZATION = 
-  process.env.NODE_ENV === 'test' || // Always enabled in tests
-  process.env.ENABLE_ENHANCED_SANITIZATION === 'true' || // Env override
-  typeof window !== 'undefined' && (window as any).__ENABLE_ENHANCED_SANITIZATION; // Runtime override
+  process.env.ENABLE_ENHANCED_SANITIZATION !== 'false' && // Can be explicitly disabled
+  process.env.USE_LEGACY_SANITIZATION !== 'true'; // Or use legacy mode if needed
 
 /**
  * Performance monitoring wrapper for sanitization functions
@@ -220,8 +220,11 @@ export function enableEnhancedSanitization(enable: boolean = true): void {
  * @returns true if enhanced sanitization is active
  */
 export function isEnhancedSanitizationEnabled(): boolean {
-  return USE_ENHANCED_SANITIZATION || 
-         (typeof window !== 'undefined' && (window as any).__ENABLE_ENHANCED_SANITIZATION);
+  // Check runtime override first, then environment settings
+  if (typeof window !== 'undefined' && (window as any).__ENABLE_ENHANCED_SANITIZATION !== undefined) {
+    return (window as any).__ENABLE_ENHANCED_SANITIZATION;
+  }
+  return USE_ENHANCED_SANITIZATION;
 }
 
 /**
@@ -347,11 +350,11 @@ export function sanitizeJson(jsonString: string): string {
 export function createSafeDisplayName(name: string, fallback: string = 'Unknown'): string {
   if (typeof name !== 'string') return fallback;
   
-  // Check for dangerous content patterns - return empty string if found
+  // Check for dangerous content patterns - return fallback if found
   if (/<(script|iframe|object|embed|form|input)/gi.test(name) || 
       /on\w+\s*=/.test(name) ||
       /javascript:/gi.test(name)) {
-    return '';
+    return fallback;
   }
   
   const sanitized = sanitizeUserInput(name, {

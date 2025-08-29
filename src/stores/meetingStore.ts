@@ -14,12 +14,10 @@ import {
   MeetingType
 } from '@/types';
 import { DatabaseService } from '@/services/firebase/DatabaseService';
-import { UnifiedRealtimeService as RealtimeService } from '@/services/firebase/UnifiedRealtimeService';
+import { UniversalRealtimeService } from '@/services/firebase/UniversalRealtimeService';
 import { dashboardCache } from '@/lib/cache/DashboardCache';
-import type { 
-  RealtimeUpdate, 
-  DocumentChange 
-} from '@/services/firebase/UnifiedRealtimeService';
+import { collection, query, where, orderBy, limit, doc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/client';
 
 // Meeting-specific error types
 export interface MeetingError {
@@ -764,12 +762,15 @@ export const useMeetingStore = create<MeetingStore>()(
 
           try {
             // Listen to meeting changes
-            const meetingListener = RealtimeService.listenToMeeting(meetingId, (meeting) => {
+            const meetingUnsubscribe = UniversalRealtimeService.createDocumentListener(
+              `meeting-${meetingId}`,
+              doc(db, 'meetings', meetingId),
+              (meeting: Meeting | null) => {
               set((state) => {
                 if (meeting) {
                   state.currentMeeting = meeting;
                   // Convert Participant[] to SpeakerProfile[] format
-                  state.participants = meeting.participants.map(p => ({
+                  state.participants = meeting.participants?.map(p => ({
                     speakerId: p.id,
                     voiceId: p.voiceProfileId || p.id,
                     userName: p.displayName,
@@ -780,90 +781,34 @@ export const useMeetingStore = create<MeetingStore>()(
                     speakingPercentage: 0,
                     isConnected: true,
                     isActive: false,
-                  }));
+                  })) || [];
                 }
               });
             });
 
-            // Listen to transcript changes
-            const transcriptListener = RealtimeService.listenToTranscriptEntries(
-              meetingId,
-              (update: RealtimeUpdate<TranscriptEntry>) => {
+            // Listen to transcript changes using UniversalRealtimeService
+            const transcriptUnsubscribe = UniversalRealtimeService.createListener(
+              `transcript-${meetingId}`,
+              query(
+                collection(db, 'meetings', meetingId, 'transcriptEntries'),
+                orderBy('timestamp', 'asc')
+              ),
+              (entries: TranscriptEntry[]) => {
                 set((state) => {
-                  // Process changes
-                  update.changes.forEach((change) => {
-                    switch (change.type) {
-                      case 'added':
-                        const existingIndex = state.transcript.findIndex(
-                          entry => entry.id === change.doc.id
-                        );
-                        if (existingIndex === -1) {
-                          // UI-level duplicate guard: if the newest entry for the same speaker
-                          // in the last few seconds has identical text (case-insensitive), skip.
-                          const last = state.transcript.length > 0 ? state.transcript[state.transcript.length - 1] : null;
-                          if (last) {
-                            const sameSpeaker = last.speakerId === change.doc.speakerId;
-                            const t1 = last.timestamp instanceof Date ? last.timestamp.getTime() : new Date(last.timestamp as any).getTime();
-                            const t2 = change.doc.timestamp instanceof Date ? change.doc.timestamp.getTime() : new Date(change.doc.timestamp as any).getTime();
-                            const withinWindow = Math.abs(t2 - t1) <= 12000;
-                            const sameText = (last.text || '').trim().toLowerCase() === (change.doc.text || '').trim().toLowerCase();
-                            if (sameSpeaker && withinWindow && sameText) {
-                              break;
-                            }
-                          }
-                          // Also guard by normalized text matching the most recent of the SAME timestamp second
-                          const normalized = (s: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                          const dupIndex = state.transcript.findIndex(e => 
-                            e.speakerId === change.doc.speakerId &&
-                            Math.abs(((e.timestamp as any).getTime ? (e.timestamp as any).getTime() : new Date(e.timestamp as any).getTime()) - ((change.doc.timestamp as any).getTime ? (change.doc.timestamp as any).getTime() : new Date(change.doc.timestamp as any).getTime())) <= 2000 &&
-                            normalized(e.text) === normalized(change.doc.text)
-                          );
-                          if (dupIndex !== -1) {
-                            break;
-                          }
-                          state.transcript.push(change.doc);
-                          state.filteredTranscript.push(change.doc);
-                        }
-                        break;
-                      case 'modified':
-                        const modifyIndex = state.transcript.findIndex(
-                          entry => entry.id === change.doc.id
-                        );
-                        if (modifyIndex !== -1) {
-                          state.transcript[modifyIndex] = change.doc;
-                        }
-                        
-                        const modifyFilteredIndex = state.filteredTranscript.findIndex(
-                          entry => entry.id === change.doc.id
-                        );
-                        if (modifyFilteredIndex !== -1) {
-                          state.filteredTranscript[modifyFilteredIndex] = change.doc;
-                        }
-                        break;
-                      case 'removed':
-                        state.transcript = state.transcript.filter(
-                          entry => entry.id !== change.doc.id
-                        );
-                        state.filteredTranscript = state.filteredTranscript.filter(
-                          entry => entry.id !== change.doc.id
-                        );
-                        break;
-                    }
-                  });
-
-                  // Sort transcript by timestamp
-                  state.transcript.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-                  state.filteredTranscript.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+                  // Replace entire transcript with new data
+                  state.transcript = entries;
+                  state.filteredTranscript = entries;
                 });
               }
             );
+            
 
             // Store listeners for cleanup
             set((state) => {
               state.listeners.add('meeting');
               state.listeners.add('transcript');
-              state.listenerMap.set('meeting', meetingListener);
-              state.listenerMap.set('transcript', transcriptListener);
+              state.listenerMap.set('meeting', meetingUnsubscribe);
+              state.listenerMap.set('transcript', transcriptUnsubscribe);
             });
 
           } catch (error) {

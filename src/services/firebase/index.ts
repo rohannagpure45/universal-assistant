@@ -8,6 +8,7 @@
 // Core services
 export { DatabaseService, DatabaseError } from './DatabaseService';
 export { RealtimeService, RealtimeError } from './RealtimeService';
+export { UniversalRealtimeService } from './UniversalRealtimeService';
 
 // Type exports for pagination and real-time updates
 export type {

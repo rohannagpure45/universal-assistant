@@ -7,8 +7,10 @@ import {
   doc,
   onSnapshot,
   getDocs,
+  getDoc,
   Query,
   DocumentData,
+  DocumentReference,
   SnapshotOptions,
   QuerySnapshot,
   DocumentSnapshot,
@@ -24,7 +26,7 @@ export class UniversalRealtimeService {
     query: Query<T>,
     callback: (data: T[]) => void
   ): () => void {
-    // Clean up any existing listener
+    // Clean up any existing listener with defensive approach
     this.cleanup(listenerId);
     
     let failureCount = 0;
@@ -100,7 +102,7 @@ export class UniversalRealtimeService {
     docRef: any, // Using any to avoid complex type issues with doc()
     callback: (data: T | null) => void
   ): () => void {
-    // Clean up any existing listener
+    // Clean up any existing listener with defensive approach
     this.cleanup(listenerId);
     
     let failureCount = 0;
@@ -115,10 +117,11 @@ export class UniversalRealtimeService {
           // Success! Reset failure count
           failureCount = 0;
           if (snapshot.exists()) {
+            const docData = snapshot.data() || {};
             const data = {
               id: snapshot.id,
-              ...snapshot.data()
-            } as T;
+              ...docData
+            } as unknown as T;
             callback(data);
           } else {
             callback(null);
@@ -152,12 +155,13 @@ export class UniversalRealtimeService {
     const startPolling = () => {
       const poll = async () => {
         try {
-          const snapshot = await getDocs(docRef);
+          const snapshot = await getDoc(docRef);
           if (snapshot.exists()) {
+            const docData = snapshot.data() || {};
             const data = {
               id: snapshot.id,
-              ...snapshot.data()
-            } as T;
+              ...docData
+            } as unknown as T;
             callback(data);
           } else {
             callback(null);
@@ -177,16 +181,31 @@ export class UniversalRealtimeService {
   }
   
   private static cleanup(listenerId: string): void {
+    // Enhanced defensive cleanup - handle all resources safely
     const unsubscribe = this.listeners.get(listenerId);
     if (unsubscribe) {
-      unsubscribe();
+      try {
+        unsubscribe();
+      } catch (error) {
+        console.error(`Error cleaning up listener ${listenerId}:`, error);
+      }
       this.listeners.delete(listenerId);
     }
     
+    // Clean up retry timeouts with error handling
     const timeout = this.retryTimeouts.get(listenerId);
     if (timeout) {
-      clearTimeout(timeout);
+      try {
+        clearTimeout(timeout);
+      } catch (error) {
+        console.error(`Error clearing timeout for ${listenerId}:`, error);
+      }
       this.retryTimeouts.delete(listenerId);
+    }
+    
+    // Log cleanup for debugging memory leaks
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`Cleaned up resources for listener: ${listenerId}`);
     }
   }
 
@@ -201,8 +220,25 @@ export class UniversalRealtimeService {
    * Clean up all listeners (useful for app shutdown)
    */
   static cleanupAll(): void {
-    for (const listenerId of this.listeners.keys()) {
+    // Clean up all listeners
+    const listenerIds = Array.from(this.listeners.keys());
+    for (const listenerId of listenerIds) {
       this.cleanup(listenerId);
+    }
+    
+    // Emergency cleanup - clear any remaining timeouts directly
+    const timeouts = Array.from(this.retryTimeouts.values());
+    for (const timeout of timeouts) {
+      try {
+        clearTimeout(timeout);
+      } catch (error) {
+        console.error('Error during emergency timeout cleanup:', error);
+      }
+    }
+    this.retryTimeouts.clear();
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.debug(`Cleaned up ${listenerIds.length} listeners during shutdown`);
     }
   }
 

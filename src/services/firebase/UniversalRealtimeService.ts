@@ -20,6 +20,27 @@ import {
 export class UniversalRealtimeService {
   private static listeners = new Map<string, () => void>();
   private static retryTimeouts = new Map<string, NodeJS.Timeout>();
+  // Simple activity tracking for adaptive polling
+  private static activityTracker = new Map<string, { 
+    lastDataHash: string; 
+    recentChanges: number; 
+    currentMode: 'realtime' | 'polling' | 'error';
+    currentInterval?: number;
+  }>();
+
+  // Simple helper for activity-based polling intervals
+  private static getAdaptiveInterval(listenerId: string, hasChanged: boolean): number {
+    const tracker = this.activityTracker.get(listenerId);
+    if (!tracker) return 30000; // Default 30s
+    
+    if (hasChanged) {
+      tracker.recentChanges = Math.min(tracker.recentChanges + 1, 5); // Cap at 5
+      return tracker.recentChanges >= 2 ? 15000 : 30000; // 15s if active, 30s normal
+    } else {
+      tracker.recentChanges = Math.max(tracker.recentChanges - 1, 0); // Decay
+      return tracker.recentChanges === 0 ? 45000 : 30000; // 45s if idle, 30s normal
+    }
+  }
   
   static createListener<T extends DocumentData>(
     listenerId: string,
@@ -28,6 +49,14 @@ export class UniversalRealtimeService {
   ): () => void {
     // Clean up any existing listener with defensive approach
     this.cleanup(listenerId);
+    
+    // Initialize simple activity tracker
+    this.activityTracker.set(listenerId, {
+      lastDataHash: '',
+      recentChanges: 0,
+      currentMode: 'realtime',
+      currentInterval: 30000
+    });
     
     let failureCount = 0;
     const MAX_FAILURES = 3;
@@ -38,12 +67,24 @@ export class UniversalRealtimeService {
         query,
         { includeMetadataChanges: false, source: 'default' },
         (snapshot) => {
-          // Success! Reset failure count
+          // Success! Reset failure count and update activity tracker
           failureCount = 0;
           const data = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           })) as T[];
+          
+          // Simple activity tracking - just track data changes
+          const tracker = this.activityTracker.get(listenerId);
+          if (tracker) {
+            const currentHash = JSON.stringify(data.map(d => d.id).sort());
+            const hasChanged = currentHash !== tracker.lastDataHash;
+            if (hasChanged) {
+              tracker.lastDataHash = currentHash;
+            }
+            tracker.currentMode = 'realtime';
+          }
+          
           callback(data);
         },
         (error) => {
@@ -53,6 +94,8 @@ export class UniversalRealtimeService {
           if (failureCount >= MAX_FAILURES) {
             // Fall back to polling
             console.log(`Falling back to polling for ${listenerId}`);
+            const tracker = this.activityTracker.get(listenerId);
+            if (tracker) tracker.currentMode = 'polling';
             this.cleanup(listenerId);
             startPolling();
           } else {
@@ -70,9 +113,10 @@ export class UniversalRealtimeService {
       this.listeners.set(listenerId, unsubscribe);
     };
     
-    // Simple polling fallback (works on 100% of browsers)
+    // Simple polling fallback with adaptive intervals (works on 100% of browsers)
     const startPolling = () => {
       let pollErrorCount = 0;
+      let pollInterval: NodeJS.Timeout | null = null;
       const MAX_POLL_ERRORS = 5;
       
       const poll = async () => {
@@ -82,25 +126,51 @@ export class UniversalRealtimeService {
             id: doc.id,
             ...doc.data()
           })) as T[];
+          
+          // Activity-based adaptive interval
+          const tracker = this.activityTracker.get(listenerId);
+          let hasChanged = false;
+          if (tracker) {
+            const currentHash = JSON.stringify(data.map(d => d.id).sort());
+            hasChanged = currentHash !== tracker.lastDataHash;
+            if (hasChanged) {
+              tracker.lastDataHash = currentHash;
+            }
+          }
+          
           callback(data);
           
-          // Success - reset error count
+          // Success - reset error count and schedule next poll with adaptive interval
           pollErrorCount = 0;
+          const nextInterval = this.getAdaptiveInterval(listenerId, hasChanged);
+          if (tracker) tracker.currentInterval = nextInterval;
+          
+          // Schedule next poll with new interval
+          if (pollInterval) clearTimeout(pollInterval);
+          pollInterval = setTimeout(poll, nextInterval);
+          
         } catch (error) {
           pollErrorCount++;
           console.error(`Polling error ${pollErrorCount}/${MAX_POLL_ERRORS}:`, error);
           
           if (pollErrorCount >= MAX_POLL_ERRORS) {
             console.warn(`Too many polling errors for ${listenerId}, stopping`);
+            const tracker = this.activityTracker.get(listenerId);
+            if (tracker) tracker.currentMode = 'error';
             this.cleanup(listenerId);
             return;
           }
+          
+          // Retry with same interval on error
+          if (pollInterval) clearTimeout(pollInterval);
+          pollInterval = setTimeout(poll, 30000);
         }
       };
       
       poll(); // Initial poll
-      const interval = setInterval(poll, 30000); // Poll every 30s
-      this.listeners.set(listenerId, () => clearInterval(interval));
+      this.listeners.set(listenerId, () => {
+        if (pollInterval) clearTimeout(pollInterval);
+      });
     };
     
     tryRealtime(); // Start with real-time
@@ -118,6 +188,14 @@ export class UniversalRealtimeService {
     // Clean up any existing listener with defensive approach
     this.cleanup(listenerId);
     
+    // Initialize simple activity tracker
+    this.activityTracker.set(listenerId, {
+      lastDataHash: '',
+      recentChanges: 0,
+      currentMode: 'realtime',
+      currentInterval: 30000
+    });
+    
     let failureCount = 0;
     const MAX_FAILURES = 3;
     
@@ -127,18 +205,30 @@ export class UniversalRealtimeService {
         docRef,
         { includeMetadataChanges: false, source: 'default' },
         (snapshot: DocumentSnapshot) => {
-          // Success! Reset failure count
+          // Success! Reset failure count and update activity tracker
           failureCount = 0;
+          
+          let data: T | null = null;
           if (snapshot.exists()) {
             const docData = snapshot.data() || {};
-            const data = {
+            data = {
               id: snapshot.id,
               ...docData
             } as unknown as T;
-            callback(data);
-          } else {
-            callback(null);
           }
+          
+          // Simple activity tracking for documents
+          const tracker = this.activityTracker.get(listenerId);
+          if (tracker) {
+            const currentHash = data ? JSON.stringify(data).substring(0, 100) : 'null';
+            const hasChanged = currentHash !== tracker.lastDataHash;
+            if (hasChanged) {
+              tracker.lastDataHash = currentHash;
+            }
+            tracker.currentMode = 'realtime';
+          }
+          
+          callback(data);
         },
         (error: FirestoreError) => {
           failureCount++;
@@ -147,6 +237,8 @@ export class UniversalRealtimeService {
           if (failureCount >= MAX_FAILURES) {
             // Fall back to polling
             console.log(`Falling back to polling for document ${listenerId}`);
+            const tracker = this.activityTracker.get(listenerId);
+            if (tracker) tracker.currentMode = 'polling';
             this.cleanup(listenerId);
             startPolling();
           } else {
@@ -164,42 +256,69 @@ export class UniversalRealtimeService {
       this.listeners.set(listenerId, unsubscribe);
     };
     
-    // Simple polling fallback for documents
+    // Simple polling fallback for documents with adaptive intervals
     const startPolling = () => {
       let pollErrorCount = 0;
+      let pollInterval: NodeJS.Timeout | null = null;
       const MAX_POLL_ERRORS = 5;
       
       const poll = async () => {
         try {
           const snapshot = await getDoc(docRef);
+          let data: T | null = null;
+          
           if (snapshot.exists()) {
             const docData = snapshot.data() as Record<string, any> | undefined;
-            const data = {
+            data = {
               id: snapshot.id,
               ...(docData || {})
             } as unknown as T;
-            callback(data);
-          } else {
-            callback(null);
           }
           
-          // Success - reset error count
+          // Activity-based adaptive interval for documents
+          const tracker = this.activityTracker.get(listenerId);
+          let hasChanged = false;
+          if (tracker) {
+            const currentHash = data ? JSON.stringify(data).substring(0, 100) : 'null';
+            hasChanged = currentHash !== tracker.lastDataHash;
+            if (hasChanged) {
+              tracker.lastDataHash = currentHash;
+            }
+          }
+          
+          callback(data);
+          
+          // Success - reset error count and schedule next poll with adaptive interval
           pollErrorCount = 0;
+          const nextInterval = this.getAdaptiveInterval(listenerId, hasChanged);
+          if (tracker) tracker.currentInterval = nextInterval;
+          
+          // Schedule next poll with new interval
+          if (pollInterval) clearTimeout(pollInterval);
+          pollInterval = setTimeout(poll, nextInterval);
+          
         } catch (error) {
           pollErrorCount++;
           console.error(`Document polling error ${pollErrorCount}/${MAX_POLL_ERRORS}:`, error);
           
           if (pollErrorCount >= MAX_POLL_ERRORS) {
             console.warn(`Too many document polling errors for ${listenerId}, stopping`);
+            const tracker = this.activityTracker.get(listenerId);
+            if (tracker) tracker.currentMode = 'error';
             this.cleanup(listenerId);
             return;
           }
+          
+          // Retry with same interval on error
+          if (pollInterval) clearTimeout(pollInterval);
+          pollInterval = setTimeout(poll, 30000);
         }
       };
       
       poll(); // Initial poll
-      const interval = setInterval(poll, 30000); // Poll every 30s
-      this.listeners.set(listenerId, () => clearInterval(interval));
+      this.listeners.set(listenerId, () => {
+        if (pollInterval) clearTimeout(pollInterval);
+      });
     };
     
     tryRealtime(); // Start with real-time
@@ -228,6 +347,9 @@ export class UniversalRealtimeService {
       }
       this.retryTimeouts.delete(listenerId);
     }
+    
+    // Clean up activity tracker
+    this.activityTracker.delete(listenerId);
     
     // Log cleanup for debugging memory leaks
     if (process.env.NODE_ENV === 'development') {
@@ -273,5 +395,57 @@ export class UniversalRealtimeService {
    */
   static isListenerActive(listenerId: string): boolean {
     return this.listeners.has(listenerId);
+  }
+
+  /**
+   * Get connection status for a listener (Bug #8 fix)
+   */
+  static getConnectionStatus(listenerId: string): 'realtime' | 'polling' | 'error' | 'disconnected' {
+    const tracker = this.activityTracker.get(listenerId);
+    if (!tracker) return 'disconnected';
+    return tracker.currentMode;
+  }
+
+  /**
+   * Get current polling interval for a listener (Bug #8 fix) 
+   */
+  static getCurrentInterval(listenerId: string): number {
+    const tracker = this.activityTracker.get(listenerId);
+    return tracker?.currentInterval || 30000;
+  }
+
+  /**
+   * Get activity level for a listener (Bug #8 fix)
+   */
+  static getActivityLevel(listenerId: string): 'idle' | 'low' | 'medium' | 'high' {
+    const tracker = this.activityTracker.get(listenerId);
+    if (!tracker) return 'idle';
+    
+    const changes = tracker.recentChanges;
+    if (changes === 0) return 'idle';
+    if (changes <= 1) return 'low';
+    if (changes <= 3) return 'medium';
+    return 'high';
+  }
+
+  /**
+   * Get all connection states for monitoring (Bug #8 fix)
+   */
+  static getAllConnectionStates(): Record<string, {
+    status: 'realtime' | 'polling' | 'error' | 'disconnected';
+    interval: number;
+    activity: 'idle' | 'low' | 'medium' | 'high';
+  }> {
+    const states: Record<string, any> = {};
+    
+    this.activityTracker.forEach((tracker, listenerId) => {
+      states[listenerId] = {
+        status: tracker.currentMode,
+        interval: tracker.currentInterval || 30000,
+        activity: this.getActivityLevel(listenerId)
+      };
+    });
+    
+    return states;
   }
 }

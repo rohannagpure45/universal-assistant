@@ -72,6 +72,9 @@ export class UniversalRealtimeService {
     
     // Simple polling fallback (works on 100% of browsers)
     const startPolling = () => {
+      let pollErrorCount = 0;
+      const MAX_POLL_ERRORS = 5;
+      
       const poll = async () => {
         try {
           const snapshot = await getDocs(query);
@@ -80,8 +83,18 @@ export class UniversalRealtimeService {
             ...doc.data()
           })) as T[];
           callback(data);
+          
+          // Success - reset error count
+          pollErrorCount = 0;
         } catch (error) {
-          console.error(`Polling error:`, error);
+          pollErrorCount++;
+          console.error(`Polling error ${pollErrorCount}/${MAX_POLL_ERRORS}:`, error);
+          
+          if (pollErrorCount >= MAX_POLL_ERRORS) {
+            console.warn(`Too many polling errors for ${listenerId}, stopping`);
+            this.cleanup(listenerId);
+            return;
+          }
         }
       };
       
@@ -153,21 +166,34 @@ export class UniversalRealtimeService {
     
     // Simple polling fallback for documents
     const startPolling = () => {
+      let pollErrorCount = 0;
+      const MAX_POLL_ERRORS = 5;
+      
       const poll = async () => {
         try {
           const snapshot = await getDoc(docRef);
           if (snapshot.exists()) {
-            const docData = snapshot.data() || {};
+            const docData = snapshot.data() as Record<string, any> | undefined;
             const data = {
               id: snapshot.id,
-              ...docData
+              ...(docData || {})
             } as unknown as T;
             callback(data);
           } else {
             callback(null);
           }
+          
+          // Success - reset error count
+          pollErrorCount = 0;
         } catch (error) {
-          console.error(`Document polling error:`, error);
+          pollErrorCount++;
+          console.error(`Document polling error ${pollErrorCount}/${MAX_POLL_ERRORS}:`, error);
+          
+          if (pollErrorCount >= MAX_POLL_ERRORS) {
+            console.warn(`Too many document polling errors for ${listenerId}, stopping`);
+            this.cleanup(listenerId);
+            return;
+          }
         }
       };
       

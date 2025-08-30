@@ -773,14 +773,20 @@ export const useMeetingStore = create<MeetingStore>()(
                   state.participants = meeting.participants?.map(p => ({
                     speakerId: p.id,
                     voiceId: p.voiceProfileId || p.id,
-                    userName: p.displayName,
+                    userName: p.userName,
                     voiceEmbedding: [], // Will be populated by voice identification
                     lastSeen: p.joinTime,
                     confidence: 0.8, // Default confidence
                     sessionCount: 1,
                     speakingPercentage: 0,
                     isConnected: true,
-                    isActive: false,
+                    isActive: p.isActive,
+                    // Add missing properties to preserve participant data
+                    userId: p.userId,
+                    displayName: p.displayName,
+                    role: p.role,
+                    speakingTime: p.speakingTime,
+                    joinTime: p.joinTime,
                   })) || [];
                 }
               });
@@ -795,9 +801,34 @@ export const useMeetingStore = create<MeetingStore>()(
               ),
               (entries: TranscriptEntry[]) => {
                 set((state) => {
-                  // Replace entire transcript with new data
-                  state.transcript = entries;
-                  state.filteredTranscript = entries;
+                  // Defensive merge: preserve recent local changes during server updates
+                  const getTimestamp = (entry: TranscriptEntry): number => {
+                    try {
+                      return entry.timestamp instanceof Date 
+                        ? entry.timestamp.getTime()
+                        : new Date(entry.timestamp as any).getTime();
+                    } catch (error) {
+                      console.warn('Invalid timestamp in transcript entry:', entry.id);
+                      return Date.now(); // Safe fallback
+                    }
+                  };
+
+                  // Find entries that exist locally but not in server update
+                  const serverIds = new Set(entries.map(e => e.id));
+                  const localOnlyEntries = state.transcript.filter(local => 
+                    !serverIds.has(local.id) && 
+                    // Keep recent entries (last 30 seconds) that might still be syncing
+                    (Date.now() - getTimestamp(local)) < 30000
+                  );
+                  
+                  // Merge: server entries + recent local-only entries
+                  const merged = [...entries, ...localOnlyEntries];
+                  
+                  // Sort by timestamp to maintain chronological order
+                  merged.sort((a, b) => getTimestamp(a) - getTimestamp(b));
+                  
+                  state.transcript = merged;
+                  state.filteredTranscript = merged;
                 });
               }
             );

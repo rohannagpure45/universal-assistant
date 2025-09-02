@@ -448,4 +448,50 @@ export class UniversalRealtimeService {
     
     return states;
   }
+
+  /**
+   * Phase 5: Minimal monitoring - Get health metrics (defensive approach)
+   */
+  static getHealthMetrics(): {
+    listenerCount: number;
+    errorCount: number;
+    healthScore: number;
+    timestamp: Date;
+  } {
+    const states = this.getAllConnectionStates();
+    const totalCount = Object.keys(states).length;
+    const errorCount = Object.values(states).filter(s => s.status === 'error').length;
+    
+    return {
+      listenerCount: totalCount,
+      errorCount: errorCount,
+      healthScore: totalCount > 0 ? ((totalCount - errorCount) / totalCount) * 100 : 100,
+      timestamp: new Date()
+    };
+  }
+
+  /**
+   * Phase 5: Simple feature flag (defensive approach)
+   */
+  static isEnabled(): boolean {
+    // Simple environment variable check
+    if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_USE_UNIVERSAL_REALTIME === 'false') {
+      return false;
+    }
+    return true; // Default to enabled
+  }
+
+  /**
+   * Phase 5: Debug logging for development only (defensive approach)
+   */
+  static logHealth(): void {
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
+      const metrics = this.getHealthMetrics();
+      console.log('[UniversalRealtime]', {
+        listeners: metrics.listenerCount,
+        health: `${metrics.healthScore.toFixed(0)}%`,
+        errors: metrics.errorCount
+      });
+    }
+  }
 }

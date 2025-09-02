@@ -798,7 +798,7 @@ export const useMeetingStore = create<MeetingStore>()(
               query(
                 collection(db, 'meetings', meetingId, 'transcriptEntries'),
                 orderBy('timestamp', 'asc')
-              ),
+              ) as any,
               (entries: TranscriptEntry[]) => {
                 set((state) => {
                   // Defensive merge: preserve recent local changes during server updates

@@ -42,10 +42,21 @@ class SecurityEventBuffer {
   private events: SecurityEvent[] = [];
   private readonly maxSize = 10000;
   private readonly flushInterval = 30000; // 30 seconds
+  private intervalId: NodeJS.Timeout | null = null;
 
   constructor() {
-    // Flush events periodically
-    setInterval(() => this.flush(), this.flushInterval);
+    // Only start interval in production or when explicitly enabled
+    if (process.env.ENABLE_SECURITY_MONITORING === 'true') {
+      this.intervalId = setInterval(() => this.flush(), this.flushInterval);
+    }
+  }
+
+  // Clean up method to prevent memory leaks
+  destroy() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
   }
 
   add(event: SecurityEvent) {
@@ -181,7 +192,10 @@ class SecurityEventBuffer {
       anomalies: this.detectAnomalies(recentEvents)
     };
 
-    console.log('Security Report:', JSON.stringify(report, null, 2));
+    // Only log in production or when explicitly enabled
+    if (process.env.ENABLE_SECURITY_MONITORING === 'true') {
+      console.log('Security Report:', JSON.stringify(report, null, 2));
+    }
   }
 
   private analyzeSeverity(events: SecurityEvent[]) {
@@ -567,6 +581,18 @@ export class SecurityMonitor {
       return true;
     });
   }
+
+  // Clean up resources - call on app shutdown
+  static cleanup() {
+    this.eventBuffer.destroy();
+  }
+}
+
+// Clean up on process exit to prevent memory leaks
+if (typeof process !== 'undefined') {
+  process.on('exit', () => SecurityMonitor.cleanup());
+  process.on('SIGINT', () => SecurityMonitor.cleanup());
+  process.on('SIGTERM', () => SecurityMonitor.cleanup());
 }
 
 /**

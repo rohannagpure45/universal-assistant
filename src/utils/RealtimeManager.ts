@@ -25,11 +25,16 @@ export class RealtimeManager {
   constructor(cleanupRegistry?: CleanupRegistry) {
     this.cleanupRegistry = cleanupRegistry || new CleanupRegistry();
     
+    // Bind shutdown to preserve context
+    this.handleBeforeUnload = this.shutdown.bind(this);
+    
     // Register global cleanup
     if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', () => this.shutdown());
+      window.addEventListener('beforeunload', this.handleBeforeUnload);
     }
   }
+  
+  private handleBeforeUnload: () => Promise<void>;
   
   /**
    * Add a real-time listener with automatic management
@@ -162,6 +167,11 @@ export class RealtimeManager {
     this.isShuttingDown = true;
     
     console.log('Shutting down RealtimeManager...');
+    
+    // Remove event listener to prevent memory leak
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('beforeunload', this.handleBeforeUnload);
+    }
     
     // Remove all listeners
     for (const key of this.listeners.keys()) {

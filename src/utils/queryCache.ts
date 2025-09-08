@@ -84,9 +84,14 @@ class QueryCache {
 // Export singleton instance
 export const queryCache = new QueryCache();
 
-// Auto-cleanup every 10 minutes
+// Auto-cleanup every 10 minutes with proper cleanup on unload
 if (typeof window !== 'undefined') {
-  setInterval(() => {
+  const intervalId = setInterval(() => {
     queryCache.cleanup();
   }, 10 * 60 * 1000);
+  
+  // Clean up interval on page unload
+  window.addEventListener('beforeunload', () => {
+    clearInterval(intervalId);
+  });
 }

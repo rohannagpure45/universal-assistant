@@ -73,6 +73,21 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "meetings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "createdBy",
           "order": "ASCENDING"
         },
@@ -188,6 +203,21 @@
         {
           "fieldPath": "startTime",
           "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "transcripts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "meetingId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "ASCENDING"
         }
       ],
       "density": "SPARSE_ALL"

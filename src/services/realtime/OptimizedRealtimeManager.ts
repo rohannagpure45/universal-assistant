@@ -6,7 +6,7 @@
  */
 
 import { nanoid } from 'nanoid';
-import { debounce } from 'lodash-es';
+import { debounce } from '@/utils/debounce';
 
 export interface RealtimeMessage {
   id: string;

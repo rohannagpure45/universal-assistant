@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyIdToken } from '@/lib/firebase/admin';
-import { AIService } from '@/services/universal-assistant/AIService';
+// Dynamic import for AIService to reduce bundle size
+const loadAIService = () => import('@/services/universal-assistant/AIService').then(m => m.AIService);
 import { AIModel } from '@/types';
 import { validateModelRequest, getModelWithFallback, isValidModel } from '@/config/modelConfigs';
 import { withSecurity } from '@/lib/security/middleware';
@@ -103,7 +104,8 @@ async function handleAIResponse(request: NextRequest) {
     // Get working model with fallback if needed
     workingModel = getModelWithFallback(model);
 
-    // Initialize AI service
+    // Initialize AI service with dynamic import
+    const AIService = await loadAIService();
     const aiService = new AIService();
     
     // Prepare context for AI response

@@ -15,7 +15,7 @@ import {
   DependencyList,
   EffectCallback
 } from 'react';
-import { debounce } from 'lodash-es';
+import { debounce } from '@/utils/debounce';
 
 // Debounced state hook
 export function useDebouncedState<T>(

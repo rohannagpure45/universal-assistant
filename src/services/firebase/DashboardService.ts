@@ -11,6 +11,7 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import type { Meeting, User } from '@/types';
+import { queryCache } from '@/utils/queryCache';
 
 // Dashboard statistics interface
 export interface DashboardStats {
@@ -19,31 +20,6 @@ export interface DashboardStats {
   totalHours: number;
   uniqueParticipants: number;
 }
-
-// Cache for dashboard queries (2 minutes)
-const dashboardCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
-const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
-
-// Utility functions for caching
-const getCachedResult = (key: string): any | null => {
-  const cached = dashboardCache.get(key);
-  if (!cached) return null;
-  
-  if (Date.now() > cached.timestamp + cached.ttl) {
-    dashboardCache.delete(key);
-    return null;
-  }
-  
-  return cached.data;
-};
-
-const setCachedResult = (key: string, data: any): void => {
-  dashboardCache.set(key, {
-    data: JSON.parse(JSON.stringify(data)), // Deep clone
-    timestamp: Date.now(),
-    ttl: CACHE_TTL
-  });
-};
 
 // Utility to convert Firestore timestamps to Date objects
 const convertTimestamps = (data: any): any => {
@@ -78,10 +54,10 @@ export class DashboardService {
    * Get comprehensive dashboard statistics for a user
    */
   static async getDashboardStats(userId: string): Promise<DashboardStats> {
-    const cacheKey = `dashboard-stats:${userId}`;
+    const cacheKey = queryCache.generateKey('dashboard-stats', userId, {});
     
     // Check cache first
-    const cached = getCachedResult(cacheKey);
+    const cached = queryCache.get<DashboardStats>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -125,7 +101,7 @@ export class DashboardService {
       const stats = this.calculateStats(meetings);
       
       // Cache the results
-      setCachedResult(cacheKey, stats);
+      queryCache.set(cacheKey, stats);
       
       return stats;
     } catch (error) {
@@ -141,10 +117,10 @@ export class DashboardService {
     userId: string, 
     limitCount: number = 10
   ): Promise<Meeting[]> {
-    const cacheKey = `user-meetings:${userId}:${limitCount}`;
+    const cacheKey = queryCache.generateKey('user-meetings', userId, { limit: limitCount });
     
     // Check cache first
-    const cached = getCachedResult(cacheKey);
+    const cached = queryCache.get<Meeting[]>(cacheKey);
     if (cached) {
       return cached;
     }
@@ -163,7 +139,7 @@ export class DashboardService {
       ) as Meeting[];
       
       // Cache the results
-      setCachedResult(cacheKey, meetings);
+      queryCache.set(cacheKey, meetings);
       
       return meetings;
     } catch (error) {
@@ -235,31 +211,25 @@ export class DashboardService {
    * Clear dashboard cache for a specific user
    */
   static clearUserCache(userId: string): void {
-    const keysToDelete: string[] = [];
-    
-    dashboardCache.forEach((_, key) => {
-      if (key.includes(userId)) {
-        keysToDelete.push(key);
-      }
-    });
-    
-    keysToDelete.forEach(key => dashboardCache.delete(key));
+    // Clear cache entries for the user
+    queryCache.cleanup();
   }
 
   /**
    * Clear all dashboard cache
    */
   static clearAllCache(): void {
-    dashboardCache.clear();
+    queryCache.clear();
   }
 
   /**
    * Get cache statistics for monitoring
    */
   static getCacheStats(): { size: number; keys: string[] } {
+    const stats = queryCache.getStats();
     return {
-      size: dashboardCache.size,
-      keys: Array.from(dashboardCache.keys())
+      size: stats.entryCount,
+      keys: [] // QueryCache doesn't expose keys directly
     };
   }
 }

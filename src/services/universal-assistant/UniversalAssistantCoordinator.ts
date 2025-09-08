@@ -8,6 +8,7 @@ import { authService } from '@/services/firebase/AuthService';
 import type { TranscriptEntry, Meeting } from '@/types';
 import type { MeetingStoreInterface, AppStoreInterface } from '@/interfaces/StoreInterfaces';
 import { serviceProvider } from '@/services/ServiceProvider';
+import { CleanupRegistry } from '@/utils/CleanupRegistry';
 // Static imports to prevent webpack module loading issues during hydration
 import { auth } from '@/lib/firebase/client';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -56,6 +57,7 @@ export class UniversalAssistantCoordinator {
   private authToken: string | null = null;
   private voiceIdentificationCoordinator: VoiceIdentificationCoordinator | null = null;
   private currentMeeting: Meeting | null = null;
+  private cleanupRegistry = new CleanupRegistry();
   
   // Memory leak prevention: Buffer management
   private readonly MAX_BUFFER_CHUNKS = 50; // Prevent unlimited growth
@@ -289,6 +291,13 @@ export class UniversalAssistantCoordinator {
           `interim_results=true`,
         ['token', key]
       );
+
+      // Register WebSocket cleanup
+      this.cleanupRegistry.register(() => {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
+      });
 
       // Set up WebSocket handlers with tracking for cleanup
       const handlers = new Set(['onopen', 'onmessage', 'onerror', 'onclose']);
@@ -1071,6 +1080,11 @@ export class UniversalAssistantCoordinator {
   // Cleanup
   public cleanup(): void {
     try {
+      // Execute all registered cleanups (fire and forget)
+      this.cleanupRegistry.cleanupAll().catch(error => {
+        console.error('[UniversalAssistantCoordinator] Cleanup registry error:', error);
+      });
+      
       this.stopRecording();
       this.getAudioManagerSafe().stopAllAudio();
       this.ttsClient.cancelAllRequests();

@@ -433,7 +433,9 @@ export class AuthService {
       
       // Execute all cleanup callbacks (they should stop activities)
       console.log(`[AuthService] Running ${this.cleanupCallbacks.length} cleanup callbacks`);
-      for (const cleanup of this.cleanupCallbacks) {
+      // Create a copy of the array to prevent mutation during iteration
+      const callbacks = [...this.cleanupCallbacks];
+      for (const cleanup of callbacks) {
         try {
           cleanup();
         } catch (error) {

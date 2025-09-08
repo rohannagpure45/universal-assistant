@@ -14,6 +14,7 @@ export const useAuth = () => {
   const appStore = useAppStore();
   const meetingStore = useMeetingStore();
   const isInitializedRef = useRef(false);
+  const mountedRef = useRef(true);
   
   // SURGICAL FIX: Issue #2 - Replace global flag with proper React ref
   const isSigningOutRef = useRef(false);
@@ -21,6 +22,13 @@ export const useAuth = () => {
   // FOUNDATION SOLUTION: AuthProvider handles initialization now
   // This hook should NOT initialize auth to prevent multiple initialization loops
   // The AuthProvider component is the single source of truth for auth initialization
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Auto-clear errors after a timeout
   useEffect(() => {
@@ -35,38 +43,53 @@ export const useAuth = () => {
 
   // Sync user preferences between AuthStore and AppStore
   useEffect(() => {
-    if (auth.user?.preferences && !isInitializedRef.current) {
+    if (auth.user?.preferences && !isInitializedRef.current && mountedRef.current) {
       const { preferences } = auth.user;
       
-      // Sync AI settings
+      // Batch updates to check mounted state before each group
+      const updates = [];
+      
+      // Collect AI settings updates
       if (preferences.ai) {
-        appStore.updateAISettings({
-          defaultModel: preferences.ai.defaultModel,
-          temperature: preferences.ai.temperature,
-          maxTokens: preferences.ai.maxTokens,
+        updates.push(() => {
+          if (!mountedRef.current) return;
+          appStore.updateAISettings({
+            defaultModel: preferences.ai!.defaultModel,
+            temperature: preferences.ai!.temperature,
+            maxTokens: preferences.ai!.maxTokens,
+          });
         });
       }
       
-      // Sync TTS settings
+      // Collect TTS settings updates
       if (preferences.tts) {
-        appStore.updateTTSSettings({
-          voiceId: preferences.tts.voice,
-          speed: preferences.tts.speed,
-          volume: preferences.tts.volume,
+        updates.push(() => {
+          if (!mountedRef.current) return;
+          appStore.updateTTSSettings({
+            voiceId: preferences.tts!.voice,
+            speed: preferences.tts!.speed,
+            volume: preferences.tts!.volume,
+          });
         });
       }
       
-      // Sync UI settings
+      // Collect UI settings updates
       if (preferences.ui) {
-        appStore.updateUISettings({
-          theme: preferences.ui.theme,
-          language: preferences.ui.language,
-          fontSize: preferences.ui.fontSize > 16 ? 'large' : preferences.ui.fontSize < 14 ? 'small' : 'medium',
+        updates.push(() => {
+          if (!mountedRef.current) return;
+          appStore.updateUISettings({
+            theme: preferences.ui!.theme,
+            language: preferences.ui!.language,
+            fontSize: preferences.ui!.fontSize > 16 ? 'large' : preferences.ui!.fontSize < 14 ? 'small' : 'medium',
+          });
         });
       }
       
-      // Mark as initialized to prevent re-sync on every auth.user change
-      isInitializedRef.current = true;
+      // Execute all updates only if still mounted
+      if (mountedRef.current) {
+        updates.forEach(update => update());
+        isInitializedRef.current = true;
+      }
     }
   }, [auth.user?.uid]); // CRITICAL FIX: Only sync once per user, not on every user object change
 
@@ -108,9 +131,19 @@ export const useAuth = () => {
     isSigningOutRef.current = true;
     
     try {
-      // Clean up meeting state first
+      // Clean up meeting state first with 30-second timeout
       if (meetingStore.isInMeeting) {
-        await meetingStore.leaveMeeting();
+        try {
+          await Promise.race([
+            meetingStore.leaveMeeting(),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Meeting cleanup timeout')), 30000)
+            )
+          ]);
+        } catch (error) {
+          console.error('Meeting cleanup failed, continuing sign-out:', error);
+          // Continue with sign-out even if meeting cleanup fails
+        }
       }
       
       // Clean up any real-time listeners

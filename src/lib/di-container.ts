@@ -19,7 +19,7 @@ interface ServiceState<T> {
 export class DIContainer {
   private factories = new Map<string, ServiceFactory<any>>();
   private instances = new Map<string, ServiceState<any>>();
-  private initializing = new Set<string>();
+  private initializingPromises = new Map<string, Promise<any>>();
   
   /**
    * Register a service factory with its dependencies
@@ -47,16 +47,31 @@ export class DIContainer {
       return null;
     }
     
-    // Prevent circular initialization
-    if (this.initializing.has(name)) {
-      throw new Error(`Circular dependency detected: ${name}`);
+    // If already initializing, wait for the existing promise
+    if (this.initializingPromises.has(name)) {
+      return this.initializingPromises.get(name);
     }
     
     const factory = this.factories.get(name);
     if (!factory) return null;
     
-    // Mark as initializing
-    this.initializing.add(name);
+    // Create initialization promise
+    const initPromise = this.initializeService(name, factory, state);
+    this.initializingPromises.set(name, initPromise);
+    
+    try {
+      const result = await initPromise;
+      return result;
+    } finally {
+      this.initializingPromises.delete(name);
+    }
+  }
+  
+  private async initializeService<T>(
+    name: string, 
+    factory: ServiceFactory<T>, 
+    state: ServiceState<T>
+  ): Promise<T | null> {
     state.status = 'initializing';
     
     try {
@@ -78,9 +93,6 @@ export class DIContainer {
       state.error = error instanceof Error ? error : new Error(String(error));
       console.error(`Failed to initialize service ${name}:`, error);
       return null;
-      
-    } finally {
-      this.initializing.delete(name);
     }
   }
   
@@ -111,6 +123,11 @@ export class DIContainer {
    * Cleanup all services
    */
   async cleanup(): Promise<void> {
+    // Wait for any pending initializations to complete
+    if (this.initializingPromises.size > 0) {
+      await Promise.allSettled(Array.from(this.initializingPromises.values()));
+    }
+    
     for (const [name, state] of this.instances.entries()) {
       if (state.instance && typeof state.instance.cleanup === 'function') {
         try {
@@ -122,7 +139,7 @@ export class DIContainer {
     }
     
     this.instances.clear();
-    this.initializing.clear();
+    this.initializingPromises.clear();
   }
 }
 

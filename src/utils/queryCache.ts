@@ -86,12 +86,32 @@ export const queryCache = new QueryCache();
 
 // Auto-cleanup every 10 minutes with proper cleanup on unload
 if (typeof window !== 'undefined') {
-  const intervalId = setInterval(() => {
-    queryCache.cleanup();
-  }, 10 * 60 * 1000);
+  let intervalId: NodeJS.Timeout | null = null;
+  
+  const startCleanupInterval = () => {
+    if (!intervalId) {
+      intervalId = setInterval(() => {
+        queryCache.cleanup();
+      }, 10 * 60 * 1000);
+    }
+  };
+  
+  const handleBeforeUnload = () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
+  
+  // Start cleanup interval
+  startCleanupInterval();
   
   // Clean up interval on page unload
-  window.addEventListener('beforeunload', () => {
-    clearInterval(intervalId);
-  });
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  
+  // Provide a way to clean up if needed (for hot module replacement)
+  (queryCache as any).__cleanup = () => {
+    handleBeforeUnload();
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+  };
 }

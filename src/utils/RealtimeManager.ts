@@ -25,8 +25,27 @@ export class RealtimeManager {
   constructor(cleanupRegistry?: CleanupRegistry) {
     this.cleanupRegistry = cleanupRegistry || new CleanupRegistry();
     
-    // Bind shutdown to preserve context
-    this.handleBeforeUnload = this.shutdown.bind(this);
+    // Bind synchronous cleanup to preserve context
+    this.handleBeforeUnload = () => {
+      // Synchronous cleanup for beforeunload
+      this.isShuttingDown = true;
+      
+      // Remove all listeners synchronously
+      for (const key of this.listeners.keys()) {
+        const unsubscribe = this.listeners.get(key);
+        if (unsubscribe) {
+          try {
+            unsubscribe();
+          } catch (error) {
+            console.warn(`Error removing listener ${key} during unload:`, error);
+          }
+        }
+      }
+      
+      this.listeners.clear();
+      this.listenerConfigs.clear();
+      this.reconnectAttempts.clear();
+    };
     
     // Register global cleanup
     if (typeof window !== 'undefined') {
@@ -34,7 +53,7 @@ export class RealtimeManager {
     }
   }
   
-  private handleBeforeUnload: () => Promise<void>;
+  private handleBeforeUnload: () => void;
   
   /**
    * Add a real-time listener with automatic management
@@ -202,10 +221,20 @@ export class RealtimeManager {
   }
 }
 
-// Global instance for shared use
-export const globalRealtimeManager = new RealtimeManager();
+// Global instance for shared use (singleton pattern)
+let globalInstance: RealtimeManager | null = null;
+
+export function getGlobalRealtimeManager(): RealtimeManager {
+  if (!globalInstance) {
+    globalInstance = new RealtimeManager();
+  }
+  return globalInstance;
+}
+
+// Export as const for backward compatibility
+export const globalRealtimeManager = getGlobalRealtimeManager();
 
 // React hook for using the RealtimeManager
 export function useRealtimeManager(): RealtimeManager {
-  return globalRealtimeManager;
+  return getGlobalRealtimeManager();
 }

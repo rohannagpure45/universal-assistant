@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Universal Assistant - Proof of Concept
 
-## Getting Started
+A demonstration project showcasing an AI-powered meeting assistant with real-time audio transcription and multi-agent architecture.
 
-First, run the development server:
+## 🎯 Project Status: Proof of Concept
+
+**Important**: This is a POC (Proof of Concept) project intended for demonstration purposes only. It is not production-ready and includes minimal security features.
+
+## Features Demonstrated
+
+- **Real-time Audio Processing**: Capture and process meeting audio in real-time
+- **Speech-to-Text**: Integration with Deepgram for live transcription
+- **AI Assistance**: Multi-model AI support (OpenAI GPT-4, Anthropic Claude)
+- **Speaker Identification**: Voice recognition and speaker profiling concepts
+- **Multi-Agent System**: Specialized agents for different meeting tasks
+- **Meeting Management**: Basic meeting lifecycle and transcript management
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js (LTS version)
+- npm or yarn package manager
+- API keys for AI services (optional for demo)
+
+### Installation
 
 ```bash
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to see the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Technology Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+- **Framework**: Next.js 14 with TypeScript
+- **AI Services**: OpenAI, Anthropic Claude APIs
+- **Speech Services**: Deepgram (STT), ElevenLabs (TTS)
+- **Database**: Firebase Firestore (simplified setup)
+- **UI**: Tailwind CSS, Radix UI components
+- **State Management**: Zustand
 
-## Learn More
+## Limitations
 
-To learn more about Next.js, take a look at the following resources:
+As this is a proof of concept:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Authentication is simplified or disabled
+- Security features are minimal
+- Performance is not optimized for scale
+- Some features may be mocked or partially implemented
+- Error handling is basic in some areas
+- Not suitable for production deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+## Development
 
-## Deploy on Vercel
+See `CLAUDE.md` for detailed development guidelines and architecture overview.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Available Scripts
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+- `npm run dev` - Start development server
+- `npm run build` - Build the application
+- `npm run lint` - Run code linting
+- `npm run typecheck` - Check TypeScript types
+
+## Purpose
+
+This POC demonstrates the feasibility of:
+- Real-time audio transcription in web applications
+- Multi-agent AI architectures for meeting assistance
+- Integration of various AI and speech services
+- Modern web application patterns with Next.js
+
+## Note
+
+For production implementation, additional work would be needed for:
+- Comprehensive security and authentication
+- Performance optimization and scaling
+- Error handling and recovery
+- Complete feature implementation
+- Testing and quality assurance
